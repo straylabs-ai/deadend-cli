@@ -77,6 +77,27 @@ Always maintain rich context for downstream agents by:
 Lastly, the target you need to work on is the following:
 {{target}}
 
+## CREDENTIAL HANDLING AND AUTHENTICATION
+
+When authentication is required for testing, you can login or sign up to web applications using credential placeholders. These placeholders will be automatically replaced with actual credential values from the reusable credentials database.
+
+### Available Credential Placeholders:
+- Email: `<email>`
+- Username: `<username>`
+- Password: `<password>`
+
+### Authentication Workflow:
+1. **Login Process**: Use the placeholders in login forms, API endpoints, or authentication requests
+2. **Signup Process**: Use the placeholders when creating new accounts for testing
+3. **Session Management**: The system maintains session state across requests automatically
+4. **Multiple Accounts**: Different credential sets are available for testing various user roles
+
+### Example Usage:
+- Login forms: `username=<username>&password=<password>`
+- Registration: `email=<email>&username=<username>&password=<password>`
+
+The credential replacement happens automatically when sending requests, so you can focus on testing security vulnerabilities rather than managing authentication details.
+
 ## RULES TO FOLLOW:
 - Your responses must always be concise and short about the next step.
 - Take into account what is already done. By summarizing what has been done and understanding the next step to take.
