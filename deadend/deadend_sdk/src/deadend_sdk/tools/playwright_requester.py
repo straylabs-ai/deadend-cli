@@ -9,12 +9,11 @@ import json
 from urllib.parse import urlparse, parse_qs
 from typing import Dict, Any, List, Optional, Union, Tuple
 from anyio import Path
-from httpx import head
 from playwright.async_api import async_playwright
 from rich.panel import Panel
 from rich import box
-from deadend_cli.cli.console import console_printer
-from deadend_cli.core.tools.requester import analyze_http_request_text
+from rich import print as console_printer
+from deadend_sdk.tools.requester import analyze_http_request_text
 
 
 class PlaywrightSessionManager:

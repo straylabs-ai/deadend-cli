@@ -1,0 +1,145 @@
+[project]
+name = "deadend"
+version = "0.0.8"
+authors = [
+  { name="Yassine Bargach", email="yassine.bargach@proton.me" },
+]
+description = "AI agent CLI for security research"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "deadend-sdk",
+    "deadend-cli",
+    "eval",
+    "deadend-prompts",
+    "aiofiles>=24.1.0",
+    "aiohttp>=3.12.14",
+    "asgiref>=3.8.1",
+    "asyncpg>=0.30.0",
+    "beautifulsoup4>=4.13.4",
+    "cssbeautifier>=1.15.4",
+    "docker>=7.1.0",
+    "dotenv>=0.9.9",
+    "google-genai>=1.18.0",
+    "httptools>=0.6.4",
+    "jinja2>=3.1.6",
+    "jsbeautifier>=1.15.4",
+    "logfire>=4.3.3",
+    "logging>=0.4.9.6",
+    "lxml>=6.0.0",
+    "nest-asyncio>=1.6.0",
+    "numpy>=2.3.1",
+    "pgvector>=0.4.1",
+    "playwright>=1.54.0",
+    "prompt-toolkit>=3.0.51",
+    "pydantic>=2.11.5",
+    "pydantic-ai>=0.2.12",
+    "pydantic-ai-slim[google]>=0.2.12",
+    "pyright>=1.1.402",
+    "pytest-asyncio>=1.0.0",
+    "pyyaml>=6.0.2",
+    "readchar>=4.2.1",
+    "rich>=14.0.0",
+    "semantic-text-splitter>=0.27.0",
+    "sqlalchemy>=2.0.41",
+    "tenacity>=9.1.2",
+    "tiktoken>=0.9.0",
+    "toml>=0.10.2",
+    "tree-sitter-css>=0.23.2",
+    "tree-sitter-html>=0.23.2",
+    "tree-sitter-javascript>=0.23.1",
+    "tree-sitter-markdown>=0.5.1",
+    "tree-sitter-typescript>=0.23.2",
+    "typer>=0.15.4",
+    "zaproxy>=0.4.0",
+]
+
+[project.scripts]
+deadend-cli = "deadend_cli.main:main"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "flake8>=7.2.0",
+    "isort>=6.0.1",
+    "pytest>=8.3.5",
+    "pytest-cov>=6.1.1",
+    "pytest-mock>=3.14.1",
+]
+test = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=1.0.0",
+    "pytest-cov>=6.1.1",
+    "pytest-mock>=3.14.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["deadend_cli", "deadend_sdk", "deadend_prompts", "eval"]
+include = [
+    "deadend_cli/prompts/*.jinja2",
+    "deadend_cli/prompts/tools/*.jinja2",
+    "deadend_cli/data/*.json",
+    "deadend_cli/data/memory/*.json"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+lint = "flake8 {args:deadend_cli deadend_sdk}"
+format = "black {args:deadend_cli deadend_sdk}"
+format-check = "black --check {args:deadend_cli deadend_sdk}"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+adopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=deadend_cli",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = ["deadend_cli", "deadend_sdk/src"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+[tool.pyright]
+extraPaths = [
+    "deadend_sdk/src",
+    "deadend_sdk/src/deadend_sdk"
+]
+
+[tool.uv.sources]
+deadend_cli = { workspace = true }
+deadend_sdk = { workspace = true }
+deadend_prompts = { workspace = true }
+eval = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "deadend",
+    "deadend_cli/",
+    "deadend_sdk/",
+    "deadend_prompts/",
+    "eval/",
+]
+

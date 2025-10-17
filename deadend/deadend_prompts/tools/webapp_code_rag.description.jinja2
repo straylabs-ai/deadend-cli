@@ -1,0 +1,36 @@
+This tool performs semantic search over pre-downloaded web application content that has been indexed and embedded for fast retrieval. It allows you to query the target's webpage content without making new HTTP requests to the target.
+
+## WHAT THIS TOOL PROVIDES:
+- **Pre-indexed webpage content**: HTML, JavaScript, CSS, and other client-side resources that were previously downloaded from the target
+- **Semantic search capabilities**: Find relevant content using natural language queries rather than exact text matching
+- **Fast retrieval**: No network latency since content is already stored locally
+- **Comprehensive coverage**: All discovered pages and resources from the target web application
+
+## WHEN TO USE THIS TOOL:
+- **Reconnaissance and enumeration**: Search for forms, input fields, endpoints, and API calls in the downloaded content
+- **Technology identification**: Find references to frameworks, libraries, versions, and technologies used by the application
+- **Architecture analysis**: Understand application structure, routing patterns, and client-side logic
+- **Attack surface mapping**: Identify potential entry points, parameters, and client-side vulnerabilities
+- **Context gathering**: Retrieve specific code snippets or content for analysis before crafting payloads
+
+## EXAMPLE QUERIES:
+- "document.getElementById form input elements"
+- "fetch POST request API calls"
+- "jQuery version $ function calls"
+- "login authentication token localStorage"
+- "FileReader upload file input"
+- "React version createElement useState"
+- "input validation regex pattern"
+- "XMLHttpRequest open send method"
+- "addEventListener click submit events"
+- "window.location href redirect"
+- "localStorage setItem getItem"
+- "document.cookie session management"
+
+## WHEN NOT TO USE THIS TOOL:
+- **DO NOT** use for vulnerability exploitation guidance or attack techniques
+- **DO NOT** use to search for server-side source code (this tool only contains downloaded webpage content)
+- **DO NOT** use when you need real-time information from the target (use send_payload instead)
+- **DO NOT** use for general security knowledge (use knowledge_base tool instead)
+
+This tool is most effective when you need to analyze the target's client-side code and structure to inform your testing strategy, but remember that it only contains content that was previously discovered and downloaded from the target. 
