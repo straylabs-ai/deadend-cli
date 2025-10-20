@@ -21,10 +21,10 @@ class WebpageCrawler(ZapConnector):
 
 
     def _start_spider(self, target_url):
-        
+
         # Start spidering the target
         scan_id = self.zap.spider.scan(target_url)
-        
+
         # Poll the status until the spider completes
         while int(self.zap.spider.status(scan_id)) < 100:
             time.sleep(2)

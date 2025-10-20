@@ -1,71 +1,11 @@
-# Copyright (C) 2025 Yassine Bargach
-# Licensed under the GNU Affero General Public License v3
-# See LICENSE file for full license information.
-
-"""Playwright-based HTTP request handler with enhanced session management and redirect handling."""
-import asyncio
-import re
 import json
-from urllib.parse import urlparse, parse_qs
-from typing import Dict, Any, List, Optional, Union, Tuple
+import re
 from anyio import Path
+from typing import AsyncGenerator, Dict, Union, Any, List
+from urllib.parse import urlparse, parse_qs
 from playwright.async_api import APIRequestContext, async_playwright
-from rich.panel import Panel
-from rich import box
-from rich import print as console_printer
-
-from .browser_automation.http_parser import analyze_http_request_text
-
-class PlaywrightSessionManager:
-    """
-    Singleton session manager to maintain PlaywrightRequester instances across tool calls.
-    
-    This ensures that cookies and session data persist between multiple requests
-    within the same application session.
-    """
-    _instances: Dict[str, 'PlaywrightRequester'] = {}
-    _lock = asyncio.Lock()
-
-    @classmethod
-    async def get_session(
-        cls,
-        session_key: str,
-        verify_ssl: bool = True,
-        proxy_url: Optional[str] = None
-    ) -> 'PlaywrightRequester':
-        """
-        Get or create a PlaywrightRequester session.
-        
-        Args:
-            session_key (str): Unique key for the session (e.g., target host)
-            verify_ssl (bool): Whether to verify SSL certificates
-            proxy_url (str, optional): Proxy URL for requests
-            
-        Returns:
-            PlaywrightRequester: Session instance
-        """
-        async with cls._lock:
-            if session_key not in cls._instances:
-                cls._instances[session_key] = PlaywrightRequester(verify_ssl, proxy_url, session_id=session_key)
-                await cls._instances[session_key]._initialize()
-            return cls._instances[session_key]
-
-    @classmethod
-    async def cleanup_session(cls, session_key: str):
-        """Clean up a specific session."""
-        async with cls._lock:
-            if session_key in cls._instances:
-                await cls._instances[session_key]._cleanup()
-                del cls._instances[session_key]
-
-    @classmethod
-    async def cleanup_all_sessions(cls):
-        """Clean up all sessions."""
-        async with cls._lock:
-            for session_key in list(cls._instances.keys()):
-                await cls._instances[session_key]._cleanup()
-            cls._instances.clear()
-
+from playwright._impl._api_structures import OriginState
+from .http_parser import analyze_http_request_text
 
 class PlaywrightRequester:
     """
@@ -76,7 +16,12 @@ class PlaywrightRequester:
     session management, cookie persistence, and improved error handling.
     """
 
-    def __init__(self, verify_ssl: bool = True, proxy_url: Optional[str] = None, session_id: str | None = None):
+    def __init__(
+        self,
+        verify_ssl: bool = True,
+        proxy_url: str | None = None,
+        session_id: str | None = None
+    ):
         """
         Initialize the PlaywrightRequester.
         
@@ -113,12 +58,12 @@ class PlaywrightRequester:
         browser_options = {
             'headless': True,
                 'args': [
-                    '--disable-web-security',           # Disable web security for cross-origin access
+                    '--disable-web-security', # Disable web security for cross-origin access
                     '--disable-features=VizDisplayCompositor',  # Disable some security features
                     '--allow-running-insecure-content', # Allow insecure content
                     '--disable-blink-features=AutomationControlled',  # Hide automation
-                    '--no-sandbox',                     # Disable sandbox for better access
-                    '--disable-dev-shm-usage',          # Overcome limited resource problems
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage', 
                 ]
         }
         self.browser = await self.playwright.chromium.launch(**browser_options)
@@ -177,7 +122,7 @@ class PlaywrightRequester:
 
     async def send_raw_data(self, host: str, port: int, target_host: str,
                           request_data: str, is_tls: bool = False,
-                          via_proxy: bool = False) -> Union[str, bytes]:
+                          via_proxy: bool = False) -> AsyncGenerator[Union[str, bytes]]:
         """
         Send raw HTTP request data to a target host.
         
@@ -210,20 +155,24 @@ class PlaywrightRequester:
                 "Invalid HTTP request. The following issues were found:\n"
                 f"{reason}\n\n--- Raw Request ---\n{request_data}"
             )
-            return error_message
+            yield error_message
 
         # Parse the raw HTTP request
         parsed_request = self._parse_raw_request(request_data)
-        if not parsed_request:
-            return "Failed to parse HTTP request"
+        if parsed_request is None:
+            yield "Failed to parse HTTP request"
+            return
                 # Display the response in a panel
-        request_panel = Panel(
-            request_data,
-            title="[bold green]HTTP Request[/bold green]",
-            border_style="green",
-            box=box.ROUNDED
-        )
-        console_printer.print(request_panel)
+        # request_panel = Panel(
+        #     request_data,
+        #     title="[bold green]HTTP Request[/bold green]",
+        #     border_style="green",
+        #     box=box.ROUNDED
+        # )
+        # console_printer.print(request_panel)
+        # TODO: should return request_data
+        yield request_data
+
 
         protocol = "https" if is_tls else "http"
         # TODO: still not tested
@@ -282,34 +231,21 @@ class PlaywrightRequester:
                     await self.get_localstorage(session_id=self.session_id)
                     print("Must see")
                 except Exception as e:
-                    print(f"Warning: Could not access localStorage for session {self.session_id}: {e}")
+                    print(
+                        f"Warning: Could not access localStorage for session {self.session_id}: {e}"
+                    )
             # Format the response similar to the original requester
             formatted_response = await self._format_response(response)
 
-            response_panel = Panel(
-
-                formatted_response,
-                title="[bold green]HTTP Response[/bold green]",
-                border_style="green",
-                box=box.ROUNDED
-            )
-            console_printer.print(response_panel)
-
-            return formatted_response.encode('utf-8') \
+            yield formatted_response.encode('utf-8') \
                 if isinstance(formatted_response, str) else formatted_response
 
         except (ValueError, IndexError, AttributeError, ConnectionError) as e:
             error_message = f"Request failed: {str(e)}"
-            error_panel = Panel(
-                error_message,
-                title="[bold red]Request Error[/bold red]",
-                border_style="red",
-                box=box.ROUNDED
-            )
-            console_printer.print(error_panel)
-            return error_message.encode('utf-8')
+            yield error_message.encode('utf-8')
+        
 
-    def _parse_raw_request(self, raw_request: str) -> Optional[Dict[str, Any]]:
+    def _parse_raw_request(self, raw_request: str) -> Dict[str, Any] | None:
         """
         Parse raw HTTP request string into components.
         
@@ -344,7 +280,6 @@ class PlaywrightRequester:
                 if ':' in line:
                     key, value = line.split(':', 1)
                     headers[key.strip()] = value.strip()
-
             # Extract body
             body = '\r\n'.join(lines[body_start:]) if body_start < len(lines) else ''
 
@@ -382,24 +317,27 @@ class PlaywrightRequester:
 
         if body:
             request_options['data'] = body
-
-        # Send request based on method
-        method_upper = method.upper()
-        if method_upper == 'GET':
-            return await self.request_context.get(url, **request_options)
-        elif method_upper == 'POST':
-            return await self.request_context.post(url, **request_options)
-        elif method_upper == 'PUT':
-            return await self.request_context.put(url, **request_options)
-        elif method_upper == 'DELETE':
-            return await self.request_context.delete(url, **request_options)
-        elif method_upper == 'HEAD':
-            return await self.request_context.head(url, **request_options)
-        elif method_upper == 'PATCH':
-            return await self.request_context.patch(url, **request_options)
-        else:
-            # Use fetch for custom methods
-            return await self.request_context.fetch(url, method=method_upper, **request_options)
+        if isinstance(self.request_context, APIRequestContext):
+            method_handlers = {
+                'GET': self.request_context.get,
+                'POST': self.request_context.post,
+                'PUT': self.request_context.put,
+                'DELETE': self.request_context.delete,
+                'HEAD': self.request_context.head,
+                'PATCH': self.request_context.patch
+            }
+            method_upper = method.upper()
+            try:
+                if method_upper in method_handlers:
+                    return await method_handlers[method_upper](url, **request_options)
+                else:
+                    return await self.request_context.fetch(
+                        url_or_request=url,
+                        method=method_upper,
+                        **request_options
+                    )
+            except Exception as e:
+                print(f"HTTP {method_upper} request failed for {url}: {str(e)}")
 
     async def _format_response(self, response: Any) -> str:
         """
@@ -565,12 +503,12 @@ class PlaywrightRequester:
             return {}
 
         cookies = await self.context.cookies()
-        return {cookie['name']: cookie['value'] for cookie in cookies}
+        return {cookie['name']: cookie['value'] for cookie in cookies
+                if 'name' in cookie and 'value' in cookie}
 
-    async def set_cookies(self, cookies: Dict[str, str], domain: str = None):
+    async def set_cookies(self, cookies: Dict[str, str], domain: str | None = None):
         """
         Set session cookies.
-        
         Args:
             cookies (Dict[str, str]): Dictionary of cookie name-value pairs
             domain (str, optional): Cookie domain
@@ -590,18 +528,18 @@ class PlaywrightRequester:
 
         await self.context.add_cookies(cookie_list)
 
-    async def get_localstorage(self, session_id: str) -> List[Dict]:
+    async def get_localstorage(self, session_id: str) -> List[OriginState]:
         """Returns the localstorage in the browser's context"""
         if not self._initialized or not self.context:
-            return {}
+            return []
 
         path_storage = await Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_id
         await Path(path_storage).mkdir(parents=True, exist_ok=True)
+        path_storage_str = str(path_storage.joinpath("storage.json"))
+        localstorage = await self.context.storage_state(path=path_storage_str)
+        return localstorage.get('origins', [])
 
-        localstorage = await self.context.storage_state(path=path_storage.joinpath("storage.txt"))
-        return localstorage['origins']
-
-    async def set_localstorage_value(self, key: str, value: str, domain: str = None):
+    async def set_localstorage_value(self, key: str, value: str, domain: str | None = None):
         """
         Set a localStorage value for a specific domain.
         
@@ -632,15 +570,13 @@ class PlaywrightRequester:
                     page = await self.context.new_page()
                     # Navigate to a dummy page to ensure localStorage is accessible
                     await page.goto("data:text/html,<html></html>")
-
                 await page.evaluate(f"localStorage.setItem('{key}', '{value}')")
-
             return True
         except Exception as e:
             print(f"Error setting localStorage: {e}")
             return False
 
-    async def get_localstorage_value(self, key: str, domain: str = None):
+    async def get_localstorage_value(self, key: str, domain: str | None = None):
         """
         Get a localStorage value for a specific domain.
         
@@ -679,7 +615,7 @@ class PlaywrightRequester:
             print(f"Error getting localStorage: {e}")
             return None
 
-    async def remove_localstorage_value(self, key: str, domain: str = None):
+    async def remove_localstorage_value(self, key: str, domain: str | None = None):
         """
         Remove a localStorage value for a specific domain.
         
@@ -718,7 +654,7 @@ class PlaywrightRequester:
             print(f"Error removing localStorage: {e}")
             return False
 
-    async def clear_localstorage(self, domain: str = None):
+    async def clear_localstorage(self, domain: str | None = None):
         """
         Clear all localStorage values for a specific domain.
         
@@ -757,7 +693,7 @@ class PlaywrightRequester:
             print(f"Error clearing localStorage: {e}")
             return False
 
-    async def get_all_localstorage(self, domain: str = None):
+    async def get_all_localstorage(self, domain: str | None = None):
         """
         Get all localStorage key-value pairs for a specific domain.
         
@@ -814,7 +750,7 @@ class PlaywrightRequester:
             print(f"Error getting all localStorage: {e}")
             return {}
 
-    async def set_multiple_localstorage(self, storage_dict: Dict[str, str], domain: str = None):
+    async def set_multiple_localstorage(self, storage_dict: Dict[str, str], domain: str | None = None):
         """
         Set multiple localStorage key-value pairs for a specific domain.
         
@@ -873,173 +809,3 @@ class PlaywrightRequester:
                 await page.evaluate("localStorage.clear()")
         except Exception as e:
             print(f"Warning: Could not clear localStorage: {e}")
-
-
-def load_reusable_credentials() -> Dict[str, Any]:
-    """
-    Load reusable credentials from the JSON file.
-    
-    Returns:
-        Dict[str, Any]: Dictionary containing credentials data
-    """
-    try:
-        credentials_path = Path(__file__).parent.parent.parent / "data" / "memory" / "reusable_credentials.json"
-        with open(credentials_path, 'r') as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"Warning: Could not load reusable credentials: {e}")
-        return {"accounts": []}
-
-
-def replace_credential_placeholders(request_data: str, account_index: int = 0) -> str:
-    """
-    Replace credential placeholders in request data with actual values 
-        from reusable_credentials.json.
-    
-    Args:
-        request_data (str): Raw HTTP request string containing placeholders
-        account_index (int): Index of the account to use from the credentials file (default: 0)
-        
-    Returns:
-        str: Request data with placeholders replaced by actual credential values
-    """
-    credentials = load_reusable_credentials()
-    accounts = credentials.get("accounts", [])
-
-    if not accounts or account_index >= len(accounts):
-        print(f"Warning: No account found at index {account_index}")
-        return request_data
-
-    account = accounts[account_index]
-
-    replaced_data = request_data
-    replaced_data = replaced_data.replace(
-        "<email>",
-        account.get("email", "deadenduser@straylabs.ai")
-    )
-    replaced_data = replaced_data.replace("<username>", account.get("username", "deadenduser"))
-    replaced_data = replaced_data.replace("<password>", account.get("password", "deadendpassword"))
-
-    return replaced_data
-
-
-
-async def send_payload_with_playwright(
-    target_host: str,
-    raw_request: str,
-    proxy: bool = False,
-    verify_ssl: bool = False
-) -> Union[str, bytes]:
-    """
-    Send HTTP payload using Playwright with enhanced capabilities and session persistence.
-    
-    This function provides the same interface as the original send_payload()
-    but uses Playwright for improved functionality with persistent sessions
-    that maintain cookies between requests.
-    
-    Args:
-        target_host (str): Target host in format "host:port" or URL
-        raw_request (str): Raw HTTP request string
-        proxy (bool): Whether to route through localhost:8080 proxy
-        verify_ssl (bool): Whether to verify SSL certificates
-        
-    Returns:
-        Union[str, bytes]: HTTP response or error message
-    """
-    def _parse_target(th: str) -> Tuple[str, int]:
-        """Parse target host string into host and port."""
-        # Remove protocol prefix first
-        if th.startswith("http://"):
-            th = th[7:]
-            default_port = 80
-        elif th.startswith("https://"):
-            th = th[8:]
-            default_port = 443
-        else:
-            default_port = 80
-
-        parts = th.split(":")
-        if len(parts) >= 2:
-            # Check if the last part is actually a port number
-            try:
-                port_int = int(parts[-1])
-                host = ":".join(parts[:-1])
-                return host, port_int
-            except ValueError:
-                # Last part is not a number, so no port specified
-                host = th
-                return host, default_port
-        else:
-            host = th
-            return host, default_port
-    # Replace credential placeholders with actual values
-    raw_request = replace_credential_placeholders(raw_request)
-
-    host, port = _parse_target(target_host)
-
-    # Determine if we should use TLS (simplified detection)
-    is_tls = port == 443 or target_host.startswith('https://')
-    proxy_url = "http://localhost:8080" if proxy else None
-
-    # Create a session key based on target host and proxy settings
-    session_key = f"{host}_{port}"
-    # Get or create a persistent session
-    playwright_req = await PlaywrightSessionManager.get_session(
-        session_key=session_key,
-        verify_ssl=verify_ssl,
-        proxy_url=proxy_url
-    )
-
-    response = await playwright_req.send_raw_data(
-        host=host,
-        port=port,
-        target_host=target_host,
-        request_data=raw_request,
-        is_tls=is_tls,
-        via_proxy=proxy
-    )
-
-    return response
-
-
-async def cleanup_playwright_sessions():
-    """
-    Clean up all Playwright sessions.
-    
-    This function should be called when the application exits or when
-    you want to clear all session data (cookies, etc.).
-    """
-    await PlaywrightSessionManager.cleanup_all_sessions()
-
-
-async def cleanup_playwright_session_for_target(target_host: str, proxy: bool = False, verify_ssl: bool = False):
-    """
-    Clean up a specific Playwright session for a target.
-    
-    Args:
-        target_host (str): Target host to clean up session for
-        proxy (bool): Whether proxy was used
-        verify_ssl (bool): Whether SSL verification was used
-    """
-    def _parse_target(th: str) -> Tuple[str, int]:
-        """Parse target host string into host and port."""
-        if th.startswith("http://"):
-            th = th[7:]
-        elif th.startswith("https://"):
-            th = th[8:]
-
-        parts = th.split(":")
-        if len(parts) >= 2:
-            try:
-                port_int = int(parts[-1])
-                host = ":".join(parts[:-1])
-                return host, port_int
-            except ValueError:
-                host = th
-                return host, 80
-        else:
-            host = th
-            return host, 80
-    host, port = _parse_target(target_host)
-    session_key = f"{host}:{port}:{proxy}:{verify_ssl}"
-    await PlaywrightSessionManager.cleanup_session(session_key)

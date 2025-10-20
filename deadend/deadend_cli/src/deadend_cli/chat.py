@@ -19,6 +19,8 @@ from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.box import ROUNDED
+from rich.table import Table
+from rich import box
 from prompt_toolkit.application import Application
 from prompt_toolkit.widgets import TextArea, Frame, Label, RadioList
 from prompt_toolkit.layout import Layout as PTKLayout
@@ -27,17 +29,16 @@ from prompt_toolkit.styles import Style
 from prompt_toolkit.layout.containers import HSplit
 from prompt_toolkit.layout import Dimension as D
 from pydantic import BaseModel
-from rich.table import Table
-from rich import box
+from pydantic_ai import DeferredToolRequests
 
-from .workflow_runner import WorkflowRunner
+
 
 from deadend_sdk import Config, init_rag_database, sandbox_setup, ModelRegistry
 from deadend_sdk.utils.structures import Task
 from deadend_sdk.agents.webapp_recon_agent import RequesterOutput
 from deadend_sdk.agents.judge import JudgeOutput
 from deadend_sdk.utils.network import check_target_alive
-from pydantic_ai import DeferredToolRequests
+from .workflow_runner import WorkflowRunner
 from .console import console_printer
 
 # Defining Agent modes
@@ -57,13 +58,13 @@ def print_pydantic_model(obj: BaseModel, title: str = "Agent Output") -> None:
     table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
     table.add_column("Field", style="cyan", no_wrap=True)
     table.add_column("Value", style="white")
-    
+
     # Add each field to the table
     for field_name, field_value in obj.model_dump().items():
         # Display the full value without truncation
         display_value = str(field_value)
         table.add_row(field_name, display_value)
-    
+
     # Create a panel with the table
     panel = Panel(
         table,
@@ -71,7 +72,7 @@ def print_pydantic_model(obj: BaseModel, title: str = "Agent Output") -> None:
         border_style="green",
         box=box.ROUNDED
     )
-    
+
     console_printer.print(panel)
 
 class ChatInterface:

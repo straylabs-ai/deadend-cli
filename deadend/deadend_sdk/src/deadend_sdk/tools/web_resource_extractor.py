@@ -48,7 +48,7 @@ class Resource:
     mime_type: str | None = None
     from_cache: bool = False
     failed: bool = False
-    timing: Dict | None = None 
+    timing: Dict | None = None
 
 class WebResourceExtractor:
     """Extracts and analyzes web resources from a webpage using Playwright.
@@ -60,7 +60,7 @@ class WebResourceExtractor:
         resources: List of successfully captured resources
         failed_resources: List of resources that failed to load
     """
-    
+
     def __init__(self) -> None:
         """Initialize the WebResourceExtractor."""
         self.resources: List[Resource] = []
@@ -120,7 +120,7 @@ class WebResourceExtractor:
                 # Ensure URL has protocol
                 if not url.startswith(('http://', 'https://')):
                     url = 'http://' + url
-                
+
                 await page.goto(url, wait_until='networkidle', timeout=30000)
                 print(f"Waiting {wait_time}s for dynamic content...")
                 await asyncio.sleep(wait_time)
@@ -146,11 +146,11 @@ class WebResourceExtractor:
                 await asyncio.sleep(1)
                 load_time = time.time() - start_time
                 print(f"Page loaded in {load_time:.2f}s")
-                
+
                 if screenshot:
                     await page.screenshot(path='page_screenshot.png', full_page=True)
                     print("Screenshot saved as page_screenshot.png")
-                
+
                 performance_metrics = await page.evaluate("""
                     JSON.stringify({
                         navigation: performance.getEntriesByType('navigation')[0],
@@ -163,7 +163,7 @@ class WebResourceExtractor:
                         }))
                     })
                 """)
-                    
+
                 perf_data = json.loads(performance_metrics)
                 self._merge_performance_data(perf_data)
             except Exception as e:
@@ -176,13 +176,13 @@ class WebResourceExtractor:
                     failed=True
                 )
                 self.failed_resources.append(failed_resource)
-            
+
             finally:
                 await browser.close()
-        
+
         if download_resources and self.resources:
             await self._download_resources(download_path)
-        
+
         return self.resources
 
     async def _handle_route(self, route) -> None:
@@ -205,7 +205,7 @@ class WebResourceExtractor:
             method=request.method,
         )
         self.resources.append(resource)
-    
+
     def _on_response(self, response) -> None:
         """Handle response events and update Resource objects with response data.
         
@@ -217,7 +217,7 @@ class WebResourceExtractor:
                 resource.status_code = response.status
                 resource.mime_type = response.headers.get('content-type', '')
                 resource.from_cache = (
-                    response.from_service_worker or 
+                    response.from_service_worker or
                     'cache' in response.headers.get('x-cache', '').lower()
                 )
 
@@ -229,7 +229,7 @@ class WebResourceExtractor:
                         # Skip invalid content-length values
                         pass
                 break
-    
+
     def _on_request_failed(self, request) -> None:
         """Handle failed requests and add them to failed_resources list.
         
@@ -251,7 +251,7 @@ class WebResourceExtractor:
             perf_data: Performance data from browser performance API
         """
         perf_resources = {r['name']: r for r in perf_data.get('resources', [])}
-        
+
         for resource in self.resources:
             if resource.url in perf_resources:
                 perf_resource = perf_resources[resource.url]
@@ -269,22 +269,26 @@ class WebResourceExtractor:
             download_path: Directory path where resources will be downloaded
         """
         os.makedirs(download_path, exist_ok=True)
-        
+
         print(f"Downloading {len(self.resources)} resources...")
-        
+
         async with aiohttp.ClientSession() as session:
             tasks = []
             for resource in self.resources:
                 if resource.status_code == 200 and not resource.failed:
                     task = self._download_single_resource(session, resource, download_path)
                     tasks.append(task)
-            
+
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
 
-    async def _download_single_resource(self, session: aiohttp.ClientSession, resource: Resource, download_path: str) -> None:
+    async def _download_single_resource(
+        self,
+        session: aiohttp.ClientSession,
+        resource: Resource,
+        download_path: str
+        ) -> None:
         """Download a single resource to the specified path.
-        
         Args:
             session: aiohttp client session
             resource: Resource object to download
@@ -297,25 +301,24 @@ class WebResourceExtractor:
                     path = parsed_url.path
                     directory = parsed_url.path.split('/')[:-1]
                     directory_str = '/'.join(directory)
-                    
+
                     domain = parsed_url.netloc.replace(':', '_')
                     filename_path = f"{domain}{path}"
                     if filename_path.split('/')[-1] == '':
                         filename_path += 'index.html'
-                    
+
                     dir_path = f"{download_path}/{domain}{directory_str}"
-                    pathlib.Path(dir_path).mkdir(parents=True, exist_ok=True) 
+                    pathlib.Path(dir_path).mkdir(parents=True, exist_ok=True)
                     filepath = os.path.join(download_path, filename_path)
-                    
+
                     async with aiofiles.open(filepath, 'wb') as f:
                         await f.write(await response.read())
-                    
+
         except Exception as e:
             print(f"Failed to download {resource.url}: {e}")
 
     def export_to_json(self, filename: str = "resources.json") -> Dict:
         """Export resources to JSON file in HAR-like format.
-        
         Args:
             filename: Name of the output JSON file
             
@@ -349,10 +352,9 @@ class WebResourceExtractor:
                 for r in self.failed_resources
             ]
         }
-        
+
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2)
-        
+
         print(f"Resources exported to {filename}")
-        return data 
-    
+        return data
