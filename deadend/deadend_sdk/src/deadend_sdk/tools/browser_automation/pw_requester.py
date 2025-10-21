@@ -1,8 +1,8 @@
 import json
 import re
-from anyio import Path
 from typing import AsyncGenerator, Dict, Union, Any, List
 from urllib.parse import urlparse, parse_qs
+from anyio import Path
 from playwright.async_api import APIRequestContext, async_playwright
 from playwright._impl._api_structures import OriginState
 from .http_parser import analyze_http_request_text
@@ -67,7 +67,6 @@ class PlaywrightRequester:
                 ]
         }
         self.browser = await self.playwright.chromium.launch(**browser_options)
-
         # Configure browser context options
         context_options = {
             'ignore_https_errors': not self.verify_ssl,
@@ -144,7 +143,6 @@ class PlaywrightRequester:
         if not self._initialized:
             await self._initialize()
 
-
         # Validate the HTTP request and report issues before sending
         valid, report = analyze_http_request_text(request_data)
         if not valid:
@@ -162,15 +160,7 @@ class PlaywrightRequester:
         if parsed_request is None:
             yield "Failed to parse HTTP request"
             return
-                # Display the response in a panel
-        # request_panel = Panel(
-        #     request_data,
-        #     title="[bold green]HTTP Request[/bold green]",
-        #     border_style="green",
-        #     box=box.ROUNDED
-        # )
-        # console_printer.print(request_panel)
-        # TODO: should return request_data
+
         yield request_data
 
 
@@ -180,7 +170,6 @@ class PlaywrightRequester:
             target_url = f"{protocol}://{target_host}{parsed_request['path']}"
         else:
             target_url = f"{protocol}://{host}:{port}{parsed_request['path']}"
-
         # get local storage headers to see if there is any needed headers to be added
         # to the request
         if self.session_id:
@@ -193,7 +182,6 @@ class PlaywrightRequester:
                     headers=parsed_request['headers']
                 )
                 print(f"new headers return inject: {new_headers}")
-
                 parsed_request['headers'].update(new_headers)
                 print(f"new headers: {new_headers}")
             except Exception as e:
@@ -243,7 +231,7 @@ class PlaywrightRequester:
         except (ValueError, IndexError, AttributeError, ConnectionError) as e:
             error_message = f"Request failed: {str(e)}"
             yield error_message.encode('utf-8')
-        
+
 
     def _parse_raw_request(self, raw_request: str) -> Dict[str, Any] | None:
         """

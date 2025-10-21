@@ -10,7 +10,6 @@ through various evaluation scenarios and metrics.
 """
 
 import logfire
-import socket
 import json
 
 from rich import print as console_printer
