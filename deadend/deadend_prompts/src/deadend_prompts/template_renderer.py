@@ -44,11 +44,13 @@ def _get_template_loader():
     """
     # Try to use PackageLoader first (for installed packages)
     try:
-        return Environment(loader=PackageLoader("deadend_cli.prompts", ""))
+        return Environment(loader=PackageLoader("deadend_prompts", ""))
     except (ImportError, OSError):
         # Fallback to FileSystemLoader for development
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        return Environment(loader=FileSystemLoader(current_dir))
+        # Go up one level to the package root
+        package_root = os.path.dirname(current_dir)
+        return Environment(loader=FileSystemLoader(package_root))
 
 def _get_tools_template_loader():
     """Get the appropriate template loader for tools templates.
@@ -58,11 +60,13 @@ def _get_tools_template_loader():
     """
     # Try to use PackageLoader first (for installed packages)
     try:
-        return Environment(loader=PackageLoader("deadend_cli.prompts.tools", ""))
+        return Environment(loader=PackageLoader("deadend_prompts", "tools"))
     except (ImportError, OSError):
         # Fallback to FileSystemLoader for development
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        tools_dir = os.path.join(current_dir, "tools")
+        # Go up one level to the package root, then into tools
+        package_root = os.path.dirname(current_dir)
+        tools_dir = os.path.join(package_root, "tools")
         return Environment(loader=FileSystemLoader(tools_dir))
 
 def render_agent_instructions(agent_name: str, tools: Dict[str, str], **kwargs):

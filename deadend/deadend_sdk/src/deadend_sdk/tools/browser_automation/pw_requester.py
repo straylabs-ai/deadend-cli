@@ -94,7 +94,7 @@ class PlaywrightRequester:
         if domain:
             # Fix: Use https consistently for all localStorage operations
             if not domain.startswith(('http://', 'https://')):
-                domain = f"https://{domain}"
+                domain = f"http://{domain}"
 
             # Navigate to domain if not already there
             current_url = self._persistent_page.url

@@ -11,6 +11,7 @@ import asyncio
 from typing import List
 import typer
 import docker
+from docker.errors import DockerException
 from rich.console import Console
 import logfire
 
@@ -84,7 +85,7 @@ def chat(
         # Stop pgvector container when chat ends
         try:
             stop_pgvector_container(docker_client)
-        except (docker.errors.DockerException, OSError, ConnectionError) as e:
+        except (DockerException, OSError, ConnectionError) as e:
             console.print(f"[yellow]Warning: Could not stop pgvector container: {e}[/yellow]")
 
 

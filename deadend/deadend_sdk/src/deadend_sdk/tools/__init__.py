@@ -10,11 +10,14 @@ and knowledge base queries for comprehensive security assessments.
 """
 
 from .shell import sandboxed_shell_tool
-from .browser_automation import is_valid_request_detailed
-from .playwright_requester import (
-    send_payload_with_playwright,
+from .browser_automation import (
+    is_valid_request_detailed,
+    pw_send_payload,
     cleanup_playwright_sessions,
     cleanup_playwright_session_for_target
+)
+from .playwright_requester import (
+    send_payload_with_playwright,
 )
 from .webapp_code_rag import webapp_code_rag
 
@@ -24,6 +27,7 @@ __all__ = [
     "is_valid_request_detailed", 
     "webapp_code_rag",
     "send_payload_with_playwright",
+    "pw_send_payload",
     "cleanup_playwright_sessions",
     "cleanup_playwright_session_for_target"
 ]

@@ -15,8 +15,9 @@ from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_sdk.models.registry import AIModel
 from deadend_sdk.tools import sandboxed_shell_tool
-from .factory import AgentRunner
 from deadend_prompts import render_agent_instructions, render_tool_description
+from .factory import AgentRunner
+
 
 class ShellReconOutput(BaseModel):
     reasoning: str
@@ -49,7 +50,7 @@ class ReconShellAgent(AgentRunner):
         )
         super().__init__(
             name="recon_shell",
-            model=model, 
+            model=model,
             instructions=self.instructions,
             deps_type=deps_type,
             output_type=[ShellReconOutput, DeferredToolRequests],

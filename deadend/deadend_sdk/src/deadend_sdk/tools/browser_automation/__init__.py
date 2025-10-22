@@ -5,6 +5,8 @@ from .auth_handler import replace_credential_placeholders
 from .pw_requester import PlaywrightRequester
 from .pw_session_manager import PlaywrightSessionManager
 
+__all__ = ["is_valid_request_detailed"]
+
 async def pw_send_payload(
     target_host: str,
     raw_request: str,
@@ -40,9 +42,9 @@ async def pw_send_payload(
         verify_ssl=verify_ssl,
         proxy_url=proxy_url
     )
-
+    responses = []
     try:
-        async for  response in pw_session.send_raw_data(
+        async for response in pw_session.send_raw_data(
             host=host,
             port=port,
             target_host=target_host,
@@ -50,10 +52,11 @@ async def pw_send_payload(
             is_tls=is_tls,
             via_proxy=proxy
         ):
-            yield response
+            responses.append(response)
+        return str(responses)
 
     except Exception as e:
-        yield f"Error when sending payload: {str(e)}"
+        return f"Error when sending payload: {str(e)}"
 
 async def cleanup_playwright_sessions():
     """
@@ -63,3 +66,17 @@ async def cleanup_playwright_sessions():
     you want to clear all session data (cookies, etc.).
     """
     await PlaywrightSessionManager.cleanup_all_sessions()
+
+
+async def cleanup_playwright_session_for_target(target_host: str, proxy: bool = False, verify_ssl: bool = False):
+    """
+    Clean up a specific Playwright session for a target.
+    
+    Args:
+        target_host (str): Target host to clean up session for
+        proxy (bool): Whether proxy was used
+        verify_ssl (bool): Whether SSL verification was used
+    """
+    host, port = extract_host_port(target_host)
+    session_key = f"{host}_{port}"
+    await PlaywrightSessionManager.cleanup_session(session_key)

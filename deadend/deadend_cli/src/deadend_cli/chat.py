@@ -172,8 +172,7 @@ class ChatInterface:
             resp = task.output
             # status = task.status
             formatted_task = f"""
-[bold magenta]step {i+1} :[/bold magenta]
-    {resp}
+[bold magenta]step {i+1} :[/bold magenta]{resp}
 """
             message += formatted_task
         self.console.print(Panel(message, title=title, border_style="red", box=ROUNDED))
@@ -605,7 +604,7 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
                             tasks_text += f"[cyan]Step {i}:[/cyan]\n"
                             tasks_text += f"[white]Goal:[/white] {task.goal}\n"
                             tasks_text += f"[yellow]Status:[/yellow] {task.status}\n"
-                            tasks_text += f"[green]Output:[/green]\n{task.output}\n\n"
+                            tasks_text += f"[green]Output:[/green]\n{task.output}\n"
 
                         task_panel = Panel(
                             tasks_text.strip(),
