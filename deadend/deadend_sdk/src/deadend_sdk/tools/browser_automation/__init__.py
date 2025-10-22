@@ -2,6 +2,8 @@
 from .http_parser import is_valid_request_detailed, extract_host_port
 
 from .auth_handler import replace_credential_placeholders
+from .pw_requester import PlaywrightRequester
+from .pw_session_manager import PlaywrightSessionManager
 
 async def pw_send_payload(
     target_host: str,
@@ -28,3 +30,36 @@ async def pw_send_payload(
     host, port = extract_host_port(target_host=target_host)
 
     raw_request = replace_credential_placeholders(raw_request)
+    is_tls = port == 443 or target_host.startswith('https://')
+    session_key = f"{host}_{port}"
+    proxy_url = "http://localhost:8080" if proxy else None
+
+    # pw_requester session
+    pw_session = await PlaywrightSessionManager.get_session(
+        session_key=session_key,
+        verify_ssl=verify_ssl,
+        proxy_url=proxy_url
+    )
+
+    try:
+        async for  response in pw_session.send_raw_data(
+            host=host,
+            port=port,
+            target_host=target_host,
+            request_data=raw_request,
+            is_tls=is_tls,
+            via_proxy=proxy
+        ):
+            yield response
+
+    except Exception as e:
+        yield f"Error when sending payload: {str(e)}"
+
+async def cleanup_playwright_sessions():
+    """
+    Clean up all Playwright sessions.
+    
+    This function should be called when the application exits or when
+    you want to clear all session data (cookies, etc.).
+    """
+    await PlaywrightSessionManager.cleanup_all_sessions()

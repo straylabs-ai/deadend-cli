@@ -37,6 +37,8 @@ class PlaywrightRequester:
         self.request_context: APIRequestContext | None = None
         self._initialized = False
         self.session_id = session_id
+        # Fix: Add persistent page for localStorage operations
+        self._persistent_page = None
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -80,6 +82,40 @@ class PlaywrightRequester:
         self.request_context = self.context.request
         self._initialized = True
 
+    async def _get_persistent_page(self, domain: str | None = None):
+        """
+        Get or create a persistent page for localStorage operations.
+        
+        Fix: Use a persistent page instead of creating new pages for each operation.
+        """
+        if not self._persistent_page:
+            self._persistent_page = await self.context.new_page()
+
+        if domain:
+            # Fix: Use https consistently for all localStorage operations
+            if not domain.startswith(('http://', 'https://')):
+                domain = f"https://{domain}"
+
+            # Navigate to domain if not already there
+            current_url = self._persistent_page.url
+            if not current_url.startswith(domain):
+                try:
+                    await self._persistent_page.goto(domain)
+                except Exception as e:
+                    print(f"Warning: Could not navigate to {domain}: {e}")
+                    return None
+
+        return self._persistent_page
+
+    def _escape_js_string(self, value: str) -> str:
+        """
+        Properly escape a string for JavaScript evaluation.
+        
+        Fix: Escape special characters to prevent JavaScript syntax errors.
+        """
+        # Use JSON.stringify for proper escaping
+        return json.dumps(value)
+
     async def _inject_auth_headers(self, headers: Dict[str, str]) -> Dict[str, str]:
         """Inject authentication headers if found in localstorage"""
         enhanced_headers = headers.copy()
@@ -99,18 +135,20 @@ class PlaywrightRequester:
         enhanced_headers = headers.copy()
 
         try:
-            auth_token = storage["localStorage"][0]["value"]
-            if auth_token:
-                enhanced_headers["Authorization"] = f"Bearer {auth_token}"
-            api_key = storage["localStorage"][0]["value"]
-            if api_key:
-                enhanced_headers["X-API-Key"] = api_key
+            for item in storage.get("localStorage", []):
+                if item.get("name") == "auth_token" and item.get("value"):
+                    enhanced_headers["Authorization"] = f"Bearer {item['value']}"
+                elif item.get("name") == "api_key" and item.get("value"):
+                    enhanced_headers["X-API-Key"] = item["value"]
         except Exception as e:
             print(f"Warning: Could not inject auth headers from localStorage: {e}")
         return enhanced_headers
 
     async def _cleanup(self):
         """Clean up Playwright resources."""
+        if self._persistent_page:
+            await self._persistent_page.close()
+            self._persistent_page = None
         if self.context:
             await self.context.close()
         if self.browser:
@@ -121,7 +159,7 @@ class PlaywrightRequester:
 
     async def send_raw_data(self, host: str, port: int, target_host: str,
                           request_data: str, is_tls: bool = False,
-                          via_proxy: bool = False) -> AsyncGenerator[Union[str, bytes]]:
+                          via_proxy: bool = False) -> AsyncGenerator[Union[str, bytes], None]:
         """
         Send raw HTTP request data to a target host.
         
@@ -228,7 +266,8 @@ class PlaywrightRequester:
             yield formatted_response.encode('utf-8') \
                 if isinstance(formatted_response, str) else formatted_response
 
-        except (ValueError, IndexError, AttributeError, ConnectionError) as e:
+        except Exception as e:
+            # Fix: Handle all exceptions gracefully, including network errors
             error_message = f"Request failed: {str(e)}"
             yield error_message.encode('utf-8')
 
@@ -326,6 +365,19 @@ class PlaywrightRequester:
                     )
             except Exception as e:
                 print(f"HTTP {method_upper} request failed for {url}: {str(e)}")
+                raise
+        else:
+            # Fallback for non-APIRequestContext
+            method_upper = method.upper()
+            try:
+                return await self.request_context.fetch(
+                    url_or_request=url,
+                    method=method_upper,
+                    **request_options
+                )
+            except Exception as e:
+                print(f"HTTP {method_upper} request failed for {url}: {str(e)}")
+                raise
 
     async def _format_response(self, response: Any) -> str:
         """
@@ -540,25 +592,16 @@ class PlaywrightRequester:
             return False
 
         try:
-            # Create a new page if we need to set localStorage for a specific domain
-            if domain:
-                page = await self.context.new_page()
-                # Ensure domain has proper protocol
-                if not domain.startswith(('http://', 'https://')):
-                    domain = f"http://{domain}"
-                await page.goto(domain)
-                await page.evaluate(f"localStorage.setItem('{key}', '{value}')")
-                await page.close()
-            else:
-                # Use existing page if available, otherwise create a new one
-                pages = self.context.pages
-                if pages:
-                    page = pages[0]
-                else:
-                    page = await self.context.new_page()
-                    # Navigate to a dummy page to ensure localStorage is accessible
-                    await page.goto("data:text/html,<html></html>")
-                await page.evaluate(f"localStorage.setItem('{key}', '{value}')")
+            # Fix: Use persistent page instead of creating new pages
+            page = await self._get_persistent_page(domain)
+            if not page:
+                return False
+            
+            # Fix: Use proper escaping for JavaScript evaluation
+            escaped_key = self._escape_js_string(key)
+            escaped_value = self._escape_js_string(value)
+            
+            await page.evaluate(f"localStorage.setItem({escaped_key}, {escaped_value})")
             return True
         except Exception as e:
             print(f"Error setting localStorage: {e}")
@@ -579,25 +622,15 @@ class PlaywrightRequester:
             return None
 
         try:
-            if domain:
-                page = await self.context.new_page()
-                # Ensure domain has proper protocol
-                if not domain.startswith(('http://', 'https://')):
-                    domain = f"http://{domain}"
-                await page.goto(domain)
-                value = await page.evaluate(f"localStorage.getItem('{key}')")
-                await page.close()
-            else:
-                pages = self.context.pages
-                if pages:
-                    page = pages[0]
-                else:
-                    page = await self.context.new_page()
-                    # Navigate to a dummy page to ensure localStorage is accessible
-                    await page.goto("data:text/html,<html></html>")
-
-                value = await page.evaluate(f"localStorage.getItem('{key}')")
-
+            # Fix: Use persistent page instead of creating new pages
+            page = await self._get_persistent_page(domain)
+            if not page:
+                return None
+            
+            # Fix: Use proper escaping for JavaScript evaluation
+            escaped_key = self._escape_js_string(key)
+            
+            value = await page.evaluate(f"localStorage.getItem({escaped_key})")
             return value
         except Exception as e:
             print(f"Error getting localStorage: {e}")
@@ -619,24 +652,15 @@ class PlaywrightRequester:
             return False
 
         try:
-            if domain:
-                page = await self.context.new_page()
-                # Ensure domain has proper protocol
-                if not domain.startswith(('http://', 'https://')):
-                    domain = f"https://{domain}"
-                await page.goto(domain)
-                await page.evaluate(f"localStorage.removeItem('{key}')")
-                await page.close()
-            else:
-                pages = self.context.pages
-                if pages:
-                    page = pages[0]
-                else:
-                    page = await self.context.new_page()
-                    # Navigate to a dummy page to ensure localStorage is accessible
-                    await page.goto("data:text/html,<html></html>")
-
-                await page.evaluate(f"localStorage.removeItem('{key}')")
+            # Fix: Use persistent page instead of creating new pages
+            page = await self._get_persistent_page(domain)
+            if not page:
+                return False
+            
+            # Fix: Use proper escaping for JavaScript evaluation
+            escaped_key = self._escape_js_string(key)
+            
+            await page.evaluate(f"localStorage.removeItem({escaped_key})")
             return True
         except Exception as e:
             print(f"Error removing localStorage: {e}")
@@ -657,25 +681,12 @@ class PlaywrightRequester:
             return False
 
         try:
-            if domain:
-                page = await self.context.new_page()
-                # Ensure domain has proper protocol
-                if not domain.startswith(('http://', 'https://')):
-                    domain = f"https://{domain}"
-                await page.goto(domain)
-                await page.evaluate("localStorage.clear()")
-                await page.close()
-            else:
-                pages = self.context.pages
-                if pages:
-                    page = pages[0]
-                else:
-                    page = await self.context.new_page()
-                    # Navigate to a dummy page to ensure localStorage is accessible
-                    await page.goto("data:text/html,<html></html>")
-
-                await page.evaluate("localStorage.clear()")
-
+            # Fix: Use persistent page instead of creating new pages
+            page = await self._get_persistent_page(domain)
+            if not page:
+                return False
+            
+            await page.evaluate("localStorage.clear()")
             return True
         except Exception as e:
             print(f"Error clearing localStorage: {e}")
@@ -696,43 +707,21 @@ class PlaywrightRequester:
             return {}
 
         try:
-            if domain:
-                page = await self.context.new_page()
-                # Ensure domain has proper protocol
-                if not domain.startswith(('http://', 'https://')):
-                    domain = f"https://{domain}"
-                await page.goto(domain)
-                storage = await page.evaluate("""
-                    () => {
-                        const storage = {};
-                        for (let i = 0; i < localStorage.length; i++) {
-                            const key = localStorage.key(i);
-                            storage[key] = localStorage.getItem(key);
-                        }
-                        return storage;
+            # Fix: Use persistent page instead of creating new pages
+            page = await self._get_persistent_page(domain)
+            if not page:
+                return {}
+            
+            storage = await page.evaluate("""
+                () => {
+                    const storage = {};
+                    for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        storage[key] = localStorage.getItem(key);
                     }
-                """)
-                await page.close()
-            else:
-                pages = self.context.pages
-                if pages:
-                    page = pages[0]
-                else:
-                    page = await self.context.new_page()
-                    # Navigate to a dummy page to ensure localStorage is accessible
-                    await page.goto("data:text/html,<html></html>")
-
-                storage = await page.evaluate("""
-                    () => {
-                        const storage = {};
-                        for (let i = 0; i < localStorage.length; i++) {
-                            const key = localStorage.key(i);
-                            storage[key] = localStorage.getItem(key);
-                        }
-                        return storage;
-                    }
-                """)
-
+                    return storage;
+                }
+            """)
             return storage
         except Exception as e:
             print(f"Error getting all localStorage: {e}")
@@ -753,30 +742,20 @@ class PlaywrightRequester:
             return False
 
         try:
-            if domain:
-                page = await self.context.new_page()
-                # Ensure domain has proper protocol
-                if not domain.startswith(('http://', 'https://')):
-                    domain = f"https://{domain}"
-                await page.goto(domain)
-
-                # Set all key-value pairs
-                for key, value in storage_dict.items():
-                    await page.evaluate(f"localStorage.setItem('{key}', '{value}')")
-
-                await page.close()
-            else:
-                pages = self.context.pages
-                if pages:
-                    page = pages[0]
-                else:
-                    page = await self.context.new_page()
-                    # Navigate to a dummy page to ensure localStorage is accessible
-                    await page.goto("data:text/html,<html></html>")
-                # Set all key-value pairs
-                for key, value in storage_dict.items():
-                    await page.evaluate(f"localStorage.setItem('{key}', '{value}')")
-
+            # Fix: Use persistent page instead of creating new pages
+            page = await self._get_persistent_page(domain)
+            if not page:
+                return False
+            
+            # Fix: Use proper escaping and batch operations
+            escaped_items = []
+            for key, value in storage_dict.items():
+                escaped_key = self._escape_js_string(key)
+                escaped_value = self._escape_js_string(value)
+                escaped_items.append(f"localStorage.setItem({escaped_key}, {escaped_value})")
+            
+            # Execute all operations in one evaluate call
+            await page.evaluate(";".join(escaped_items))
             return True
         except Exception as e:
             print(f"Error setting multiple localStorage values: {e}")
