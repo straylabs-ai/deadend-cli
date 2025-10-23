@@ -10,3 +10,7 @@ members = [
     "deadend_cli/eval/",
 ]
 
+# Note: Publishing is configured to only publish the main package
+# Individual packages are bundled into the main deadend_cli package
+
+

@@ -672,9 +672,44 @@ wheels = [
 name = "deadend-cli"
 source = { editable = "deadend_cli" }
 dependencies = [
-    { name = "deadend-prompts" },
-    { name = "deadend-sdk" },
-    { name = "eval" },
+    { name = "aiofiles" },
+    { name = "aiohttp" },
+    { name = "asgiref" },
+    { name = "asyncpg" },
+    { name = "beautifulsoup4" },
+    { name = "cssbeautifier" },
+    { name = "docker" },
+    { name = "dotenv" },
+    { name = "google-genai" },
+    { name = "httptools" },
+    { name = "jinja2" },
+    { name = "jsbeautifier" },
+    { name = "logfire" },
+    { name = "logging" },
+    { name = "lxml" },
+    { name = "nest-asyncio" },
+    { name = "numpy" },
+    { name = "pgvector" },
+    { name = "playwright" },
+    { name = "prompt-toolkit" },
+    { name = "pydantic" },
+    { name = "pydantic-ai" },
+    { name = "pydantic-ai-slim", extra = ["google"] },
+    { name = "pyyaml" },
+    { name = "readchar" },
+    { name = "rich" },
+    { name = "semantic-text-splitter" },
+    { name = "sqlalchemy" },
+    { name = "tenacity" },
+    { name = "tiktoken" },
+    { name = "toml" },
+    { name = "tree-sitter-css" },
+    { name = "tree-sitter-html" },
+    { name = "tree-sitter-javascript" },
+    { name = "tree-sitter-markdown" },
+    { name = "tree-sitter-typescript" },
+    { name = "typer" },
+    { name = "zaproxy" },
 ]
 
 [package.dev-dependencies]
@@ -695,9 +730,44 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "deadend-prompts" },
-    { name = "deadend-sdk" },
-    { name = "eval" },
+    { name = "aiofiles", specifier = ">=24.1.0" },
+    { name = "aiohttp", specifier = ">=3.12.14" },
+    { name = "asgiref", specifier = ">=3.8.1" },
+    { name = "asyncpg", specifier = ">=0.30.0" },
+    { name = "beautifulsoup4", specifier = ">=4.13.4" },
+    { name = "cssbeautifier", specifier = ">=1.15.4" },
+    { name = "docker", specifier = ">=7.1.0" },
+    { name = "dotenv", specifier = ">=0.9.9" },
+    { name = "google-genai", specifier = ">=1.18.0" },
+    { name = "httptools", specifier = ">=0.6.4" },
+    { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "jsbeautifier", specifier = ">=1.15.4" },
+    { name = "logfire", specifier = ">=4.3.3" },
+    { name = "logging", specifier = ">=0.4.9.6" },
+    { name = "lxml", specifier = ">=6.0.0" },
+    { name = "nest-asyncio", specifier = ">=1.6.0" },
+    { name = "numpy", specifier = ">=2.3.1" },
+    { name = "pgvector", specifier = ">=0.4.1" },
+    { name = "playwright", specifier = ">=1.54.0" },
+    { name = "prompt-toolkit", specifier = ">=3.0.51" },
+    { name = "pydantic", specifier = ">=2.11.5" },
+    { name = "pydantic-ai", specifier = ">=0.2.12" },
+    { name = "pydantic-ai-slim", extras = ["google"], specifier = ">=0.2.12" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "readchar", specifier = ">=4.2.1" },
+    { name = "rich", specifier = ">=14.0.0" },
+    { name = "semantic-text-splitter", specifier = ">=0.27.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.41" },
+    { name = "tenacity", specifier = ">=9.1.2" },
+    { name = "tiktoken", specifier = ">=0.9.0" },
+    { name = "toml", specifier = ">=0.10.2" },
+    { name = "tree-sitter-css", specifier = ">=0.23.2" },
+    { name = "tree-sitter-html", specifier = ">=0.23.2" },
+    { name = "tree-sitter-javascript", specifier = ">=0.23.1" },
+    { name = "tree-sitter-markdown", specifier = ">=0.5.1" },
+    { name = "tree-sitter-typescript", specifier = ">=0.23.2" },
+    { name = "typer", specifier = ">=0.15.4" },
+    { name = "zaproxy", specifier = ">=0.4.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -736,7 +806,6 @@ dependencies = [
     { name = "asyncpg" },
     { name = "beautifulsoup4" },
     { name = "cssbeautifier" },
-    { name = "deadend-prompts" },
     { name = "docker" },
     { name = "dotenv" },
     { name = "google-genai" },
@@ -794,7 +863,6 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.30.0" },
     { name = "beautifulsoup4", specifier = ">=4.13.4" },
     { name = "cssbeautifier", specifier = ">=1.15.4" },
-    { name = "deadend-prompts" },
     { name = "docker", specifier = ">=7.1.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "google-genai", specifier = ">=1.18.0" },
@@ -899,12 +967,6 @@ wheels = [
 [[package]]
 name = "eval"
 source = { editable = "deadend_cli/eval" }
-dependencies = [
-    { name = "deadend-cli" },
-]
-
-[package.metadata]
-requires-dist = [{ name = "deadend-cli" }]
 
 [[package]]
 name = "eval-type-backport"
