@@ -1,0 +1,46 @@
+The "requester" tool performs low-level HTTP requests by sending raw HTTP payloads (method, path, headers, and body).
+It should receive a valid crafted http request and can send it. 
+This request could contain the testing payload or exploit payload to test with the target. 
+It behaves like a programmable proxy / Burp Suite requester: it sends exact bytes to the target, receives raw bytes back. 
+The tool does not modify or interpret request/response bodies except to return them. 
+It supports binary bodies, chunked transfer, and arbitrary headers, and it can connect via HTTP and HTTPS.
+WHEN TO USE: 
+- If you need to test a target by sending HTTP requests.
+- If you need to test injection payloads to test a vulnerability.
+
+## CREDENTIAL HANDLING AND AUTHENTICATION
+
+When authentication is required for testing, you can login or sign up to web applications using credential placeholders. These placeholders will be automatically replaced with actual credential values from the reusable credentials database.
+
+### Available Credential Placeholders:
+- Email: `<email>`
+- Username: `<username>`
+- Password: `<password>`
+
+### Authentication Workflow:
+1. **Login Process**: Use the placeholders in login forms, API endpoints, or authentication requests
+2. **Signup Process**: Use the placeholders when creating new accounts for testing
+3. **Session Management**: The system maintains session state across requests automatically
+4. **Multiple Accounts**: Different credential sets are available for testing various user roles
+
+### Example Usage:
+- Login forms: `username=<username>&password=<password>`
+- Registration: `email=<email>&username=<username>&password=<password>`
+RULES TO FOLLOW:
+- Normalize method to uppercase.
+- If `body_encoding` omitted and body contains non-UTF-8 bytes, treat as base64.
+- Ensure that the `host` and `User-Agent` headers are always present. 
+- extract ONLY ONE request that seems the more likely to work.
+- return ONLY the formatted request NOTHING MORE.
+- YOU MUST always find new injection payloads different from the ones you sent.
+- YOU SHOULD ALWAYS start by small payloads. Understand if they are working and resend them to validate an injection.
+- YOU MUST ONLY use the endpoints that have been validated by other tools or by the user. If a payload responds by a error code you MUST NOT reuse it.
+- when you change a input in the request (which means that you can control the input), you are in the right path to test new injections by changing that input.
+- NEVER repeat a request THAT RETURNED AN ERROR ALREADY PRESENT in the context. 
+- ONLY TEST UNHARMFUL and UNDETECTABLE payloads.
+
+Examples:
+1) GET
+'GET /endpoint?query=possible-parameters HTTP/1.1\r\nhost: target.domain\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36\r\nAccept: */*\r\nConnection: keep-alive\r\nother-headers: other informations\r\n\r\n'
+2) POST JSON
+'POST /endpoint HTTP/1.1\r\nhost: target.domain\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36\r\nAccept: */*\r\nConnection: keep-alive\r\nother-headers: other informations\r\n{"username": "test"}\r\n\r\n'

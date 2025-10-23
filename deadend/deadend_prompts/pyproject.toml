@@ -1,0 +1,25 @@
+[project]
+name = "deadend-prompts"
+version = "0.0.8"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Yassine Bargach", email = "bargach.y@gmail.com" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "jinja2>=3.1.6",
+]
+
+[tool.hatch.build.targets.wheel]
+include = [
+    "./*.jinja2",
+    "./tools/*.jinja2",
+]
+
+[project.scripts]
+prompts = "prompts:main"
+
+[build-system]
+requires = ["uv_build>=0.8.13,<0.9.0"]
+build-backend = "uv_build"

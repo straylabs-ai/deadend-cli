@@ -1,0 +1,103 @@
+[project]
+name = "deadend"
+version = "0.0.8"
+authors = [
+  { name="Yassine Bargach", email="yassine.bargach@proton.me" },
+]
+description = "AI agent CLI for security research"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "deadend-sdk",
+    "deadend-cli",
+    "eval",
+    "deadend-prompts",
+]
+
+[project.scripts]
+deadend-cli = "deadend_cli.main:main"
+
+[dependency-groups]
+dev = [
+    "black>=25.1.0",
+    "flake8>=7.2.0",
+    "isort>=6.0.1",
+    "pytest>=8.3.5",
+    "pytest-cov>=6.1.1",
+    "pytest-mock>=3.14.1",
+]
+test = [
+    "pytest>=8.3.5",
+    "pytest-asyncio>=1.0.0",
+    "pytest-cov>=6.1.1",
+    "pytest-mock>=3.14.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["deadend_cli", "deadend_sdk", "deadend_prompts", "eval"]
+include = [
+    "deadend/data/*.json",
+    "deadend/data/memory/*.json"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.envs.default.scripts]
+test = "pytest {args:tests}"
+lint = "flake8 {args:deadend_cli deadend_sdk}"
+format = "black {args:deadend_cli deadend_sdk}"
+format-check = "black --check {args:deadend_cli deadend_sdk}"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+adopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--cov=deadend_cli",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[tool.coverage.run]
+source = ["deadend_cli", "deadend_sdk/src"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+[tool.pyright]
+extraPaths = [
+    "deadend_sdk/src",
+    "deadend_sdk/src/deadend_sdk"
+]
+
+[tool.uv.sources]
+deadend_cli = { workspace = true }
+deadend_sdk = { workspace = true }
+deadend_prompts = { workspace = true }
+eval = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "deadend",
+    "deadend_cli/",
+    "deadend_sdk/",
+    "deadend_prompts/",
+    "eval/",
+]
+

@@ -1,0 +1,84 @@
+{
+  "generic": [
+    "^vendor.*.js$",
+    "^runtime.*.js$",
+    "^polyfills.*.js$",
+    "^styles.*.css$"
+  ],
+  "react": [
+    "^static/js/vendors~main\\.[a-f0-9]+\\.js$",
+    "^static/js/runtime-main\\.[a-f0-9]+\\.js$",
+    "^static/css/main\\.[a-f0-9]+\\.css$",
+    "^react(-dom)?\\.[a-f0-9]+\\.js$"
+  ],
+  "angular": [
+    "^polyfills\\.[a-f0-9]+\\.js$",
+    "^runtime\\.[a-f0-9]+\\.js$",
+    "^vendor\\.[a-f0-9]+\\.js$",
+    "^styles\\.[a-f0-9]+\\.css$",
+    "^zone\\.[a-f0-9]+\\.js$"
+  ],
+  "vue": [
+    "^chunk-vendors\\.[a-f0-9]+\\.js$",
+    "^chunk-common\\.[a-f0-9]+\\.js$",
+    "^app\\.[a-f0-9]+\\.css$",
+    "^vendor\\.[a-f0-9]+\\.js$"
+  ],
+  "nextjs": [
+    "^_next/static/chunks/pages/.+\\.[a-f0-9]+\\.js$",
+    "^_next/static/chunks/framework\\.[a-f0-9]+\\.js$",
+    "^_next/static/chunks/webpack\\.[a-f0-9]+\\.js$",
+    "^_next/static/runtime/main\\.[a-f0-9]+\\.js$"
+  ],
+  "sveltekit": [
+    "^client/[a-f0-9]+/vendor\\.js$",
+    "^client/[a-f0-9]+/start\\.js$",
+    "^client/[a-f0-9]+/main\\.css$"
+  ],
+  "ember": [
+    "^assets/vendor\\.js$",
+    "^assets/vendor\\.css$"
+  ],
+  "nuxt": [
+    "^commons\\.app\\.[a-f0-9]+\\.js$",
+    "^vendor\\.[a-f0-9]+\\.js$",
+    "^pages/.+\\.[a-f0-9]+\\.js$",
+    "^nuxt\\.[a-f0-9]+\\.js$"
+  ],
+  "threejs": [
+    "^three(\\.min)?\\.[a-f0-9]+\\.js$",
+    "^shaders\\.[a-f0-9]+\\.js$",
+    "^postprocessing\\.[a-f0-9]+\\.js$"
+  ],
+  "tailwind": [
+    "^tailwind\\.[a-f0-9]+\\.css$",
+    "^styles\\.[a-f0-9]+\\.css$"
+  ],
+  "wordpress-headless": [
+    "^commons\\.[a-f0-9]+\\.js$",
+    "^vendors~app\\.[a-f0-9]+\\.js$",
+    "^page-data\\.js$"
+  ],
+  "common-libraries": [
+    "^lodash(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^moment(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^axios(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^chart(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^firebase(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^jquery(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^underscore(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^backbone(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^d3(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^bootstrap(\\.bundle)?(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^popper(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^dayjs(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^anime(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^leaflet(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^mapbox-gl(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^pixi(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^three(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^swiper(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^gsap(\\.min)?\\.[a-f0-9]*\\.js$",
+    "^video\\.js(\\.min)?\\.[a-f0-9]*\\.js$"
+  ]
+}
