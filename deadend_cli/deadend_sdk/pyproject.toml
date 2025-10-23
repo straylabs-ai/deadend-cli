@@ -56,6 +56,10 @@ source = "uv-dynamic-versioning"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/deadend_sdk"]
+include = [
+    "deadend_prompts/*.jinja2",
+    "deadend_prompts/tools/*.jinja2"
+]
 
 [dependency-groups]
 test = [

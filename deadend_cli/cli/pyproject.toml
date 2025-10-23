@@ -54,17 +54,12 @@ test = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = [
-    "src/cli",
-    "src/deadend_sdk",
-    "src/deadend_prompts",
-    "src/eval"
-]
+packages = ["src/cli"]
 include = [
     "deadend_prompts/*.jinja2",
     "deadend_prompts/tools/*.jinja2",
-    "deadend/data/*.json",
-    "deadend/data/memory/*.json"
+    "deadend_cli/data/*.json",
+    "deadend_cli/data/memory/*.json"
 ]
 
 [build-system]

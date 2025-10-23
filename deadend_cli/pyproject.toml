@@ -9,13 +9,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "deadend-sdk",
-    "cli",
+    "deadend-prompts", 
     "eval",
-    "deadend-prompts",
 ]
 
 [project.scripts]
-deadend = "deadend_cli.main:main"
+deadend = "deadend_cli:main"
 
 [dependency-groups]
 dev = [
@@ -34,10 +33,17 @@ test = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["cli", "deadend_sdk", "deadend_prompts", "eval"]
+packages = [
+    "src/deadend_cli",
+    "deadend_sdk/src/deadend_sdk",
+    "deadend_prompts/src/deadend_prompts",
+    "eval/src/eval"
+]
 include = [
-    "deadend/data/*.json",
-    "deadend/data/memory/*.json"
+    "deadend_cli/data/*.json",
+    "deadend_cli/data/memory/*.json",
+    "deadend_prompts/*.jinja2",
+    "deadend_prompts/tools/*.jinja2"
 ]
 
 [build-system]
@@ -89,18 +95,5 @@ extraPaths = [
     "deadend_sdk/src/deadend_sdk"
 ]
 
-[tool.uv.sources]
-cli = { workspace = true }
-deadend_sdk = { workspace = true }
-deadend_prompts = { workspace = true }
-eval = { workspace = true }
 
-[tool.uv.workspace]
-members = [
-    "deadend_cli",
-    "cli/",
-    "deadend_sdk/",
-    "deadend_prompts/",
-    "eval/",
-]
 

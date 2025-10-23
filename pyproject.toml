@@ -1,0 +1,12 @@
+# This is a workspace root configuration file
+# It doesn't define a buildable package, just manages the workspace
+
+[tool.uv.workspace]
+members = [
+    "deadend_cli/",
+    "deadend_cli/cli/",
+    "deadend_cli/deadend_sdk/", 
+    "deadend_cli/deadend_prompts/",
+    "deadend_cli/eval/",
+]
+

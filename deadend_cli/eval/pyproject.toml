@@ -14,6 +14,10 @@ dependencies = [
 [project.scripts]
 eval = "eval:eval"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/eval"]
+py-modules = ["eval", "ctf_datasets", "ctf_evaluator"]
+
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"

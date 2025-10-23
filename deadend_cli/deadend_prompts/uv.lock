@@ -4,7 +4,6 @@ requires-python = ">=3.10"
 
 [[package]]
 name = "deadend-prompts"
-version = "0.0.8"
 source = { editable = "." }
 dependencies = [
     { name = "jinja2" },
