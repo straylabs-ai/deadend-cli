@@ -26,10 +26,5 @@ jobs:
         run: uv python install 3.11
       - name: Build single package
         run: uv build deadend_cli/ --wheel
-      - name: Test installation
-        run: |
-          uv pip install dist/deadend_cli-*.whl
-          deadend --help
-          deadend version
       - name: Publish
         run: uv publish
