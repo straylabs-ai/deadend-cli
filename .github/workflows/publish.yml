@@ -27,4 +27,4 @@ jobs:
       - name: Build single package
         run: uv build deadend_cli/ --wheel
       - name: Publish
-        run: uv publish
+        run: uv publish deadend_cli/
