@@ -22,14 +22,14 @@ jobs:
         uses: actions/checkout@v5
       - name: Install uv
         uses: astral-sh/setup-uv@v6
-      - name: Install Python 3.13
-        run: uv python install 3.13
+      - name: Install Python 3.11
+        run: uv python install 3.11
       - name: Build
-        run: uv build --wheel
+        run: cd deadend/ && uv build --wheel
       # Check that basic features work and we didn't miss to include crucial files
       # - name: Smoke test (wheel)
       #   run: uv run --isolated --no-project --with dist/*.whl tests/smoke_test.py
       # - name: Smoke test (source distribution)
       #   run: uv run --isolated --no-project --with dist/*.tar.gz tests/smoke_test.py
       - name: Publish
-        run: uv publish
+        run: cd deadend/ &&  uv publish
