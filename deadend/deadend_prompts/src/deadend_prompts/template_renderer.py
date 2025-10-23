@@ -25,12 +25,12 @@ class TemplateAgentRenderer:
 
     def get_preprompt(self, **kwargs):
         raise NotImplementedError
-    
+
 class TemplateToolRenderer: 
     def __init__(self, jinja_env: Environment, tool_name: str):
         self.env = jinja_env
         self.tool_name = tool_name
-    
+
     def get_description(self, **kwargs):
         description_template = self.env.get_template(f"{self.tool_name}.description.jinja2")
         return description_template.render(**kwargs)

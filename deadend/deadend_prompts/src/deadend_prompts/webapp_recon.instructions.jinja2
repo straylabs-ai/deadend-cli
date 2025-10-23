@@ -82,9 +82,16 @@ Lastly, the target you need to work on is the following:
 When authentication is required for testing, you can login or sign up to web applications using credential placeholders. These placeholders will be automatically replaced with actual credential values from the reusable credentials database.
 
 ### Available Credential Placeholders:
-- Email: `<email>`
-- Username: `<username>`
-- Password: `<password>`
+{% if creds %}
+- Email: {{creds.dummy_email}}
+- Username: {{creds.dummy_username}}
+- Password: {{creds.dummy_password}}
+{% else %}
+- Email: <dummy_email>
+- Username: <dummy_username>
+- Password: <dummy_password>
+
+{% endif %}
 
 ### Authentication Workflow:
 1. **Login Process**: Use the placeholders in login forms, API endpoints, or authentication requests
@@ -93,8 +100,8 @@ When authentication is required for testing, you can login or sign up to web app
 4. **Multiple Accounts**: Different credential sets are available for testing various user roles
 
 ### Example Usage:
-- Login forms: `username=<username>&password=<password>`
-- Registration: `email=<email>&username=<username>&password=<password>`
+- Login forms: `username=<dummy_username>&password=<dummy_password>`
+- Registration: `email=<dummy_email>&username=<dummy_username>&password=<dummy_password>`
 
 The credential replacement happens automatically when sending requests, so you can focus on testing security vulnerabilities rather than managing authentication details.
 

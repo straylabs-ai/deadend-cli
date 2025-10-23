@@ -20,7 +20,8 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.box import ROUNDED
 from rich.table import Table
-from rich import box
+from rich import box, color
+from rich.style import Style as RichStyle
 from prompt_toolkit.application import Application
 from prompt_toolkit.widgets import TextArea, Frame, Label, RadioList
 from prompt_toolkit.layout import Layout as PTKLayout
@@ -271,7 +272,7 @@ class ChatInterface:
         """
         try:
             style = Style.from_dict({
-                "frame.border": "ansicyan",
+                "frame.border": "#696969",
                 "text-area": "",
             })
 
@@ -289,7 +290,7 @@ class ChatInterface:
             footer = Label(text=footer_text, style="ansiblack")
 
             root_container = HSplit([
-                Label(text=title, style="bold ansicyan"),
+                Label(text=title, style="bold #696969"),
                 Frame(body=input_field),
                 footer,
             ])
@@ -493,7 +494,7 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
             while not user_prompt:
                 user_prompt = await chat_interface.ask_with_ptk_panel(
                     title="User Prompt",
-                    placeholder="Prompt (e.g., 'Find vulnerabilities in the target') > ",
+                    placeholder=">>> ",
                     interrupt_callback=interrupt_agent
                 )
 
@@ -577,8 +578,10 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
                         continue
 
                     # Special handling for RequesterOutput - print just the reasoning
-                    if isinstance(item, RequesterOutput):
-                        console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.reasoning}")
+                    if isinstance(item.output, RequesterOutput):
+                        console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.output.reasoning}")
+                        console_printer.print(f"[bold green]Raw response:[/bold green] {item.output.raw_response}")
+
                         continue
 
                     # Check if this is the final result (JudgeOutput)
@@ -598,18 +601,19 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
                             print_pydantic_model(item, f"{model_type} Output")
 
                     elif isinstance(item, list) and len(item) > 0 and hasattr(item[0], 'goal'):
-                        # Create a simple text display for tasks without truncation
-                        tasks_text = "[bold green]Planned Tasks[/bold green]\n\n"
+                        tasks_text = ""
                         for i, task in enumerate(item, 1):
-                            tasks_text += f"[cyan]Step {i}:[/cyan]\n"
-                            tasks_text += f"[white]Goal:[/white] {task.goal}\n"
-                            tasks_text += f"[yellow]Status:[/yellow] {task.status}\n"
-                            tasks_text += f"[green]Output:[/green]\n{task.output}\n"
+                            tasks_text += f"[cyan]Step {i}:[/cyan]"
+                            tasks_text += f"[white]{task.goal}[/white]\n"
+                            tasks_text += f"[grey39]{task.output}[/grey39]\n"
+
+                        style = RichStyle(italic=True)
 
                         task_panel = Panel(
                             tasks_text.strip(),
-                            title="Tasks Overview",
-                            border_style="green",
+                            style=style,
+                            title="Planned tasks",
+                            border_style="grey39",
                             box=box.ROUNDED
                         )
                         console_printer.print(task_panel)

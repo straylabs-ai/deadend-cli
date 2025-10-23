@@ -212,16 +212,14 @@ class PlaywrightRequester:
         # to the request
         if self.session_id:
             try:
-                print("is setting localstorage all right?")
                 localstorage = await self.get_localstorage(session_id=self.session_id)
-                print(f"local storage is : {localstorage}")
                 new_headers = self._inject_auth_headers_with_storage(
                     storage=localstorage[0],
                     headers=parsed_request['headers']
                 )
-                print(f"new headers return inject: {new_headers}")
+                # print(f"new headers return inject: {new_headers}")
                 parsed_request['headers'].update(new_headers)
-                print(f"new headers: {new_headers}")
+
             except Exception as e:
                 print(f"Warning: Could not access localStorage for session {self.session_id}: {e}")
                 new_headers = parsed_request['headers']
@@ -229,8 +227,6 @@ class PlaywrightRequester:
             new_headers = parsed_request['headers']
         try:
             # Send the request using Playwright
-            print(f"parsed request : {parsed_request}")
-            print(f"new headers used: {new_headers}")
             response = await self._send_request(
                 method=parsed_request['method'],
                 url=target_url,
@@ -253,9 +249,7 @@ class PlaywrightRequester:
             await self._detect_and_store_tokens(response_body=response_body_text, url=target_url)
             if self.session_id:
                 try:
-                    print("is setting localstorage all right?")
                     await self.get_localstorage(session_id=self.session_id)
-                    print("Must see")
                 except Exception as e:
                     print(
                         f"Warning: Could not access localStorage for session {self.session_id}: {e}"
@@ -419,7 +413,7 @@ class PlaywrightRequester:
     async def _detect_and_store_tokens(self, response_body: str, url: str):
         try:
             domain = urlparse(url).netloc
-            print(f"domain is : {domain}")
+
             str_response_body =str(response_body)
             # JSON
             await self._detect_json_tokens(str_response_body, domain)
@@ -727,7 +721,11 @@ class PlaywrightRequester:
             print(f"Error getting all localStorage: {e}")
             return {}
 
-    async def set_multiple_localstorage(self, storage_dict: Dict[str, str], domain: str | None = None):
+    async def set_multiple_localstorage(
+        self,
+        storage_dict: Dict[str, str],
+        domain: str | None = None
+    ):
         """
         Set multiple localStorage key-value pairs for a specific domain.
         
@@ -746,14 +744,14 @@ class PlaywrightRequester:
             page = await self._get_persistent_page(domain)
             if not page:
                 return False
-            
+
             # Fix: Use proper escaping and batch operations
             escaped_items = []
             for key, value in storage_dict.items():
                 escaped_key = self._escape_js_string(key)
                 escaped_value = self._escape_js_string(value)
                 escaped_items.append(f"localStorage.setItem({escaped_key}, {escaped_value})")
-            
+
             # Execute all operations in one evaluate call
             await page.evaluate(";".join(escaped_items))
             return True

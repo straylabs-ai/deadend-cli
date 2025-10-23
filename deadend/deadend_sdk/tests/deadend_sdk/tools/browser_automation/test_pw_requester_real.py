@@ -107,11 +107,11 @@ User-Agent: DeadendTest/1.0\r
         # Test setting localStorage values
         result = await requester.set_localstorage_value("test_key", "test_value", "httpbin.org")
         assert result is True
-        
+
         # Test getting localStorage value
         value = await requester.get_localstorage_value("test_key", "httpbin.org")
         assert value == "test_value"
-        
+
         # Test setting multiple values
         storage_dict = {
             "auth_token": "real_token_123",
@@ -120,7 +120,7 @@ User-Agent: DeadendTest/1.0\r
         }
         result = await requester.set_multiple_localstorage(storage_dict, "httpbin.org")
         assert result is True
-        
+
         # Test getting all localStorage
         all_storage = await requester.get_all_localstorage("httpbin.org")
         assert "test_key" in all_storage
