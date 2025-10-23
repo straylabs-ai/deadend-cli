@@ -34,14 +34,14 @@ class DummyCreds(BaseModel):
     dummy_username: str | None = None
     dummy_password: str | None = None
 
-    def set_dummy_creds(self, account_index: int = 0):
-        path_creds = Path.home() / ".cache" / "deadend" / "memory" / "reusable_credentials.json"
-        with open(path_creds, 'r', encoding="utf-8") as creds_file:
-            all_creds = creds_file.read()
-            json_creds = json.loads(all_creds)
-            self.dummy_email = json_creds[account_index]["dummy_email"]
-            self.dummy_password = json_creds[account_index]["dummy_password"]
-            self.dummy_username = json_creds[account_index]["dummy_username"]
+    # def set_dummy_creds(self, account_index: int = 0):
+    #     path_creds = Path.home() / ".cache" / "deadend" / "memory" / "reusable_credentials.json"
+    #     with open(path_creds, 'r', encoding="utf-8") as creds_file:
+    #         all_creds = creds_file.read()
+    #         json_creds = json.loads(all_creds)
+    #         self.dummy_email = json_creds["accounts"][0]["dummy_email"]
+    #         self.dummy_password = json_creds["accounts"][0]["dummy_password"]
+    #         self.dummy_username = json_creds["accounts"][0]["dummy_username"]
         
 class WebappReconAgent(AgentRunner):
     """
@@ -62,14 +62,28 @@ class WebappReconAgent(AgentRunner):
             # "sandboxed_shell_tool": render_tool_description("sandboxed_shell_tool"),
             "webapp_code_rag": render_tool_description("webapp_code_rag")
         }
-        dummycreds = DummyCreds()
-        dummycreds.set_dummy_creds()
+
+        path_creds = Path.home() / ".cache" / "deadend" / "memory" / "reusable_credentials.json"
+        with open(path_creds, 'r', encoding="utf-8") as creds_file:
+            all_creds = creds_file.read()
+            json_creds = json.loads(all_creds)
+            dummy_email = json_creds["accounts"][0]["dummy_email"]
+            dummy_password = json_creds["accounts"][0]["dummy_password"]
+            dummy_username = json_creds["accounts"][0]["dummy_username"]
+        dummycreds = DummyCreds(
+            dummy_email=dummy_email,
+            dummy_password=dummy_password,
+            dummy_username=dummy_username
+        )
+        # dummycreds.set_dummy_creds()
+        print(f"dummy creds : {dummycreds}")
         self.instructions = render_agent_instructions(
             agent_name="webapp_recon",
             tools=tools_metadata,
             target=target_information,
             creds = dummycreds
         )
+
         super().__init__(
             name="webapp_recon",
             model=model,

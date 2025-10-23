@@ -578,10 +578,9 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
                         continue
 
                     # Special handling for RequesterOutput - print just the reasoning
-                    if isinstance(item.output, RequesterOutput):
+                    if hasattr(item, 'output') and isinstance(item.output, RequesterOutput):
                         console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.output.reasoning}")
                         console_printer.print(f"[bold green]Raw response:[/bold green] {item.output.raw_response}")
-
                         continue
 
                     # Check if this is the final result (JudgeOutput)
