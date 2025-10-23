@@ -1,5 +1,5 @@
 [project]
-name = "deadend"
+name = "deadend_cli"
 dynamic = ["version"] 
 authors = [
   { name="Yassine Bargach", email="yassine.bargach@proton.me" },
