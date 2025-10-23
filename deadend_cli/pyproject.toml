@@ -9,13 +9,13 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "deadend-sdk",
-    "deadend-cli",
+    "cli",
     "eval",
     "deadend-prompts",
 ]
 
 [project.scripts]
-deadend = "deadend.main:main"
+deadend = "deadend_cli.main:main"
 
 [dependency-groups]
 dev = [
@@ -34,7 +34,7 @@ test = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["deadend_cli", "deadend_sdk", "deadend_prompts", "eval"]
+packages = ["cli", "deadend_sdk", "deadend_prompts", "eval"]
 include = [
     "deadend/data/*.json",
     "deadend/data/memory/*.json"
@@ -49,9 +49,9 @@ source = "uv-dynamic-versioning"
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
-lint = "flake8 {args:deadend_cli deadend_sdk}"
-format = "black {args:deadend_cli deadend_sdk}"
-format-check = "black --check {args:deadend_cli deadend_sdk}"
+lint = "flake8 {args:cli deadend_sdk}"
+format = "black {args:cli deadend_sdk}"
+format-check = "black --check {args:cli deadend_sdk}"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -61,7 +61,7 @@ python_functions = ["test_*"]
 adopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=deadend_cli",
+    "--cov=cli",
     "--cov-report=term-missing",
     "--cov-report=html",
 ]
@@ -72,7 +72,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["deadend_cli", "deadend_sdk/src"]
+source = ["cli", "deadend_sdk/src"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
@@ -90,15 +90,15 @@ extraPaths = [
 ]
 
 [tool.uv.sources]
-deadend_cli = { workspace = true }
+cli = { workspace = true }
 deadend_sdk = { workspace = true }
 deadend_prompts = { workspace = true }
 eval = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "deadend",
-    "deadend_cli/",
+    "deadend_cli",
+    "cli/",
     "deadend_sdk/",
     "deadend_prompts/",
     "eval/",
