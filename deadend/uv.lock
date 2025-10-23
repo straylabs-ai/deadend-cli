@@ -580,7 +580,6 @@ wheels = [
 
 [[package]]
 name = "deadend"
-version = "0.0.8"
 source = { editable = "." }
 dependencies = [
     { name = "deadend-cli" },
@@ -631,7 +630,6 @@ test = [
 
 [[package]]
 name = "deadend-cli"
-version = "0.0.8"
 source = { editable = "deadend_cli" }
 dependencies = [
     { name = "deadend-sdk" },
@@ -722,7 +720,6 @@ test = [
 
 [[package]]
 name = "deadend-prompts"
-version = "0.0.8"
 source = { editable = "deadend_prompts" }
 dependencies = [
     { name = "jinja2" },
@@ -733,7 +730,6 @@ requires-dist = [{ name = "jinja2", specifier = ">=3.1.6" }]
 
 [[package]]
 name = "deadend-sdk"
-version = "0.0.1"
 source = { editable = "deadend_sdk" }
 dependencies = [
     { name = "aiofiles" },
@@ -904,7 +900,6 @@ wheels = [
 
 [[package]]
 name = "eval"
-version = "0.0.8"
 source = { editable = "eval" }
 dependencies = [
     { name = "deadend-cli" },

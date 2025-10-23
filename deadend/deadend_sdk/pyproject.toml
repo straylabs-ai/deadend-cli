@@ -1,6 +1,6 @@
 [project]
 name = "deadend-sdk"
-version = "0.0.1"
+dynamic = ["version"]
 requires-python = ">=3.11"
 readme = "README.md"
 description = "Core SDK for security tooling"
@@ -48,8 +48,11 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/deadend_sdk"]

@@ -1,6 +1,6 @@
 [project]
 name = "deadend"
-version = "0.0.8"
+dynamic = ["version"] 
 authors = [
   { name="Yassine Bargach", email="yassine.bargach@proton.me" },
 ]
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-deadend-cli = "deadend_cli.main:main"
+deadend = "deadend.main:main"
 
 [dependency-groups]
 dev = [
@@ -41,8 +41,11 @@ include = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "uv-dynamic-versioning"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"

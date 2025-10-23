@@ -67,7 +67,7 @@ def chat(
     config = config_setup()
     print_banner(config=config)
     # Monitoring
-    logfire.configure(scrubbing=False)
+    logfire.configure(scrubbing=False, console=None)
     logfire.instrument_pydantic_ai()
 
     try:
