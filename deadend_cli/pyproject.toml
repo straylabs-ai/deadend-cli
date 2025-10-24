@@ -102,7 +102,7 @@ python_functions = ["test_*"]
 adopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=cli",
+    "--cov=src",
     "--cov-report=term-missing",
     "--cov-report=html",
 ]
@@ -113,7 +113,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["cli", "deadend_sdk/src"]
+source = ["src/", "deadend_sdk/src"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
