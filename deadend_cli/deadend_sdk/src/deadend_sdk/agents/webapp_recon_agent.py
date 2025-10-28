@@ -9,9 +9,9 @@ on web applications, including directory enumeration, technology detection,
 vulnerability scanning, and information gathering for security assessments.
 """
 from typing import Any
-from pydantic import BaseModel
 from pathlib import Path
 import json
+from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_sdk.models.registry import AIModel
@@ -21,28 +21,40 @@ from deadend_sdk.tools import (
     pw_send_payload,
     webapp_code_rag
 )
-from .factory import AgentRunner
 from deadend_prompts import render_agent_instructions, render_tool_description
 
+from .factory import AgentRunner
+
 class RequesterOutput(BaseModel):
+    """Output model for web reconnaissance request operations.
+    
+    Captures the agent's reasoning process, current state, and raw response data
+    from reconnaissance activities on the target web application.
+    
+    Attributes:
+        reasoning: The agent's reasoning or justification for the request action.
+        state: The current state of the reconnaissance operation.
+        raw_response: The raw response data received from the request.
+    """
     reasoning: str
     state: str
     raw_response: str
 
 class DummyCreds(BaseModel):
+    """Dummy credentials model for testing and automation purposes.
+    
+    Stores test credentials used during web application reconnaissance to
+    interact with authentication systems without using real user accounts.
+    
+    Attributes:
+        dummy_email: Optional dummy email address for testing authentication.
+        dummy_username: Optional dummy username for testing authentication.
+        dummy_password: Optional dummy password for testing authentication.
+    """
     dummy_email: str | None = None
     dummy_username: str | None = None
     dummy_password: str | None = None
 
-    # def set_dummy_creds(self, account_index: int = 0):
-    #     path_creds = Path.home() / ".cache" / "deadend" / "memory" / "reusable_credentials.json"
-    #     with open(path_creds, 'r', encoding="utf-8") as creds_file:
-    #         all_creds = creds_file.read()
-    #         json_creds = json.loads(all_creds)
-    #         self.dummy_email = json_creds["accounts"][0]["dummy_email"]
-    #         self.dummy_password = json_creds["accounts"][0]["dummy_password"]
-    #         self.dummy_username = json_creds["accounts"][0]["dummy_username"]
-        
 class WebappReconAgent(AgentRunner):
     """
     The webapp recon agent is the agent in charge of doing the recon on the target. 

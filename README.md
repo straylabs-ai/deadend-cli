@@ -190,8 +190,8 @@ The `deadend-cli` is available on PyPI and can be installed using pipx:
 # Install pipx if you don't have it
 # --> https://github.com/pypa/pipx
 
-# Install deadend-cli
-pipx install deadend-cli 
+# Install deadend_cli
+pipx install deadend_cli 
 ```
 
 ### Build from source 
@@ -199,7 +199,7 @@ pipx install deadend-cli
 Clone the repository and build using `uv`:
 
 ```bash
-git clone https://github.com/gemini-15/deadend-cli.git
+git clone https://github.com/xoxruns/deadend-cli.git
 cd deadend-cli
 
 # Install dependencies and build
