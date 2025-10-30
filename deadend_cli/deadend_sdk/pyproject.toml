@@ -21,6 +21,7 @@ dependencies = [
     "logfire>=4.3.3",
     "logging>=0.4.9.6",
     "lxml>=6.0.0",
+    "mem0ai>=1.0.0",
     "nest-asyncio>=1.6.0",
     "numpy>=2.3.1",
     "pgvector>=0.4.1",
@@ -43,6 +44,7 @@ dependencies = [
     "tree-sitter-markdown>=0.5.1",
     "tree-sitter-typescript>=0.23.2",
     "typer>=0.15.4",
+    "typing-extensions>=4.15.0",
     "zaproxy>=0.4.0",
 ]
 

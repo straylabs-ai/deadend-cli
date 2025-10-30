@@ -38,3 +38,4 @@ def setup_model_registry(config: Config) -> ModelRegistry:
     """Setup Model registry"""
     model_registry = ModelRegistry(config=config)
     return model_registry
+

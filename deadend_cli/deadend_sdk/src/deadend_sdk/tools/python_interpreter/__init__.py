@@ -9,3 +9,5 @@ sandboxed environments, enabling AI agents to run Python scripts and
 code snippets for security research and analysis tasks.
 """
 
+async def initialize_interpreter():
+    pass

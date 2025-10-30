@@ -24,7 +24,7 @@ class CodeChunk(Base):
     Model for storing code chunks with their embeddings.
     """
     __tablename__ = 'code_chunks'
-    
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     file_path = Column(String(500), nullable=False)
@@ -38,7 +38,7 @@ class CodeChunk(Base):
     # Metadata
     created_at = Column(DateTime, default=datetime.now())
     updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now())
-    
+
     def __repr__(self):
         return f"<CodeChunk(id={self.id}, file_path='{self.file_path}')>"
 

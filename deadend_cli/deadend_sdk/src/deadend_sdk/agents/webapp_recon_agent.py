@@ -8,7 +8,7 @@ This module implements an AI agent that performs comprehensive reconnaissance
 on web applications, including directory enumeration, technology detection,
 vulnerability scanning, and information gathering for security assessments.
 """
-from typing import Any
+from typing import Any, override
 from pathlib import Path
 import json
 from pydantic import BaseModel
@@ -16,13 +16,11 @@ from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_sdk.models.registry import AIModel
 from deadend_sdk.tools import (
-    sandboxed_shell_tool, 
     is_valid_request_detailed,
     pw_send_payload,
     webapp_code_rag
 )
 from deadend_prompts import render_agent_instructions, render_tool_description
-
 from .factory import AgentRunner
 
 class RequesterOutput(BaseModel):
@@ -39,6 +37,20 @@ class RequesterOutput(BaseModel):
     reasoning: str
     state: str
     raw_response: str
+
+class RequesterSecOutput(BaseModel):
+    """Output model for Playwright's requester.
+
+    This playwright requester contains pour specific information for the agent to 
+    work on.
+    
+    """
+    payload: str
+    vulnerability_category: str
+    attempt: bool
+    raw_request: str
+    response: str
+
 
 class DummyCreds(BaseModel):
     """Dummy credentials model for testing and automation purposes.
@@ -71,7 +83,6 @@ class WebappReconAgent(AgentRunner):
         tools_metadata = {
             "is_valid_request_detailed": render_tool_description("is_valid_request_detailed"),
             "pw_send_payload": render_tool_description("send_payload"),
-            # "sandboxed_shell_tool": render_tool_description("sandboxed_shell_tool"),
             "webapp_code_rag": render_tool_description("webapp_code_rag")
         }
 
@@ -87,7 +98,6 @@ class WebappReconAgent(AgentRunner):
             dummy_password=dummy_password,
             dummy_username=dummy_username
         )
-        # dummycreds.set_dummy_creds()
         print(f"dummy creds : {dummycreds}")
         self.instructions = render_agent_instructions(
             agent_name="webapp_recon",
@@ -105,11 +115,11 @@ class WebappReconAgent(AgentRunner):
             tools=[
                 Tool(is_valid_request_detailed),
                 Tool(pw_send_payload, requires_approval=requires_approval),
-                # Tool(sandboxed_shell_tool),
                 Tool(webapp_code_rag)
             ]
         )
 
+    @override
     async def run(
         self,
         user_prompt,

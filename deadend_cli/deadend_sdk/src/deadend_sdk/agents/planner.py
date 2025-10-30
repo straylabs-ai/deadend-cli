@@ -60,16 +60,16 @@ class PlannerAgent(AgentRunner):
             "webapp_code_rag": render_tool_description("webapp_code_rag")
         } 
         self.instructions = render_agent_instructions(
-            agent_name="planner", 
+            agent_name="planner",
             tools=tools_metadata
         )
 
         super().__init__(
-            name="planner_agent", 
-            model=model,  
-            instructions=self.instructions, 
-            deps_type=RagDeps, 
-            output_type=output_type, 
+            name="planner_agent",
+            model=model,
+            instructions=self.instructions,
+            deps_type=RagDeps,
+            output_type=output_type,
             tools=[Tool(webapp_code_rag, max_retries=5)]
         )
 
@@ -134,16 +134,16 @@ class ADaPTPlanner:
         self.tasks = List[Task]
 
         self.agent = PlannerAgent(
-            model=model, 
+            model=model,
             output_type=PlannerOutput,
         )
 
     async def run(self,
             user_prompt: str,
             message_history: str,
-            usage: RunUsage, 
-            usage_limits: UsageLimits, 
-            openai: AsyncOpenAI, 
+            usage: RunUsage,
+            usage_limits: UsageLimits,
+            openai: AsyncOpenAI,
             rag: RetrievalDatabaseConnector,
             session_id: uuid.UUID
         ):
@@ -216,16 +216,16 @@ class Planner:
         self.tasks = List[Task]
 
         self.agent = PlannerAgent(
-            model=model, 
+            model=model,
             output_type=PlannerOutput,
         )
 
     async def run(self,
             user_prompt: str,
             message_history: str,
-            usage: RunUsage, 
-            usage_limits: UsageLimits, 
-            openai: AsyncOpenAI, 
+            usage: RunUsage,
+            usage_limits: UsageLimits,
+            openai: AsyncOpenAI,
             rag: RetrievalDatabaseConnector,
             session_id: uuid.UUID
         ):
