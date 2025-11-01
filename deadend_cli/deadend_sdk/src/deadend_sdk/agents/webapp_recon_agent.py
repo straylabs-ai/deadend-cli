@@ -8,12 +8,13 @@ This module implements an AI agent that performs comprehensive reconnaissance
 on web applications, including directory enumeration, technology detection,
 vulnerability scanning, and information gathering for security assessments.
 """
-from typing import Any, override
+from typing import Any
 from pathlib import Path
 import json
 from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
+from deadend_sdk.context.memory import MemoryHandler
 from deadend_sdk.models.registry import AIModel
 from deadend_sdk.tools import (
     is_valid_request_detailed,
@@ -48,7 +49,7 @@ class RequesterSecOutput(BaseModel):
     payload: str
     vulnerability_category: str
     attempt: bool
-    raw_request: str
+    request: str
     response: str
 
 
@@ -111,7 +112,7 @@ class WebappReconAgent(AgentRunner):
             model=model,
             instructions=self.instructions,
             deps_type=deps_type,
-            output_type=[RequesterOutput, DeferredToolRequests],
+            output_type=[RequesterSecOutput, DeferredToolRequests],
             tools=[
                 Tool(is_valid_request_detailed),
                 Tool(pw_send_payload, requires_approval=requires_approval),
@@ -119,7 +120,6 @@ class WebappReconAgent(AgentRunner):
             ]
         )
 
-    @override
     async def run(
         self,
         user_prompt,
@@ -127,9 +127,11 @@ class WebappReconAgent(AgentRunner):
         message_history,
         usage: RunUsage | None,
         usage_limits:UsageLimits | None,
-        deferred_tool_results: DeferredToolResults | None,
+        deferred_tool_results: DeferredToolResults | None = None,
+
+        memory: MemoryHandler | None = None
     ):
-        return await super().run(
+        agent_response = await super().run(
             user_prompt=user_prompt,
             deps=deps,
             message_history=message_history,
@@ -137,3 +139,15 @@ class WebappReconAgent(AgentRunner):
             usage_limits=usage_limits,
             deferred_tool_results=deferred_tool_results
         )
+        if memory:
+            agent_output = agent_response.output
+            if isinstance(agent_output, RequesterSecOutput):
+                memory.add_agent_result_to_memory(
+                    agent_name=self.name,
+                    payload=agent_output.payload,
+                    vulnerability_category=agent_output.vulnerability_category,
+                    attempt=agent_output.attempt,
+                    request=agent_output.request,
+                    response=agent_output.response
+                )
+        return agent_response

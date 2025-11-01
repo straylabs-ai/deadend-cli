@@ -182,3 +182,4 @@ The memory system should integrate with:
 - Tools: Store successful tool outputs automatically
 - RAG system: Embed memories for semantic search
 
+

@@ -1,21 +1,20 @@
 [project]
-name = "eval"
+name = "deadend-eval"
 dynamic = ["version"]
 description = "Add your description here"
 readme = "README.md"
 authors = [
-    { name = "Yassine Bargach", email = "bargach.y@gmail.com" }
+    { name = "Yassine Bargach", email = "yassine@straylabs.ai" }
 ]
 requires-python = ">=3.11"
 dependencies = [
 ]
 
 [project.scripts]
-eval = "eval:eval"
+deadend_eval = "deadend_eval:eval"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/eval"]
-py-modules = ["eval", "ctf_datasets", "ctf_evaluator"]
+packages = ["src/deadend_eval"]
 
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]

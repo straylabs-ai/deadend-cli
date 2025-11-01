@@ -97,10 +97,10 @@ class PlannerAgent(AgentRunner):
 
 class ADaPTPlanner:
     """High-level planner for orchestrating security assessment workflows.
-    
+
     The planner coordinates the overall security assessment process by managing
     information about the target, tracking tasks, and replanning when necessary.
-    
+
     [ADAPT: As-Needed Decomposition and Planning with Language Models](https://arxiv.org/pdf/2311.05772)
 
     It receives the following information:
@@ -108,13 +108,13 @@ class ADaPTPlanner:
     - web crawler results of the page
     - the authentication data if needed
     - API endpoints or OpenAPI specification file
-    
+
     The planner manages this information and coordinates task execution:
     - Creates an initial plan of security testing tasks
     - Executes tasks sequentially by calling testing agents
     - Analyzes results using LLM and updates task status
     - Replans if necessary based on findings
-    
+
     Attributes:
         target: The target URL to assess.
         api_spec: API specification or OpenAPI schema.

@@ -8,10 +8,9 @@ This module implements an AI agent that analyzes the current state of security
 research workflows and determines which agent should be invoked next based on
 the context, progress, and requirements of the ongoing assessment.
 """
-
-from pydantic import BaseModel
 from typing import Dict
-
+from pydantic import BaseModel
+from pydantic_ai import AgentRunResult
 from deadend_prompts import render_agent_instructions
 from .factory import AgentRunner
 
@@ -44,7 +43,7 @@ class RouterAgent(AgentRunner):
         usage,
         usage_limits,
         deferred_tool_results
-    ) -> RouterOutput:
+    ) -> AgentRunResult:
         return await super().run(
             user_prompt=user_prompt,
             deps=deps,

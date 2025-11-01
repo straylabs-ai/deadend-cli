@@ -70,7 +70,3 @@ class AgentRunner:
             usage_limits=usage_limits,
             deferred_tool_results=deferred_tool_results
         )
-
-    def get_response(self):
-        if self.response != None:
-            return self.response
