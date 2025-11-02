@@ -99,7 +99,7 @@ class WebappReconAgent(AgentRunner):
             dummy_password=dummy_password,
             dummy_username=dummy_username
         )
-        print(f"dummy creds : {dummycreds}")
+        
         self.instructions = render_agent_instructions(
             agent_name="webapp_recon",
             tools=tools_metadata,

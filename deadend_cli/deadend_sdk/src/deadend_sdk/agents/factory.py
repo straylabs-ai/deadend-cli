@@ -9,11 +9,13 @@ configuring AI agents with proper error handling, retry logic, and
 usage tracking for the security research framework.
 """
 
+from pydantic.type_adapter import P
 from pydantic_ai import Agent, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 
-from typing import Any
+from typing import Any, Literal
 
+from context import MemoryHandler
 from deadend_sdk.models.registry import AIModel
 from tenacity import (
     retry,
@@ -70,3 +72,57 @@ class AgentRunner:
             usage_limits=usage_limits,
             deferred_tool_results=deferred_tool_results
         )
+
+
+class ADaPTAgent:
+    """
+    ADaPT Agent is a recursive agent from the paper 
+    ADaPT: As-Needed Decomposition and Planning with Language Models
+    (https://arxiv.org/abs/2311.05772)
+
+    This implementation follows the algorithm presented in the paper, 
+    by retaking the most relevant information:
+    - Usage of 3 components Executors, Planner and Controller.
+    """
+
+    def __init__(
+        self,
+        session_id: str,
+        memory: MemoryHandler,
+        max_depth: int = 3
+    ):
+        self.session = session_id
+        self.memory = memory
+        self.max_depth = max_depth
+
+    def _executor(self, task: str, agent: AgentRunner):
+        return True
+
+    def _planner(self, task) -> tuple[list[str], Literal['and', 'or']]:
+        return ([], "and")
+
+    def _validate_outputs(self, outputs, logic) -> bool:
+        return True
+
+    def run(self, task, agent: AgentRunner, iteration: int) -> dict[str, bool]:
+        """Runs the ADaPT agent. 
+
+        This is an iterative function. 
+
+        """
+        if iteration > self.max_depth:
+            return { task :False }
+
+        completed = self._executor(
+            task=task,
+            agent=agent
+        )
+        outputs = {}
+        if not completed:
+            subtasks, logic = self._planner(task=task)
+            for subtask in subtasks:
+                output = self.run(task=subtask, agent=agent, iteration=iteration+1)
+                outputs[subtask] = output
+
+            completed = self._validate_outputs(outputs, logic)
+        return { task : completed }
