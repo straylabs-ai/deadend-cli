@@ -95,10 +95,17 @@ class ADaPTAgent:
         self.memory = memory
         self.max_depth = max_depth
 
-    def _executor(self, task: str, agent: AgentRunner):
+    def _executor(
+        self,
+        task: str,
+        agent: AgentRunner
+    ):
         return True
 
-    def _planner(self, task) -> tuple[list[str], Literal['and', 'or']]:
+    def _planner(
+        self,
+        task
+    ) -> tuple[list[str], Literal['and', 'or']]:
         return ([], "and")
 
     def _validate_outputs(self, outputs, logic) -> bool:
