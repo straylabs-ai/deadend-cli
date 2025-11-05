@@ -13,54 +13,48 @@ from typing import Any
 
 from .python_interpreter import PythonInterpreter
 
-async def write_python_file(code: str, filename: str) -> Path:
-    """Write Python code to the cache directory and return the file path.
-
-    The file is written under: ~/.cache/deadend/python/<filename>
-
-    Args:
-        code: The Python source code to write.
-        filename: Target filename (e.g., "script.py").
-
-    Returns:
-        Path: Path to the written file.
-    """
-    cache_dir = Path.home() / ".cache" / "deadend" / "python"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    file_path = cache_dir / filename
-    file_path.write_text(code, encoding="utf-8")
-    return file_path
-
-async def run_code(
+async def run_python_file(
+    code: str,
     filename: str,
     packages: list[str],
-    _directory: str = "./",
+    _directory: str | None = None,
     _session_id: str | None = None
 ) -> Any:
-    """High-level helper to execute a Python file in the sandbox.
+    """Write Python code to a file and execute it in the sandbox.
+
+    This function combines writing Python code to a cache directory and executing
+    it in a sandboxed environment. The file is written to ~/.cache/deadend/python/<filename>
+    and then executed in an isolated WebAssembly-based Python interpreter.
 
     Args:
-        filename: Relative path to the script to execute inside `directory`.
-        packages: List of package specifiers to install before run.
-        _directory: Host working directory to expose to the sandbox.
+        code: The Python source code to write and execute.
+        filename: Target filename (e.g., "script.py").
+        packages: List of package specifiers to install before execution.
+        _directory: Optional host working directory to expose to the sandbox.
+                    If not provided, uses the cache directory where the file is written.
         _session_id: Optional session identifier to correlate runs.
 
     Returns:
         Any: JSON response from the sandbox with execution result.
 
     Raises:
-        FileNotFoundError: If the specified file does not exist.
+        FileNotFoundError: If execution fails due to file not found (should not occur
+                          as the file is created by this function).
     """
-    # Checking if file exists
-    file_path = Path(_directory) / filename
-    if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+    # Write Python code to cache directory
+    cache_dir = Path.home() / ".cache" / "deadend" / "python"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    file_path = cache_dir / filename
+    file_path.write_text(code, encoding="utf-8")
+
+    # Use cache directory as working directory if not specified
+    directory = _directory if _directory is not None else str(cache_dir)
 
     # Generate session_id if not provided
     session_id = _session_id or f"session_{id(file_path)}"
 
     # Initializing the PythonInterpreter
-    interpreter = PythonInterpreter(session_id=session_id, directory=_directory)
+    interpreter = PythonInterpreter(session_id=session_id, directory=directory)
     await interpreter.initialize()
 
     try:
@@ -68,7 +62,7 @@ async def run_code(
         if packages:
             await interpreter.load_packages(packages)
 
-        # Running the file
+        # Running the file (use just filename since directory is set)
         result = await interpreter.run_file(filename)
 
         # Returning the results

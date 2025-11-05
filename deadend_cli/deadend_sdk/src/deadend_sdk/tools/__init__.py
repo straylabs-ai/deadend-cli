@@ -19,13 +19,19 @@ from .browser_automation import (
 from .playwright_requester import (
     send_payload_with_playwright,
 )
+from .python_interpreter import run_python_file
 from .webapp_code_rag import webapp_code_rag
 
 
 __all__ = [
+    # Shell
     "sandboxed_shell_tool", 
-    "is_valid_request_detailed", 
+    #Python interpreter
+    "run_python_file",
+    # Webapp Rag
     "webapp_code_rag",
+    # Playwright
+    "is_valid_request_detailed",
     "send_payload_with_playwright",
     "pw_send_payload",
     "cleanup_playwright_sessions",

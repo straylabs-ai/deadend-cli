@@ -1,0 +1,105 @@
+This tool writes Python code to a file and executes it in a sandboxed WebAssembly-based Python interpreter, providing secure and isolated execution of Python scripts for security research and analysis tasks. It combines file writing and execution in a single operation.
+
+## WHAT THIS TOOL PROVIDES:
+- **Unified workflow**: Writes Python code to a file and executes it in one step
+- **Automatic file management**: Saves code to `~/.cache/deadend/python/<filename>` automatically
+- **Sandboxed execution**: Runs Python code in an isolated WebAssembly environment
+- **Package management**: Automatically installs required Python packages before execution
+- **Session management**: Supports session-based execution for maintaining state across runs
+- **JSON results**: Returns structured JSON responses with execution output, errors, and return values
+- **Safe isolation**: Complete isolation from the host system, preventing malicious code execution
+
+## WHEN TO USE THIS TOOL:
+- **Executing Python scripts**: Write and execute Python code for security testing in a single call
+- **Security testing**: Running exploit code, payloads, or analysis scripts in a safe environment
+- **Package-dependent code**: When your Python script requires external packages (specify them in the `packages` parameter)
+- **Testing and validation**: Verifying Python code behavior before using it in real environments
+- **Quick iteration**: Developing and testing Python scripts without separate file management steps
+
+## CRITICAL REQUIREMENTS:
+
+**MANDATORY**: Before using this tool, you MUST:
+
+1. **Extract all required packages**: Analyze your Python code to identify ALL external packages (non-standard library imports) used in your script
+   - Standard library imports (e.g., `sys`, `os`, `json`, `re`, `urllib`) do NOT need to be in the packages list
+   - Third-party packages (e.g., `requests`, `numpy`, `beautifulsoup4`) MUST be included
+   - Provide the complete package list in the `packages` parameter - missing packages will cause execution failures
+
+2. **Design code for security testing goals**: Your Python code must be specifically designed to achieve the security testing goal specified in the context
+   - The code should test vulnerabilities, analyze security, automate testing, process security data, or interact with targets
+   - Your code must be purposeful and directly contribute to achieving the security research objective
+
+3. **Provide all parameters in a single call**: Always provide `code`, `filename`, and `packages` together in one `run_python_file` call
+   - Do NOT split this into multiple steps - the tool handles both writing and execution automatically
+   - All three parameters are required for successful execution
+
+## REQUIRED PARAMETERS:
+- **code**: The Python source code to write and execute
+  - Must be designed to achieve the security testing goal from the context
+  - Should be complete, executable Python code
+- **filename**: The name for the Python file (e.g., "script.py", "exploit.py", "analyzer.py")
+  - Use descriptive filenames that indicate the script's purpose
+  - The file will be saved to `~/.cache/deadend/python/<filename>`
+- **packages**: List of Python package specifiers to install before execution
+  - **CRITICAL**: Extract ALL external packages from your code imports and include them here
+  - Examples: `["requests"]`, `["numpy==1.24.0"]`, `["pandas", "matplotlib"]`
+  - Leave as empty list `[]` if no external packages are needed
+  - Standard library imports do NOT need to be listed here
+
+## OPTIONAL PARAMETERS:
+- **_directory**: Optional working directory for the sandbox (defaults to cache directory if not provided)
+- **_session_id**: Optional session identifier for correlating multiple runs (auto-generated if not provided)
+
+## TECHNICAL DETAILS:
+- **Sandbox technology**: Uses a WebAssembly-based Python interpreter (`python-sandbox-tool`)
+- **Automatic initialization**: The sandbox process is automatically started and managed
+- **Cleanup**: The sandbox process is properly shut down after execution
+- **Error handling**: Returns detailed error information in the JSON response if execution fails
+
+## EXAMPLE USAGE SCENARIOS:
+- **Simple script**: 
+  ```python
+  run_python_file(
+      code="print('Hello, World!')",
+      filename="hello.py",
+      packages=[]
+  )
+  ```
+- **With dependencies**: 
+  ```python
+  run_python_file(
+      code="import requests\nresponse = requests.get('https://example.com')\nprint(response.status_code)",
+      filename="exploit.py",
+      packages=["requests"]
+  )
+  ```
+- **Complex script with multiple packages**: 
+  ```python
+  run_python_file(
+      code="import requests\nfrom bs4 import BeautifulSoup\nimport json\n# ... your code ...",
+      filename="analyzer.py",
+      packages=["requests", "beautifulsoup4"]
+  )
+  ```
+
+## IMPORTANT NOTES:
+- **Single-step operation**: This tool handles both writing the file and executing it - no separate write step needed
+- **All parameters required**: You MUST provide `code`, `filename`, and `packages` in a single call - missing any parameter will cause failures
+- **Package extraction is mandatory**: Before calling this tool, you MUST analyze your code to identify all external packages (non-standard library imports) and include them in the `packages` parameter
+- **Standard library**: Standard library imports (e.g., `sys`, `os`, `json`, `re`, `urllib`, `itertools`) do NOT need to be in the packages list
+- **Security testing focus**: The code you provide must be designed to achieve the security testing goal - generic or unrelated code will not be useful
+- **Package installation**: Packages are installed in the sandbox environment before script execution - missing packages will cause import errors
+- **Isolation**: The sandbox is completely isolated from the host system - no file system access or network capabilities beyond what's configured
+- **Session persistence**: Using the same `_session_id` allows maintaining state across multiple file executions
+- **Result format**: Always returns a JSON response containing execution results, stdout, stderr, and return values
+- **File location**: Files are automatically saved to `~/.cache/deadend/python/` and executed from there
+
+## WHEN NOT TO USE THIS TOOL:
+- **DO NOT** use for non-Python code execution
+- **DO NOT** use if you need direct system access (the sandbox is intentionally isolated)
+- **DO NOT** forget to extract and include all required packages in the `packages` parameter
+- **DO NOT** provide code that is not designed to achieve the security testing goal
+- **DO NOT** split the operation into multiple calls - always provide code, filename, and packages together
+- **DO NOT** omit the `packages` parameter even if it's an empty list - always provide it explicitly
+
+This tool provides a streamlined workflow for writing and executing Python code in a secure sandboxed environment, perfect for security testing and research tasks.
