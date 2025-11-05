@@ -1,4 +1,4 @@
-# Memory System Enhancements for Pentesting Agent
+g# Memory System Enhancements for Pentesting Agent
 
 ## Current State
 The current `MemoryHandler` only stores agent conversations using mem0 with basic target-based organization. This is insufficient for a comprehensive pentesting workflow.
@@ -181,5 +181,9 @@ The memory system should integrate with:
 - Agents: Query memory for relevant historical data
 - Tools: Store successful tool outputs automatically
 - RAG system: Embed memories for semantic search
+
+
+
+
 
 
