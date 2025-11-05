@@ -34,11 +34,11 @@ from pydantic_ai import DeferredToolRequests
 
 
 
-from deadend_sdk import Config, init_rag_database, sandbox_setup, ModelRegistry
-from deadend_sdk.utils.structures import Task
-from deadend_sdk.agents.webapp_recon_agent import RequesterOutput
-from deadend_sdk.agents.judge import JudgeOutput
-from deadend_sdk.utils.network import check_target_alive
+from deadend_agent import Config, init_rag_database, sandbox_setup, ModelRegistry
+from deadend_agent.utils.structures import Task
+from deadend_agent.agents.webapp_recon_agent import RequesterOutput
+from deadend_agent.agents.judge import JudgeOutput
+from deadend_agent.utils.network import check_target_alive
 from .workflow_runner import WorkflowRunner
 from .console import console_printer
 

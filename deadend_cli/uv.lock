@@ -843,7 +843,7 @@ requires-dist = [
     { name = "cssbeautifier", specifier = ">=1.15.4" },
     { name = "deadend-eval", editable = "deadend_eval" },
     { name = "deadend-prompts", editable = "deadend_prompts" },
-    { name = "deadend-sdk", editable = "deadend_sdk" },
+    { name = "deadend-sdk", editable = "deadend_agent" },
     { name = "docker", specifier = ">=7.1.0" },
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "google-genai", specifier = ">=1.18.0" },
@@ -912,7 +912,7 @@ requires-dist = [{ name = "jinja2", specifier = ">=3.1.6" }]
 
 [[package]]
 name = "deadend-sdk"
-source = { editable = "deadend_sdk" }
+source = { editable = "deadend_agent" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },

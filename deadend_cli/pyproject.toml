@@ -75,7 +75,7 @@ test = [
 [tool.hatch.build.targets.wheel]
 packages = [
     "src/deadend_cli",
-    "deadend_sdk/src/deadend_sdk",
+    "deadend_agent/src/deadend_agent",
     "deadend_prompts/src/deadend_prompts",
     "deadend_eval/src/deadend_eval"
 ]
@@ -95,9 +95,9 @@ source = "uv-dynamic-versioning"
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
-lint = "flake8 {args:cli deadend_sdk}"
-format = "black {args:cli deadend_sdk}"
-format-check = "black --check {args:cli deadend_sdk}"
+lint = "flake8 {args:cli deadend_agent}"
+format = "black {args:cli deadend_agent}"
+format-check = "black --check {args:cli deadend_agent}"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -118,7 +118,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src/", "deadend_sdk/src"]
+source = ["src/", "deadend_agent/src"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
@@ -131,13 +131,13 @@ exclude_lines = [
 
 [tool.pyright]
 extraPaths = [
-    "deadend_sdk/src",
-    "deadend_sdk/src/deadend_sdk"
+    "deadend_agent/src",
+    "deadend_agent/src/deadend_agent"
 ]
 
 [tool.uv.workspace]
 members = [
-    "deadend_sdk/",
+    "deadend_agent/",
     "deadend_prompts",
     "deadend_eval"
 ]

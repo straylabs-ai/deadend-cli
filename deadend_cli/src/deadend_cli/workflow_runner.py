@@ -19,15 +19,15 @@ from openai import AsyncOpenAI
 import docker
 
 from deadend_cli.console import console_printer
-from deadend_sdk.core import Config
-from deadend_sdk.models.registry import AIModel
-from deadend_sdk.sandbox.sandbox import Sandbox
-from deadend_sdk.rag.db_cruds import RetrievalDatabaseConnector
-from deadend_sdk.embedders.code_indexer import SourceCodeIndexer
-from deadend_sdk.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
-from deadend_sdk.context.context_engine import ContextEngine
-from deadend_sdk.utils.structures import ShellRunner, WebappreconDeps
-from deadend_sdk.agents import (
+from deadend_agent.core import Config
+from deadend_agent.models.registry import AIModel
+from deadend_agent.sandbox.sandbox import Sandbox
+from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
+from deadend_agent.embedders.code_indexer import SourceCodeIndexer
+from deadend_agent.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
+from deadend_agent.context.context_engine import ContextEngine
+from deadend_agent.utils.structures import ShellRunner, WebappreconDeps
+from deadend_agent.agents import (
     AgentRunner,
     Planner, RagDeps, PlannerOutput,
     RouterAgent, RouterOutput,
@@ -35,7 +35,7 @@ from deadend_sdk.agents import (
     WebappReconAgent,
     ReconShellAgent
 )
-from deadend_sdk.agents.reporter import ReporterAgent
+from deadend_agent.agents.reporter import ReporterAgent
 
 # TODO: Handling message history to be able to use it in a better way
 MAX_ITERATION = 3

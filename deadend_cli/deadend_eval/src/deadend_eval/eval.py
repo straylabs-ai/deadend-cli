@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from pydantic_evals.evaluators import Evaluator
 
 from rich import print as console_printer
-from deadend_sdk import AIModel, Config, RetrievalDatabaseConnector, Sandbox
+from deadend_agent import AIModel, Config, RetrievalDatabaseConnector, Sandbox
 from deadend_cli.workflow_runner import WorkflowRunner
 
 class Subtask(BaseModel):

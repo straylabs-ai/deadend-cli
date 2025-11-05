@@ -17,7 +17,7 @@ from rich.console import Console
 import logfire
 import importlib.metadata
 
-from deadend_sdk import config_setup
+from deadend_agent import config_setup
 from .chat import chat_interface, Modes
 from .eval import eval_interface
 from .banner import print_banner

@@ -13,7 +13,7 @@ import logfire
 import json
 
 from rich import print as console_printer
-from deadend_sdk import Config, init_rag_database, sandbox_setup, ModelRegistry
+from deadend_agent import Config, init_rag_database, sandbox_setup, ModelRegistry
 from deadend_eval.eval import EvalMetadata, eval_agent
 from deadend_eval.ctf_evaluator import CtfEvaluator
 
