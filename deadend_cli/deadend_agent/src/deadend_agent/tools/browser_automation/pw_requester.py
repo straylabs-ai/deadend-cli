@@ -225,12 +225,20 @@ class PlaywrightRequester:
                 new_headers = parsed_request['headers']
         else:
             new_headers = parsed_request['headers']
+        
+        # Sanitize headers that Playwright should manage to avoid redirect issues/timeouts
+        headers_to_strip = {
+            'host', 'content-length', 'connection', 'transfer-encoding', 'accept-encoding'
+        }
+        sanitized_headers = {
+            k: v for k, v in parsed_request['headers'].items() if k.lower() not in headers_to_strip
+        }
         try:
             # Send the request using Playwright
             response = await self._send_request(
                 method=parsed_request['method'],
                 url=target_url,
-                headers=parsed_request['headers'],
+                headers=sanitized_headers,
                 body=parsed_request['body'],
                 follow_redirects=True,
                 max_redirects=20
@@ -334,6 +342,7 @@ class PlaywrightRequester:
         request_options = {
             'headers': headers,
             'max_redirects': max_redirects if follow_redirects else 0,
+            'timeout': 120_000,  # ms; allow slow redirect chains
         }
 
         if body:
