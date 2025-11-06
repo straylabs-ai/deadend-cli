@@ -223,7 +223,7 @@ class SourceCodeIndexer:
                 embeddings=None
             )
             code_sections.append(code_section)
-        
+
         # Use the generic batch embedding function
         return await batch_embed_chunks(
             openai=openai,

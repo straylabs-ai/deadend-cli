@@ -1,9 +1,9 @@
 [project]
-name = "deadend-sdk"
+name = "deadend-agent"
 dynamic = ["version"]
 requires-python = ">=3.11"
 readme = "README.md"
-description = "Core SDK for security tooling"
+description = "Core Agent for security tooling"
 authors = [{name="Yassine Bargach", email="yassine.bargach@proton.me"}]
 
 dependencies = [

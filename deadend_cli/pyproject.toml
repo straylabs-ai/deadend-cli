@@ -8,7 +8,7 @@ description = "AI agent CLI for security research"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "deadend-sdk",
+    "deadend-agent",
     "deadend-prompts",
     "deadend-eval",
     "aiofiles>=24.1.0",
@@ -143,7 +143,7 @@ members = [
 ]
 
 [tool.uv.sources]
-deadend-sdk = { workspace = true }
+deadend-agent = { workspace = true }
 deadend-prompts = { workspace = true }
 deadend-eval = { workspace = true }
 

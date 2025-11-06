@@ -5,7 +5,7 @@
 members = [
     "deadend_cli/",
     "deadend_cli/cli/",
-    "deadend_cli/deadend_sdk/", 
+    "deadend_cli/deadend_agent/", 
     "deadend_cli/deadend_prompts/",
     "deadend_cli/eval/",
 ]

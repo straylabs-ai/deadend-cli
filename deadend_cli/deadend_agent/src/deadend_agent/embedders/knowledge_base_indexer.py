@@ -149,24 +149,25 @@ class KnowledgeBaseIndexer:
                         doc_section = await self._embed_chunks(
                             openai=openai,
                             embedding_model=embedding_model,
-                            document_path=doc_chunker,
+                            document_path=self.documents_path,
                             document_title=file,
                             chunks=doc_chunks
                         )
                         documents_sections.extend(doc_section)
         return documents_sections
-    
-    
+
+
     async def _embed_chunks(
             self,
             openai: AsyncOpenAI,
             embedding_model: str,
             document_path: str,
-            document_title: str, 
+            document_title: str,
             chunks: List[str]
             ):
-        """Process document chunks and generate embeddings using the generic batch embedding function.
-        
+        """Process document chunks and generate embeddings using
+        the generic batch embedding function.
+
         Args:
             openai: AsyncOpenAI client instance
             embedding_model: Name of the embedding model to use
@@ -179,7 +180,7 @@ class KnowledgeBaseIndexer:
         """
         if not chunks:
             return []
-        
+
         # Create DocumentSection objects for all chunks
         doc_sections = []
         for chunk_idx, chunk in enumerate(chunks):
@@ -187,7 +188,7 @@ class KnowledgeBaseIndexer:
             doc_section = DocumentSection(
                 document_path=document_path,
                 title=document_title,
-                content={chunk_idx : new_chunk},
+                content={str(chunk_idx) : new_chunk},
                 embeddings=None
             )
             doc_sections.append(doc_section)
