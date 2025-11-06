@@ -31,7 +31,8 @@ from deadend_agent.agents import (
     RouterAgent, RouterOutput,
     JudgeAgent,
     WebappReconAgent,
-    ReconShellAgent
+    ReconShellAgent,
+    PythonInterpreterAgent, PythonInterpreterOutput
 )
 from deadend_agent.agents.reporter import ReporterAgent
 

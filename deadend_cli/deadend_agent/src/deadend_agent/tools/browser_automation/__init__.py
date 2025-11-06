@@ -35,6 +35,7 @@ async def pw_send_payload(
     # the function detects the dummy credentials given and replaces them with the right one
     # So that the LLM will never see the true credentials
     raw_request_anon = replace_credential_placeholders(raw_request)
+    print(raw_request_anon)
     is_tls = port == 443 or target_host.startswith('https://')
     session_key = f"{host}_{port}"
     proxy_url = "http://localhost:8080" if proxy else None
@@ -65,6 +66,7 @@ async def pw_send_payload(
         #         proxy=proxy,
         #         verify_ssl=verify_ssl
         #     )
+        print(responses)
         return str(responses)
 
     except Exception as e:

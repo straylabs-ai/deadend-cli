@@ -398,14 +398,23 @@ async def chat_interface(
     # Set up approval callback to use Prompt Toolkit
     async def approval_callback():
         return await chat_interface.ask_for_approval_panel("Tool Execution Approval Required")
-    
+
     workflow_agent.set_approval_callback(approval_callback)
     # Setup available agents
     available_agents = {
-        'webapp_recon': "Expert cybersecurity agent that enumerates a web target to understand the architecture and understand the endpoints and where an attack vector could be tested.",
-        'recon_shell': "Expert system reconnaissance agent that performs infrastructure-level security assessment using specialized command-line tools. Focuses on network scanning, system enumeration, and infrastructure analysis. Should NOT be used for simple request injections or basic web testing - use specialized web tools instead.",
+        'webapp_recon': "Expert cybersecurity agent that enumerates a web \
+            target to understand the architecture and understand the endpoints\
+            and where an attack vector could be tested.",
+        'recon_shell': "Expert system reconnaissance agent that performs \
+            infrastructure-level security assessment using specialized \
+            command-line tools. Focuses on network scanning, system enumeration,\
+            and infrastructure analysis. Should NOT be used for simple request \
+            injections or basic web testing - use specialized web tools instead.",
         # 'planner_agent': 'Expert cybersecurity agent that plans what is the next step to do',
-        'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
+        'router_agent': 'Router agent, expert that routes to the specific \
+            agent needed to achieve the next step of the plan.',
+        'python_interpreter_agent': 'Generate code and runs it in a python \
+            interpreter depending on the goal given.'
     }
     workflow_agent.register_agents(available_agents)
     # Check if the provided target is reachable before proceeding

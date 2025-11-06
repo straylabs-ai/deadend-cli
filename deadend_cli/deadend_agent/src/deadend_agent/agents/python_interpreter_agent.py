@@ -30,7 +30,8 @@ class PythonInterpreterOutput(BaseModel):
         filename: Name of the Python script file that was executed.
         goal: The security testing goal that the script was designed to achieve.
         reasoning: The agent's reasoning for generating and executing the script.
-        vulnerability_category: Category of vulnerability being tested (e.g., "SQL Injection", "XSS").
+        vulnerability_category: Category of vulnerability being tested
+            (e.g., "SQL Injection", "XSS").
         attempt: Description of the security testing attempt or approach.
         script_stdout: Standard output from the Python script execution.
         script_stderr: Standard error output from the Python script execution.
@@ -56,7 +57,7 @@ class PythonInterpreterAgent(AgentRunner):
     to a file and executing it in an isolated sandbox, ensuring safe execution
     of security testing scripts.
     """
-    
+
     def __init__(
         self,
         model: AIModel,
@@ -97,7 +98,7 @@ class PythonInterpreterAgent(AgentRunner):
         deps,
         message_history,
         usage: RunUsage | None,
-        usage_limits: UsageLimits | None, 
+        usage_limits: UsageLimits | None,
         deferred_tool_results: DeferredToolResults | None = None
     ):
         """Execute the agent with a user prompt and optional memory handling.
