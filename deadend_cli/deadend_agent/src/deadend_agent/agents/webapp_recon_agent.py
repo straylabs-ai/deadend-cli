@@ -127,8 +127,7 @@ class WebappReconAgent(AgentRunner):
         message_history,
         usage: RunUsage | None,
         usage_limits:UsageLimits | None,
-        deferred_tool_results: DeferredToolResults | None = None,
-        memory: MemoryHandler | None = None
+        deferred_tool_results: DeferredToolResults | None = None
     ):
         agent_response = await super().run(
             user_prompt=user_prompt,
@@ -138,15 +137,15 @@ class WebappReconAgent(AgentRunner):
             usage_limits=usage_limits,
             deferred_tool_results=deferred_tool_results
         )
-        if memory:
-            agent_output = agent_response.output
-            if isinstance(agent_output, RequesterSecOutput):
-                memory.add_agent_result_to_memory(
-                    agent_name=self.name,
-                    payload=agent_output.payload,
-                    vulnerability_category=agent_output.vulnerability_category,
-                    attempt=agent_output.attempt,
-                    request=agent_output.request,
-                    response=agent_output.response
-                )
+        # if memory:
+        #     agent_output = agent_response.output
+        #     if isinstance(agent_output, RequesterSecOutput):
+        #         deps.memory.add_agent_result_to_memory(
+        #             agent_name=self.name,
+        #             payload=agent_output.payload,
+        #             vulnerability_category=agent_output.vulnerability_category,
+        #             attempt=agent_output.attempt,
+        #             request=agent_output.request,
+        #             response=agent_output.response
+        #         )
         return agent_response

@@ -11,9 +11,11 @@ routing based on current context and progress.
 
 import uuid
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, TYPE_CHECKING
 from deadend_agent.utils.structures import Task
-from deadend_agent.agents import RouterOutput
+
+if TYPE_CHECKING:
+    from deadend_agent.agents import RouterOutput
 
 class ContextEngine:
     """Context engine for managing workflow state and task coordination.
@@ -113,7 +115,7 @@ class ContextEngine:
         """
         return self.workflow_context
 
-    def add_next_agent(self, router_output: RouterOutput) -> None:
+    def add_next_agent(self, router_output: "RouterOutput") -> None:
         """Add router output information and set the next agent.
         
         Args:

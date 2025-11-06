@@ -13,7 +13,6 @@ async def pw_send_payload(
     raw_request: str,
     proxy: bool = False,
     verify_ssl: bool = False,
-    memory_handler: MemoryHandler | None = None,
 ):
     """
     Send HTTP payload using Playwright with enhanced capabilities and session persistence.
@@ -32,8 +31,6 @@ async def pw_send_payload(
         Union[str, bytes]: HTTP response or error message
     """
     host, port = extract_host_port(target_host=target_host)
-
-
     # Anonymisation process
     # the function detects the dummy credentials given and replaces them with the right one
     # So that the LLM will never see the true credentials
@@ -41,8 +38,6 @@ async def pw_send_payload(
     is_tls = port == 443 or target_host.startswith('https://')
     session_key = f"{host}_{port}"
     proxy_url = "http://localhost:8080" if proxy else None
-
-    
 
     # pw_requester session
     pw_session = await PlaywrightSessionManager.get_session(
@@ -62,14 +57,14 @@ async def pw_send_payload(
         ):
             responses.append(response)
         # Saving the request/response into the cache
-        if memory_handler:
-            memory_handler.save_tool_results(
-                tool_name="pw_send_payload",
-                raw_request=raw_request_anon,
-                responses=responses,
-                proxy=proxy,
-                verify_ssl=verify_ssl
-            )
+        # if memory_handler:
+        #     memory_handler.save_tool_results(
+        #         tool_name="pw_send_payload",
+        #         raw_request=raw_request_anon,
+        #         responses=responses,
+        #         proxy=proxy,
+        #         verify_ssl=verify_ssl
+        #     )
         return str(responses)
 
     except Exception as e:

@@ -96,8 +96,8 @@ class KnowledgeBaseIndexer:
 
     async def serialized_embedded_documents(
         self,
-        openai_api_key: str,
-        embedding_model: str
+        openai_api_key: str | None,
+        embedding_model: str | None
     ):
         """Generate serialized document sections with embeddings for database storage.
         
@@ -125,8 +125,8 @@ class KnowledgeBaseIndexer:
 
     async def embed_documents(
         self,
-        openai_api_key: str, 
-        embedding_model: str
+        openai_api_key: str | None, 
+        embedding_model: str | None
     ) -> List[DocumentSection]:
         """Process and embed all markdown documents in the knowledge base.
         
@@ -160,7 +160,7 @@ class KnowledgeBaseIndexer:
     async def _embed_chunks(
             self,
             openai: AsyncOpenAI,
-            embedding_model: str,
+            embedding_model: str | None,
             document_path: str,
             document_title: str,
             chunks: List[str]
@@ -192,7 +192,9 @@ class KnowledgeBaseIndexer:
                 embeddings=None
             )
             doc_sections.append(doc_section)
-
+        # TODO: Better handling needed here
+        if embedding_model is None:
+            return []
         # Use the generic batch embedding function
         return await batch_embed_chunks(
             openai=openai,

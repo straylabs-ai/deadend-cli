@@ -10,6 +10,7 @@ in the security research framework.
 """
 import json
 from pathlib import Path
+from attr import filters
 from mem0 import MemoryClient
 
 
@@ -38,7 +39,7 @@ class MemoryHandler:
         self.session = session
         self.messages = []
         self.target = target
-        self.base_cache = Path.home() / ".cache" / "deadend" / "memory" / "sessions" / self.session
+        self.base_cache = Path.home() / ".cache" / "deadend" / "memory" / "sessions" / str(self.session)
         self.base_cache.mkdir(parents=True, exist_ok=True)
 
     def setup_memory_for_session(self, api_key: str):
@@ -102,3 +103,9 @@ class MemoryHandler:
         with open(log_path, 'a', encoding="utf-8") as f:
             f.write(json.dumps(records, ensure_ascii=False) + "\n")
 
+    def search(self, query: str):
+        """Search in memory
+        Searches query in memory corresponding to the target in place.
+        """
+        result = self.memory.search(query=query, filters={"target_id": self.target})
+        return result

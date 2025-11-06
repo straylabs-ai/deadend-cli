@@ -43,7 +43,7 @@ class RouterAgent(AgentRunner):
         usage,
         usage_limits,
         deferred_tool_results
-    ) -> AgentRunResult:
+    ):
         return await super().run(
             user_prompt=user_prompt,
             deps=deps,

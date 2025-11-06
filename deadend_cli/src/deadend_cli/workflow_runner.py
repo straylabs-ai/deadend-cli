@@ -19,13 +19,11 @@ from openai import AsyncOpenAI
 import docker
 
 from deadend_cli.console import console_printer
-from deadend_agent.core import Config
-from deadend_agent.models.registry import AIModel
-from deadend_agent.sandbox.sandbox import Sandbox
+from deadend_agent import AIModel, Sandbox, Config
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
-from deadend_agent.context.context_engine import ContextEngine
+from deadend_agent.context import ContextEngine
 from deadend_agent.utils.structures import ShellRunner, WebappreconDeps
 from deadend_agent.agents import (
     AgentRunner,
@@ -74,13 +72,13 @@ class WorkflowRunner:
     config: Config
     model: AIModel
     code_indexer_db: RetrievalDatabaseConnector
-    sandbox: Sandbox
+    sandbox: Sandbox | None
     context: ContextEngine
     goal_achieved: bool = False
     assets_folder: str
     session_id: uuid.UUID
     interrupted: bool = False
-    
+
     def __init__(
             self,
             model: AIModel,
@@ -109,6 +107,9 @@ class WorkflowRunner:
 
         # Initialize context engine with session ID
         self.context = ContextEngine(session_id=self.session_id)
+
+    # def initialize_memory(self, target):
+    #     self.memory = MemoryHandler(session=self.session_id, target=target)
 
     def interrupt_workflow(self) -> None:
         """Interrupt the workflow execution.
@@ -258,7 +259,7 @@ class WorkflowRunner:
             embedding_model=self.config.embedding_model
         )
 
-    def register_agents(self, agents: list[str]) -> None:
+    def register_agents(self, agents: dict[str, str]) -> None:
         """Register available agents for the workflow.
         
         Args:
@@ -473,7 +474,7 @@ class WorkflowRunner:
                     usage=usage_agent,
                     deps=rag_deps,
                     usage_limits=usage_limits_agent,
-                    deferred_tool_results=None,
+                    deferred_tool_results=None
                 )
             elif agent_name == "webapp_recon":
                 # Check for interruption before webapp recon execution
@@ -492,11 +493,11 @@ class WorkflowRunner:
                 )
                 resp = await agent.run(
                     user_prompt=user_prompt,
-                    message_history=message_history,
+                    message_history=message_history+str(self.context.get_all_context()),
                     usage=usage_agent,
                     deps=webapprecon_deps,
                     usage_limits=usage_limits_agent,
-                    deferred_tool_results=deferred_tool_results
+                    deferred_tool_results=deferred_tool_results,
                 )
             elif agent_name == "recon_shell":
                 # Check for interruption before recon shell execution
@@ -519,7 +520,7 @@ class WorkflowRunner:
                     usage=usage_agent,
                     deps=webapprecon_deps,
                     usage_limits=usage_limits_agent,
-                    deferred_tool_results=deferred_tool_results
+                    deferred_tool_results=deferred_tool_results,
                 )
             else:
                 # Check for interruption before other agent execution
@@ -532,7 +533,7 @@ class WorkflowRunner:
                     message_history=message_history,
                     usage=usage_agent,
                     usage_limits=usage_limits_agent,
-                    deferred_tool_results=deferred_tool_results
+                    deferred_tool_results=deferred_tool_results,
                 )
 
             # Check for interruption after agent execution
@@ -573,6 +574,8 @@ class WorkflowRunner:
         Returns:
             Final judge output from the workflow execution
         """
+        # init memory
+        # self.initialize_memory(target=target)
         # Plan the tasks
         try:
             tasks = await self.plan_tasks(goal=prompt, target=target)
@@ -640,7 +643,7 @@ class WorkflowRunner:
                         agent_response = await self.run_agent(
                             self.context.next_agent,
                             prompt=None,
-                            message_history=messages,
+                            message_history=str(messages),
                             deferred_tool_results=results
                         )
                 self.context.add_agent_response(agent_response.all_messages_json())

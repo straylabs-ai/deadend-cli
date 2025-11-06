@@ -137,7 +137,7 @@ extraPaths = [
 
 [tool.uv.workspace]
 members = [
-    "deadend_agent/",
+    "deadend_agent",
     "deadend_prompts",
     "deadend_eval"
 ]

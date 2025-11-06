@@ -15,7 +15,7 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 
 from typing import Any, Literal
 
-from deadend_agent.context import MemoryHandler
+# from deadend_agent.context import MemoryHandler
 from deadend_agent.models.registry import AIModel
 from tenacity import (
     retry,
@@ -56,7 +56,7 @@ class AgentRunner:
         message_history,
         usage: RunUsage | None,
         usage_limits: UsageLimits | None,
-        deferred_tool_results: DeferredToolResults | None = None,
+        deferred_tool_results: DeferredToolResults | None = None
     ):
         # Checking if the number of tokens doesn't exceed the number of tokens accepted by the 
         # Model
@@ -88,7 +88,7 @@ class ADaPTAgent:
     def __init__(
         self,
         session_id: str,
-        memory: MemoryHandler,
+        # memory: MemoryHandler,
         max_depth: int = 3
     ):
         self.session = session_id

@@ -257,8 +257,8 @@ class ChatInterface:
             self,
             title: str = "Prompt",
             placeholder: str = "Type here and press Enter",
-            interrupt_callback: Optional[Callable] = None
-        ) -> Optional[str]:
+            interrupt_callback: Callable | None = None
+        ) -> str:
         """Prompt for input inside a bordered frame.
 
         Typing occurs inside the frame; Enter accepts, Esc/Ctrl-C cancels.

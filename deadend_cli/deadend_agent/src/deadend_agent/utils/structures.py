@@ -10,7 +10,7 @@ injection containers, and task management structures.
 """
 
 import uuid
-from typing import Dict, Literal
+from typing import Dict, Literal, Any
 from enum import Enum
 from dataclasses import dataclass
 from openai import AsyncOpenAI
@@ -91,7 +91,7 @@ class ShellRunner:
             stdout=result["stdout"],
             stderr=stderr
         )
-        return result 
+        return result
 
     def get_cmd_log(self) -> Dict[int, CmdLog]:
         """

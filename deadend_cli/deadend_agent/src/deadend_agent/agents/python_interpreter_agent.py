@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
-from deadend_agent.context import MemoryHandler
+# from deadend_agent.context import MemoryHandler
 from deadend_agent.models import AIModel
 from deadend_agent.tools import run_python_file
 from deadend_prompts import render_agent_instructions, render_tool_description
@@ -98,8 +98,7 @@ class PythonInterpreterAgent(AgentRunner):
         message_history,
         usage: RunUsage | None,
         usage_limits: UsageLimits | None, 
-        deferred_tool_results: DeferredToolResults | None = None,
-        memory: MemoryHandler | None = None
+        deferred_tool_results: DeferredToolResults | None = None
     ):
         """Execute the agent with a user prompt and optional memory handling.
         
@@ -129,16 +128,16 @@ class PythonInterpreterAgent(AgentRunner):
             deferred_tool_results
         )
 
-        if memory:
-            agent_output = agent_response.output
-            if isinstance(agent_output, PythonInterpreterOutput):
-                memory.add_agent_result_to_memory(
-                    agent_name=self.name,
-                    vulnerability_category=agent_output.vulnerability_category,
-                    attempt=agent_output.attempt,
-                    filename=agent_output.filename,
-                    goal=agent_output.goal,
-                    stdout=agent_output.script_stdout,
-                    stderr=agent_output.script_stderr
-                )
+        # if memory:
+        #     agent_output = agent_response.output
+        #     if isinstance(agent_output, PythonInterpreterOutput):
+        #         memory.add_agent_result_to_memory(
+        #             agent_name=self.name,
+        #             vulnerability_category=agent_output.vulnerability_category,
+        #             attempt=agent_output.attempt,
+        #             filename=agent_output.filename,
+        #             goal=agent_output.goal,
+        #             stdout=agent_output.script_stdout,
+        #             stderr=agent_output.script_stderr
+        #         )
         return agent_response

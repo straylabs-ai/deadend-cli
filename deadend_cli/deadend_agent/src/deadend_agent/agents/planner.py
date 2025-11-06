@@ -18,6 +18,7 @@ from openai import AsyncOpenAI
 
 from deadend_agent.utils.structures import Task
 from .factory import AgentRunner
+# from deadend_agent.context import MemoryHandler
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.models.registry import AIModel
 from deadend_agent.utils.structures import RagDeps
@@ -100,7 +101,7 @@ class PlannerAgent(AgentRunner):
             message_history=message_history,
             usage=usage,
             usage_limits=usage_limits,
-            deferred_tool_results=deferred_tool_results,
+            deferred_tool_results=deferred_tool_results
         )
 
 class ADaPTPlanner:
@@ -109,7 +110,8 @@ class ADaPTPlanner:
     The planner coordinates the overall security assessment process by managing
     information about the target, tracking tasks, and replanning when necessary.
 
-    [ADAPT: As-Needed Decomposition and Planning with Language Models](https://arxiv.org/pdf/2311.05772)
+    [ADAPT: As-Needed Decomposition and \
+        Planning with Language Models](https://arxiv.org/pdf/2311.05772)
 
     It receives the following information:
     - the target URL
@@ -153,6 +155,7 @@ class ADaPTPlanner:
             usage_limits: UsageLimits,
             openai: AsyncOpenAI,
             rag: RetrievalDatabaseConnector,
+            # memory: MemoryHandler,
             session_id: uuid.UUID
         ):
         """Execute the planning workflow to generate security assessment tasks.
@@ -264,5 +267,5 @@ class Planner:
             deps=rag_deps,
             message_history=message_history,
             usage=usage,
-            usage_limits=usage_limits,
+            usage_limits=usage_limits
         )
