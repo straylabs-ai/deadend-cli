@@ -8,6 +8,9 @@ description = "AI agent CLI for security research"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "deadend-agent",
+    "deadend-prompts",
+    "deadend-eval",
     "aiofiles>=24.1.0",
     "aiohttp>=3.12.14",
     "asgiref>=3.8.1",
@@ -28,8 +31,8 @@ dependencies = [
     "playwright>=1.54.0",
     "prompt-toolkit>=3.0.51",
     "pydantic>=2.11.5",
-    "pydantic-ai>=0.2.12",
-    "pydantic-ai-slim[google]>=0.2.12",
+    "pydantic-ai>=1.9.1",
+    "pydantic-ai-slim[google]>=1.9.1",
     "pyyaml>=6.0.2",
     "readchar>=4.2.1",
     "rich>=14.0.0",
@@ -46,6 +49,8 @@ dependencies = [
     "typer>=0.15.4",
     "zaproxy>=0.4.0",
     "jinja2>=3.1.6",
+    "mem0ai>=1.0.0",
+    "typing-extensions>=4.15.0",
 ]
 
 [project.scripts]
@@ -70,9 +75,9 @@ test = [
 [tool.hatch.build.targets.wheel]
 packages = [
     "src/deadend_cli",
-    "deadend_sdk/src/deadend_sdk",
+    "deadend_agent/src/deadend_agent",
     "deadend_prompts/src/deadend_prompts",
-    "eval/src/eval"
+    "deadend_eval/src/deadend_eval"
 ]
 include = [
     "deadend_cli/data/*.json",
@@ -90,9 +95,9 @@ source = "uv-dynamic-versioning"
 
 [tool.hatch.envs.default.scripts]
 test = "pytest {args:tests}"
-lint = "flake8 {args:cli deadend_sdk}"
-format = "black {args:cli deadend_sdk}"
-format-check = "black --check {args:cli deadend_sdk}"
+lint = "flake8 {args:cli deadend_agent}"
+format = "black {args:cli deadend_agent}"
+format-check = "black --check {args:cli deadend_agent}"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -102,7 +107,7 @@ python_functions = ["test_*"]
 adopts = [
     "--strict-markers",
     "--strict-config",
-    "--cov=cli",
+    "--cov=src",
     "--cov-report=term-missing",
     "--cov-report=html",
 ]
@@ -113,7 +118,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["cli", "deadend_sdk/src"]
+source = ["src/", "deadend_agent/src"]
 omit = ["tests/*"]
 
 [tool.coverage.report]
@@ -126,9 +131,19 @@ exclude_lines = [
 
 [tool.pyright]
 extraPaths = [
-    "deadend_sdk/src",
-    "deadend_sdk/src/deadend_sdk"
+    "deadend_agent/src",
+    "deadend_agent/src/deadend_agent"
 ]
 
+[tool.uv.workspace]
+members = [
+    "deadend_agent",
+    "deadend_prompts",
+    "deadend_eval"
+]
 
+[tool.uv.sources]
+deadend-agent = { workspace = true }
+deadend-prompts = { workspace = true }
+deadend-eval = { workspace = true }
 

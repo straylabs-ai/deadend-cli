@@ -13,7 +13,7 @@ from rich import print
 from rich.panel import Panel
 from rich.box import ROUNDED
 
-from deadend_sdk import Config
+from deadend_agent import Config
 
 BANNER = """[bold grey]
 ██████╗ ███████╗ █████╗ ██████╗ ███████╗███╗   ██╗██████╗ 

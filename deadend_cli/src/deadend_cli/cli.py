@@ -13,9 +13,11 @@ import typer
 import docker
 from docker.errors import DockerException
 from rich.console import Console
-import logfire
 
-from deadend_sdk import config_setup
+import logfire
+import importlib.metadata
+
+from deadend_agent import config_setup
 from .chat import chat_interface, Modes
 from .eval import eval_interface
 from .banner import print_banner
@@ -29,7 +31,11 @@ app = typer.Typer(help="Deadend CLI - interact with the Deadend framework.")
 @app.command()
 def version():
     """Show the version of the Deadend framework."""
-    print("[bold green]Deadend CLI[/bold green]")
+    try:
+        package_version = importlib.metadata.version("deadend_cli")
+        console.print(f"[bold green]Deadend CLI v{package_version}[/bold green]")
+    except importlib.metadata.PackageNotFoundError:
+        console.print("[bold red]Deadend CLI[/bold red] - [yellow]Version not available[/yellow]")
 
 
 @app.command()

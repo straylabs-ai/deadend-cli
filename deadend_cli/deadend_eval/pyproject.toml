@@ -1,0 +1,24 @@
+[project]
+name = "deadend-eval"
+dynamic = ["version"]
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Yassine Bargach", email = "yassine@straylabs.ai" }
+]
+requires-python = ">=3.11"
+dependencies = [
+]
+
+[project.scripts]
+deadend_eval = "deadend_eval:eval"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/deadend_eval"]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"

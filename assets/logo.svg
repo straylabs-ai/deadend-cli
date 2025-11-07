@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="600" height="600" viewBox="0 0 600 600"
+     role="img" aria-label="Minimal anime style red letter S with white outline">
+  <defs>
+    <style>
+      /* Bold display fallback; pick a heavy sans for the anime/comic look */
+      .s { font-family: "Impact", "Arial Black", "Helvetica Neue", Arial, sans-serif; font-weight: 900; }
+    </style>
+  </defs>
+
+  <!-- Transparent background by default -->
+
+  <!-- Centered group with a small incline (rotate) -->
+  <g transform="translate(300,320) rotate(-14)">
+
+    <!-- White outline (stroke) drawn behind the red fill by using paint-order -->
+    <text class="s"
+          x="0" y="0"
+          font-size="360"
+          text-anchor="middle"
+          dominant-baseline="central"
+          fill="#e31b23"                      <!-- red fill -->
+          stroke="#ffffff"                    <!-- white contour -->
+          stroke-width="30"                   <!-- thickness of white contour -->
+          stroke-linejoin="round"
+          stroke-linecap="round"
+          paint-order="stroke fill">
+      S
+    </text>
+
+  </g>
+</svg>
