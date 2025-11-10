@@ -14,6 +14,7 @@ import json
 from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
+from deadend_agent.agents.factory import AgentRunner
 from deadend_agent.context.memory import MemoryHandler
 from deadend_agent.models.registry import AIModel
 from deadend_agent.tools import (
@@ -22,7 +23,7 @@ from deadend_agent.tools import (
     webapp_code_rag
 )
 from deadend_prompts import render_agent_instructions, render_tool_description
-from .factory import AgentRunner
+
 
 class RequesterOutput(BaseModel):
     """Output model for web reconnaissance request operations.
