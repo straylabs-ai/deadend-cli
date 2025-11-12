@@ -17,7 +17,7 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 from openai import AsyncOpenAI
 
 from deadend_agent.utils.structures import Task
-from .factory import AgentRunner
+from deadend_agent.agents.factory import AgentRunner
 # from deadend_agent.context import MemoryHandler
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.models.registry import AIModel
@@ -76,7 +76,7 @@ class PlannerAgent(AgentRunner):
 
     async def run(
         self,
-        user_prompt,
+        prompt,
         deps,
         message_history,
         usage,
@@ -86,7 +86,7 @@ class PlannerAgent(AgentRunner):
         """Execute the planner agent to generate security assessment tasks.
         
         Args:
-            user_prompt: The user's prompt or goal for the security assessment.
+            prompt: The user's prompt or goal for the security assessment.
             deps: Dependencies required for the agent execution (RAG dependencies).
             message_history: Historical conversation context.
             usage: Current usage tracking information.
@@ -96,7 +96,7 @@ class PlannerAgent(AgentRunner):
             The generated planner output containing the task list.
         """
         return await super().run(
-            user_prompt=user_prompt,
+            prompt=prompt,
             deps=deps,
             message_history=message_history,
             usage=usage,
@@ -146,7 +146,7 @@ class Planner:
         )
 
     async def run(self,
-            user_prompt: str,
+            prompt: str,
             message_history: str,
             usage: RunUsage,
             usage_limits: UsageLimits,
@@ -157,7 +157,7 @@ class Planner:
         """Execute the planning workflow to generate security assessment tasks.
         
         Args:
-            user_prompt: The user's security assessment goal or objective.
+            prompt: The user's security assessment goal or objective.
             message_history: Historical conversation context.
             usage: Current resource usage tracking.
             usage_limits: Limits on resource consumption.
@@ -177,9 +177,11 @@ class Planner:
         )
 
         return await self.agent.run(
-            user_prompt=user_prompt,
+            prompt=prompt,
             deps=rag_deps,
             message_history=message_history,
             usage=usage,
             usage_limits=usage_limits
         )
+
+
