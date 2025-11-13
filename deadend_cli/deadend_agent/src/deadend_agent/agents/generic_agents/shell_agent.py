@@ -61,7 +61,7 @@ class ShellAgent(AgentRunner):
 
     async def run(
         self,
-        user_prompt,
+        prompt,
         deps,
         message_history,
         usage: RunUsage | None,
@@ -69,7 +69,7 @@ class ShellAgent(AgentRunner):
         deferred_tool_results: DeferredToolResults | None = None,
     ):
         return await super().run(
-            user_prompt=user_prompt,
+            prompt=prompt,
             deps=deps,
             message_history=message_history,
             usage=usage,

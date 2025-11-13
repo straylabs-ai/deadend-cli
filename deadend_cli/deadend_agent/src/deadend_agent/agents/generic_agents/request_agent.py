@@ -108,7 +108,7 @@ class RequesterAgent(AgentRunner):
 
     async def run(
         self,
-        user_prompt,
+        prompt,
         deps,
         message_history,
         usage: RunUsage | None,
@@ -116,7 +116,7 @@ class RequesterAgent(AgentRunner):
         deferred_tool_results: DeferredToolResults | None = None
     ):
         agent_response = await super().run(
-            user_prompt=user_prompt,
+            prompt=prompt,
             deps=deps,
             message_history=message_history,
             usage=usage,

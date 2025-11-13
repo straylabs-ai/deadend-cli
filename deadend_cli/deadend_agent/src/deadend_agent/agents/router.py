@@ -32,12 +32,19 @@ class RouterAgent(AgentRunner):
             available_agents=available_agents
             )
         self._set_description()
-        super().__init__(name="router", model=model, instructions=router_instructions, deps_type=deps_type, output_type=RouterOutput, tools=[])
+        super().__init__(
+            name="router",
+            model=model,
+            instructions=router_instructions,
+            deps_type=deps_type,
+            output_type=RouterOutput,
+            tools=[]
+        )
 
 
     async def run(
         self,
-        user_prompt,
+        prompt,
         deps,
         message_history,
         usage,
@@ -45,7 +52,7 @@ class RouterAgent(AgentRunner):
         deferred_tool_results
     ):
         return await super().run(
-            user_prompt=user_prompt,
+            prompt=prompt,
             deps=deps,
             message_history=message_history,
             usage=usage,

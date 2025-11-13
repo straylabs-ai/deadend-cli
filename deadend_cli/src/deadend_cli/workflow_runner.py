@@ -31,7 +31,7 @@ from deadend_agent.agents import (
     RouterAgent, RouterOutput,
     JudgeAgent,
     WebappReconAgent,
-    ReconShellAgent,
+    ShellAgent,
     PythonInterpreterAgent, PythonInterpreterOutput
 )
 from deadend_agent.agents.reporter import ReporterAgent
@@ -301,7 +301,7 @@ class WorkflowRunner:
             raise InterruptedError("Workflow interrupted before planning")
             
         openai_embedder = AsyncOpenAI(api_key=self.config.openai_api_key)
-        self.context.set_target(target=target)
+        self.context.set_target(target=targe        tools: listt)
         self.planner = Planner(
             model=self.model,
             target=target,
@@ -312,7 +312,7 @@ class WorkflowRunner:
 
         try:
             resp = await self.planner.run(
-                user_prompt=goal,
+                prompt=goal,
                 message_history="",
                 usage=usage_planner,
                 usage_limits=usage_limits_planner,
@@ -365,7 +365,7 @@ class WorkflowRunner:
 
         try:
             resp = await self.router.run(
-                user_prompt=prompt + self.context.get_all_context(),
+                prompt=prompt + self.context.get_all_context(),
                 deps=None,
                 message_history="",
                 usage=usage_router,
@@ -400,7 +400,7 @@ class WorkflowRunner:
         """
         # Determine if approval is required based on mode
         requires_approval = self.mode == "hacker"
-        
+
         match agent_name:
             case "webapp_recon":
                 return WebappReconAgent(
@@ -470,7 +470,7 @@ class WorkflowRunner:
                     session_id=self.session_id
                 )
                 resp = await agent.run(
-                    user_prompt=user_prompt,
+                    prompt=user_prompt,
                     message_history=message_history,
                     usage=usage_agent,
                     deps=rag_deps,
@@ -493,7 +493,7 @@ class WorkflowRunner:
                     session_id=self.session_id
                 )
                 resp = await agent.run(
-                    user_prompt=user_prompt,
+                    prompt=user_prompt,
                     message_history=message_history+str(self.context.get_all_context()),
                     usage=usage_agent,
                     deps=webapprecon_deps,
@@ -516,7 +516,7 @@ class WorkflowRunner:
                     session_id=self.session_id
                 )
                 resp = await agent.run(
-                    user_prompt=user_prompt,
+                    prompt=user_prompt,
                     message_history=message_history,
                     usage=usage_agent,
                     deps=webapprecon_deps,
@@ -529,7 +529,7 @@ class WorkflowRunner:
                     raise InterruptedError("Workflow interrupted before agent execution")
 
                 resp = await agent.run(
-                    user_prompt=user_prompt,
+                    prompt=user_prompt,
                     deps=None,
                     message_history=message_history,
                     usage=usage_agent,

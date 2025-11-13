@@ -17,8 +17,6 @@ from deadend_agent.agents.factory import AgentRunner, AgentOutput
 from deadend_agent.tools import run_python_file
 from deadend_prompts import render_agent_instructions, render_tool_description
 
-
-
 class PythonInterpreterOutput(AgentOutput):
     """Output model for Python interpreter agent execution results.
     
@@ -62,7 +60,6 @@ class PythonInterpreterAgent(AgentRunner):
         self,
         model: AIModel,
         deps_type: Any | None,
-        tools: list
     ):
         """Initialize the Python interpreter agent.
         
@@ -94,7 +91,7 @@ class PythonInterpreterAgent(AgentRunner):
 
     async def run(
         self,
-        user_prompt,
+        prompt,
         deps,
         message_history,
         usage: RunUsage | None,
@@ -121,12 +118,11 @@ class PythonInterpreterAgent(AgentRunner):
         """
 
         agent_response = await super().run(
-            user_prompt,
+            prompt,
             deps,
             message_history,
             usage,
             usage_limits,
             deferred_tool_results
         )
-
         return agent_response

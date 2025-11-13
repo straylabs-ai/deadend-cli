@@ -9,7 +9,8 @@ configuring AI agents with proper error handling, retry logic, and
 usage tracking for the security research framework.
 """
 from __future__ import annotations
-from typing import Any, Literal, Protocol
+from typing import Any, Literal
+from uuid import UUID
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
@@ -17,6 +18,16 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.context.memory import MemoryHandler
 from deadend_agent.models.registry import AIModel
 from deadend_agent.utils.structures import PlannerOutput
+from deadend_prompts.template_renderer import render_agent_instructions
+from deadend_agent.agents import (
+    RouterAgent, RouterOutput,
+    RequesterAgent, RequesterOutput,
+    ShellAgent, ShellOutput,
+    PythonInterpreterAgent, PythonInterpreterOutput,
+    WebappReconAgent
+)
+from deadend_agent.utils.structures import WebappreconDeps
+from deadend_agent.context import ContextEngine
 # from tenacity import (
 #     retry,
 #     stop_after_attempt,
@@ -25,9 +36,10 @@ from deadend_agent.utils.structures import PlannerOutput
 
 class AgentRunner:
     """
-    AgentRunner sets up the Pydantic_ai agent.
-    This can be viewed as a wrapper that adds clean up to agent calls
-
+    Wrapper for Pydantic AI agents that provides a consistent interface for agent execution.
+    
+    This class encapsulates a Pydantic AI Agent instance and provides methods to run
+    agent tasks with proper configuration, error handling, and usage tracking.
     """
     def __init__(
         self,
@@ -38,6 +50,16 @@ class AgentRunner:
         output_type: Any | None,
         tools: list,
     ):
+        """Initialize an AgentRunner instance.
+        
+        Args:
+            name: Unique identifier for this agent instance
+            model: The AI model to use for agent execution
+            instructions: System instructions/prompt for the agent
+            deps_type: Optional dependency type for the agent
+            output_type: Expected output type for the agent's responses
+            tools: List of tools available to the agent
+        """
         self.name = name
         self.agent = Agent(
             model=model,
@@ -57,12 +79,23 @@ class AgentRunner:
         usage_limits: UsageLimits | None,
         deferred_tool_results: DeferredToolResults | None = None
     ):
-        # Checking if the number of tokens doesn't exceed the number of tokens accepted by the
-        # Model
-        # Handling rate-limits
-        # Handling token number reports
-        # Handling interruptions
-        # Normal running
+        """Execute the agent with the given prompt and parameters.
+        
+        Args:
+            prompt: The user prompt/task for the agent to process
+            deps: Optional dependencies to pass to the agent
+            message_history: Previous conversation messages for context
+            usage: Optional usage tracking object
+            usage_limits: Optional limits for token usage
+            deferred_tool_results: Optional deferred tool results from previous runs
+            
+        Returns:
+            AgentRunResult containing the agent's output and metadata
+            
+        Note:
+            Future enhancements will include token limit checking, rate-limit handling,
+            and interruption support.
+        """
         return await self.agent.run(
             user_prompt=prompt,
             deps=deps,
@@ -73,6 +106,19 @@ class AgentRunner:
         )
 
 class TaskNode(BaseModel):
+    """Represents a task node in the ADaPT decomposition tree.
+    
+    Each node represents a task or subtask with its execution status, confidence score,
+    and hierarchical relationships to parent and child tasks.
+    
+    Attributes:
+        task: Description of the task to be executed
+        depth: Depth level in the task decomposition tree (0 for root)
+        confidence_score: Confidence score (0.0-1.0) indicating execution success likelihood
+        status: Current status of the task (e.g., "pending", "completed", "failed")
+        parent: Reference to the parent task node, if this is a subtask
+        children: List of child task nodes (subtasks)
+    """
     task: str
     depth: int
     confidence_score: float
@@ -81,17 +127,44 @@ class TaskNode(BaseModel):
     children: list[TaskNode] = Field(default_factory=list)
 
     def add_child(self, child: TaskNode) -> None:
+        """Add a child task node to this node.
+        
+        Args:
+            child: The child TaskNode to add. The child's parent will be set to this node.
+        """
         child.parent = self
         self.children.append(child)
 
 class AgentOutput(BaseModel):
+    """Standard output format for agent execution results.
+    
+    This model provides a consistent structure for agent outputs, including
+    confidence scores, execution notes, and updated context state.
+    
+    Attributes:
+        confidence_score: Confidence score (0.0-1.0) indicating the agent's
+            confidence in the execution result
+        notes: Optional notes or reasoning from the agent about the execution
+        updated_state: Optional dictionary containing updated context state
+            from the agent's execution
+    """
     confidence_score: float
     notes: str | None = None
     updated_state: dict[str, Any] | None = None
 
 
 class Planner:
+    """Planner component for breaking down tasks into subtasks.
+    
+    The planner uses an AI agent to decompose complex tasks into smaller,
+    more manageable subtasks with associated confidence scores.
+    """
     def __init__(self, planner_agent: AgentRunner) -> None:
+        """Initialize the Planner.
+        
+        Args:
+            planner_agent: The AgentRunner instance to use for task decomposition
+        """
         self.agent = planner_agent
 
     async def expand(
@@ -100,6 +173,16 @@ class Planner:
         context: dict[str, Any]
 
     ) -> list[TaskNode]:
+        """Expand a parent task into subtasks.
+        
+        Args:
+            parent_task: The task node to decompose into subtasks
+            context: Current execution context containing relevant information
+            
+        Returns:
+            List of TaskNode instances representing the subtasks. Each subtask
+            will have depth = parent_task.depth + 1 and parent = parent_task.
+        """
         # Adding to the system prompt instructions about the subtasking
         result = await self.agent.run(
             prompt=f"Break down this task into subtasks: {parent_task.task}",
@@ -125,8 +208,85 @@ class Planner:
         return nested_tasks
 
 class AgentExecutor:
-    def __init__(self, runner: AgentRunner) -> None:
-        self.runner = runner
+    """Executor component that executes tasks using appropriate agents.
+    
+    The executor uses a router to determine which specialized agent should handle
+    each task, then executes the task with that agent. If no specialized agent is
+    available, it falls back to a generic runner.
+    
+    The executor integrates routing, agent selection, and execution in a single
+    component that works within the ADaPT framework.
+    """
+    def __init__(
+        self,
+        context: ContextEngine,
+        model: AIModel,
+        available_agents: dict[str, str] | None = None,
+        agent_factory: Any | None = None,
+        requires_approval: bool = False,
+    ) -> None:
+        """Initialize the AgentExecutor.
+        
+        Args:
+            model: Optional AI model for creating specialized agents
+            available_agents: Optional dictionary mapping agent names to descriptions
+            agent_factory: Optional callback function(agent_name: str, context: dict) -> AgentRunner
+                for custom agent creation. If provided, this takes precedence over built-in agent creation.
+        """
+        self.model = model
+        self.available_agents = available_agents or {}
+        self.agent_factory = agent_factory
+        self.requires_approval = requires_approval
+        self.context = context
+
+        self.router = RouterAgent(
+                    model=self.model,
+                    deps_type=None,
+                    tools=[],
+                    available_agents=self.available_agents
+        )
+
+    def _get_agent(self, agent_name: str) -> AgentRunner:
+        """Get an agent instance by name.
+        
+        Args:
+            agent_name: Name of the agent to retrieve
+            
+        Returns:
+            AgentRunner instance for the specified agent
+        """
+        # Determine if approval is required based on mode
+
+        match agent_name:
+            case "requester":
+                return RequesterAgent(
+                    model=self.model,
+                    deps_type=WebappreconDeps,
+                    target_information=self.context.target,
+                    requires_approval=self.requires_approval
+                )
+            case "shell":
+                return ShellAgent(
+                    model=self.model,
+                    deps_type=WebappreconDeps,
+                    target_information=self.context.target,
+                    requires_approval=self.requires_approval
+                )
+            case "python_interpreter":
+                return PythonInterpreterAgent(
+                    model=self.model,
+                    deps_type=None,
+                )
+            case _:
+                self.context.add_not_found_agent(agent_name=agent_name)
+                return RouterAgent(
+                    model=self.model,
+                    deps_type=None,
+                    tools=[],
+                    available_agents=self.available_agents
+                )
+
+
     async def execute(
         self,
         task_node: TaskNode,
@@ -136,64 +296,159 @@ class AgentExecutor:
         usage_limits: UsageLimits = UsageLimits(),
         deferred_tool_results: DeferredToolResults | None = None,
         message_history: list | None = None
-    ) -> Any:
+    ) -> tuple[float, dict[str, Any]]:
+        """Execute a task node using the appropriate agent.
+        
+        The execution process:
+        1. Uses the router (if available) to determine which agent should handle the task
+        2. Attempts to get or create the selected specialized agent
+        3. Executes the task with the specialized agent or falls back to the generic runner
+        4. Extracts confidence score and updates context with execution results
+        
+        Args:
+            task_node: The TaskNode containing the task to execute
+            context: Current execution context (will be copied and updated)
+            deps: Optional dependencies to pass to the agent
+            usage: Usage tracking object
+            usage_limits: Limits for token usage
+            deferred_tool_results: Optional deferred tool results from previous runs
+            message_history: Previous conversation messages for context
+            
+        Returns:
+            Tuple of (confidence_score, updated_context) where:
+            - confidence_score: Float between 0.0 and 1.0 indicating execution confidence
+            - updated_context: Dictionary with updated context including execution log and state
+            
+        Note:
+            If routing fails or the selected agent cannot be created, execution falls back
+            to the generic runner. All routing and execution information is logged in the context.
+        """
         try:
-            result = await self.runner.run(
-                prompt=task_node.task,
-                deps=deps,
-                message_history=message_history,
-                usage=usage,
-                usage_limits=usage_limits,
-                deferred_tool_results=deferred_tool_results
-            )
+            # Ensure context is a copy to avoid mutating the original
+            context = context.copy()
+            context.setdefault("log", "")
 
-            output = result.output
+            # Use router to determine which agent should handle this task if router is available
+            routing_info = None
+            selected_agent = None
+            if self.router:
+                try:
+                    router_result = await self.router.run(
+                        prompt=f"Which agent should handle: {task_node.task}",
+                        deps=None,
+                        message_history=message_history or "",
+                        usage=usage,
+                        usage_limits=usage_limits,
+                        deferred_tool_results=None
+                    )
+                    routing_info = router_result.output
+                    if isinstance(routing_info, RouterOutput):
+                        # Add routing information to context
+                        context["log"] += f"\n[ROUTER] Selected agent: \
+                            {routing_info.next_agent_name}\nReasoning: {routing_info.reasoning}"
+
+                        # Try to get or create the selected agent
+                        selected_agent = self._get_agent(routing_info.next_agent_name)
+                        if selected_agent:
+                            context["log"] += f"\n[EXECUTOR] Using specialized agent: \
+                                {routing_info.next_agent_name}"
+                        else:
+                            context["log"] += f"\n[EXECUTOR] Specialized agent \
+                                '{routing_info.next_agent_name}' not available, using generic executor"
+                except Exception as e:
+                    # If routing fails, continue with generic executor
+                    context["log"] += f"\n[ROUTER] Routing failed: {str(e)}, using generic executor"
+
+            # Use selected agent if available, otherwise use generic runner
+            agent_to_use = selected_agent
+            if isinstance(agent_to_use, AgentRunner):
+                result = await agent_to_use.run(
+                    prompt=task_node.task,
+                    deps=deps,
+                    message_history=message_history,
+                    usage=usage,
+                    usage_limits=usage_limits,
+                    deferred_tool_results=deferred_tool_results
+                )
+                output = result.output
+            else:
+                output = f"[AGENT RESPONSE] Error in agent running {agent_to_use}"
 
             if isinstance(output, AgentOutput):
                 confidence_score = output.confidence_score
                 notes = output.notes or ""
-                updated_state = output.updated_state or {} 
+                updated_state = output.updated_state or {}
             else:
                 confidence_score = getattr(output, 'confidence_score', 0.3)
                 notes = getattr(output, 'notes', str(output))
                 updated_state = getattr(output, 'updated_state', {})
 
-            updated_context = context.copy()
-            updated_context.setdefault("log", "")
-            updated_context["log"] += f"\n[EXECUTOR] Task: {task_node.task}\nNotes: {notes}"
-            updated_context.update(updated_state)
-            updated_context["last_output"] = output.model_dump() \
+            # Context already copied and log initialized at the start
+            context["log"] += f"\n[EXECUTOR] Task: {task_node.task}\nNotes: {notes}"
+            context.update(updated_state)
+            context["last_output"] = output.model_dump() \
                 if isinstance(output, AgentOutput) else str(output)
-            return confidence_score, updated_context
-
+            return confidence_score, context
         except Exception as e:
             # On error, return low confidence failure
-            updated_context = context.copy()
-            updated_context.setdefault("log", "")
-            updated_context["log"] += f"\n[EXECUTOR] Error: {str(e)}"
-            return 0.0, updated_context
+            # Context already copied and log initialized at the start
+            context["log"] += f"\n[EXECUTOR] Error: {str(e)}"
+            return 0.0, context
 
 class ValidatorOutput(BaseModel):
+    """Output format for task validation results.
+    
+    Attributes:
+        valid: Boolean indicating whether the task execution is valid
+        confidence_score: Confidence score (0.0-1.0) for the validation decision
+        critique: Explanation or critique of the validation decision
+    """
     valid: bool
     confidence_score: float
     critique: str
 
 class Validator:
-    """Validator, double-checks the results obtained for coherence and validity of the tooling.
-    utilizes LLM as judge method.
+    """Validator component that double-checks task execution results.
+    
+    The validator uses an LLM-based judge method to verify that task executions
+    are coherent, valid, and meet the intended objectives. It provides validation
+    decisions along with confidence scores and critiques.
     """
 
     def __init__(self, model: AIModel) -> None:
+        """Initialize the Validator.
+        
+        Args:
+            model: The AI model to use for validation/judgment
+        """
+        judge_instructions = render_agent_instructions(
+            "judge", 
+            tools={},
+            validation_type="flag",
+            validation_format="CTF format"
+        )
         self.agent = AgentRunner(
             name="validator",
             model=model,
             deps_type=None,
-            instructions="",
+            instructions=judge_instructions,
             output_type=ValidatorOutput,
             tools=[]
         )
 
     async def verify(self, task: TaskNode, context: dict[str, Any]) -> tuple[bool, float, str]:
+        """Verify whether a task execution is valid and successful.
+        
+        Args:
+            task: The TaskNode representing the task to validate
+            context: Execution context containing logs and execution trace
+            
+        Returns:
+            Tuple of (valid, confidence_score, critique) where:
+            - valid: Boolean indicating if the task execution is valid
+            - confidence_score: Float (0.0-1.0) indicating validation confidence
+            - critique: String explanation of the validation decision
+        """
         prompt = f"""
 You are the Validator. Judge whether the task is satisfied.
 
@@ -237,7 +492,7 @@ class ADaPTAgent:
     by retaking the most relevant information:
     - Usage of 3 components Executors, Planner and Controller.
     """
-    session_id: str
+    session_id: UUID
     task_node: TaskNode
     max_depth: int
     memory: MemoryHandler
@@ -256,13 +511,38 @@ class ADaPTAgent:
         validator: Validator,
         max_depth: int = 3
     ):
+        """Initialize the ADaPT agent.
+        
+        Args:
+            session_id: Unique identifier for this ADaPT session
+            executor: AgentExecutor instance for executing tasks
+            planner: Planner instance for decomposing tasks
+            validator: Validator instance for validating task completion
+            max_depth: Maximum depth for task decomposition (default: 3)
+        """
         self.session = session_id
         self.max_depth = max_depth
         self.executor = executor
         self.planner = planner
         self.validator = validator
 
-    async def _solve(self, node: TaskNode, depth: int):
+    async def _solve(self, node: TaskNode, depth: int) -> None:
+        """Recursively solve a task node using the ADaPT algorithm.
+        
+        This is the core recursive method that implements the ADaPT algorithm:
+        1. Execute the task and get confidence score
+        2. Apply policy to determine next action (fail, expand, refine, validate)
+        3. If expanding, decompose into subtasks and recursively solve each
+        4. If validating, verify task completion
+        
+        Args:
+            node: The TaskNode to solve
+            depth: Current depth in the decomposition tree
+            
+        Note:
+            Tasks that exceed max_depth will be marked as "aborted:max_depth".
+            The method modifies the node's status and confidence_score in place.
+        """
         if depth > self.max_depth:
             node.status = "aborted:max_depth"
             node.confidence_score = 0.0
@@ -320,6 +600,18 @@ class ADaPTAgent:
         return "refine"
 
     async def _validate(self, node: TaskNode) -> str:
+        """Validate a task node's execution.
+        
+        Args:
+            node: The TaskNode to validate
+            
+        Returns:
+            Status string: "completed" if validation passes, "failed-validation" otherwise.
+            If no validator is available, returns "completed" by default.
+            
+        Note:
+            Updates the node's confidence_score with the validation confidence score.
+        """
         if not self.validator:
             return "completed"
 
@@ -332,7 +624,20 @@ class ADaPTAgent:
 
 
     async def run(self, task: str, context: dict[str, Any] | None = None) -> TaskNode:
-        """Runs the ADaPT agent."""
+        """Run the ADaPT agent on a given task.
+        
+        Creates a root task node and recursively solves it using the ADaPT algorithm,
+        which includes execution, planning, and validation phases.
+        
+        Args:
+            task: The main task description to execute
+            context: Optional initial context dictionary. If not provided, an empty
+                dictionary will be created with an empty "log" entry.
+                
+        Returns:
+            TaskNode representing the root of the execution tree. The tree contains
+            all subtasks, their execution statuses, and confidence scores.
+        """
         self.context = context or {}
         self.context.setdefault("log", "")
 
