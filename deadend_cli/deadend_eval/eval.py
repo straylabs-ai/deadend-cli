@@ -118,25 +118,33 @@ async def eval_agent(
         target preparation, agent execution, validation, and reporting.
     """
 
-    workflow_agent = WorkflowRunner(
-        model=model,
-        config=config,
-        code_indexer_db=code_indexer_db,
-        sandbox=sandbox,
-    )
-
-    workflow_agent.add_assets_to_context(eval_metadata.assets_path)
+    # workflow_agent = WorkflowRunner(
+    #     model=model,
+    #     config=config,
+    #     code_indexer_db=code_indexer_db,
+    #     sandbox=sandbox,
+    # )
+    
+    # workflow_agent.add_assets_to_context(eval_metadata.assets_path)
 
     # TODO: changing the handling of this
     # by for example adding description templates with jinja2
-    available_agents = {
-        'webapp_recon': "Expert cybersecurity agent that enumerates a web target to understand the architecture and understand the endpoints and where an attack vector could be tested.",
-        # 'planner_agent': 'Expert cybersecurity agent that plans what is the next step to do', 
-        'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
-    }
-    workflow_agent.register_agents(available_agents)
+    # available_agents = {
+    #     'webapp_recon': "Expert cybersecurity agent that enumerates a web target to understand the architecture and understand the endpoints and where an attack vector could be tested.",
+    #     # 'planner_agent': 'Expert cybersecurity agent that plans what is the next step to do',
+    #     'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
+    # }
 
-    workflow_agent.register_sandbox_runner(network_name="shared_net")
+    generic_agents = {
+        'requester': "Agent specialized in sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites.",
+        'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly.",
+        'shell': "Agent that gives access to a terminal bash shell. Run linux commands here.",
+        'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
+
+    }
+    # workflow_agent.register_agents(available_agents)
+
+    # workflow_agent.register_sandbox_runner(network_name="shared_net")
     # Setting up the prompt used 
     if hard_prompt:
         prompt = eval_metadata.hard_prompt

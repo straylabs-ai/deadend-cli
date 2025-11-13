@@ -170,7 +170,7 @@ class Planner:
     async def expand(
         self,
         parent_task: TaskNode,
-        context: dict[str, Any]
+        context: str
 
     ) -> list[TaskNode]:
         """Expand a parent task into subtasks.
@@ -186,8 +186,8 @@ class Planner:
         # Adding to the system prompt instructions about the subtasking
         result = await self.agent.run(
             prompt=f"Break down this task into subtasks: {parent_task.task}",
-            deps=context,
-            message_history=[],
+            deps=None,
+            message_history=context,
             usage=None,
             usage_limits=None
         )
@@ -290,7 +290,6 @@ class AgentExecutor:
     async def execute(
         self,
         task_node: TaskNode,
-        context: dict[str, Any],
         deps: Any | None = None,
         usage: RunUsage = RunUsage(),
         usage_limits: UsageLimits = UsageLimits(),
@@ -323,9 +322,10 @@ class AgentExecutor:
             If routing fails or the selected agent cannot be created, execution falls back
             to the generic runner. All routing and execution information is logged in the context.
         """
+        context = {}
         try:
             # Ensure context is a copy to avoid mutating the original
-            context = context.copy()
+
             context.setdefault("log", "")
 
             # Use router to determine which agent should handle this task if router is available
@@ -334,7 +334,7 @@ class AgentExecutor:
             if self.router:
                 try:
                     router_result = await self.router.run(
-                        prompt=f"Which agent should handle: {task_node.task}",
+                        prompt=f"{self.context.get_all_context()}\nWhich agent should handle: {task_node.task}",
                         deps=None,
                         message_history=message_history or "",
                         usage=usage,
@@ -436,7 +436,7 @@ class Validator:
             tools=[]
         )
 
-    async def verify(self, task: TaskNode, context: dict[str, Any]) -> tuple[bool, float, str]:
+    async def verify(self, task: TaskNode, context: str) -> tuple[bool, float, str]:
         """Verify whether a task execution is valid and successful.
         
         Args:
@@ -455,7 +455,7 @@ You are the Validator. Judge whether the task is satisfied.
 Task: {task.task}
 confidence task : {task.confidence_score}
 Execution trace:
-{context.get("log", "∅")}
+{context}
 
 - valid (true/false)
 - confidence (float 0-1)
@@ -496,7 +496,7 @@ class ADaPTAgent:
     task_node: TaskNode
     max_depth: int
     memory: MemoryHandler
-    context: dict[str, Any]
+    context: ContextEngine
 
     FAIL_THRESHOLD = 0.20
     REPLAN_THRESHOLD = 0.40
@@ -505,7 +505,8 @@ class ADaPTAgent:
 
     def __init__(
         self,
-        session_id: str,
+        session_id: UUID,
+        context: ContextEngine,
         executor: AgentExecutor,
         planner: Planner,
         validator: Validator,
@@ -549,11 +550,11 @@ class ADaPTAgent:
             return
 
         confidence_score, new_context = await self.executor.execute(
-            task_node=node,
-            context=self.context
+            task_node=node
         )
 
-        self.context = new_context
+        self.context.add_agent_response(str(new_context))
+
         decision = self._policy(confidence_score)
         if decision == "fail":
             node.status = "failed"
@@ -566,7 +567,7 @@ class ADaPTAgent:
 
         subtasks = await self.planner.expand(
             node,
-            context = self.context
+            context = self.context.get_all_context()
         )
         if not subtasks or len(subtasks) <1:
             node.status = "refine"
@@ -582,14 +583,15 @@ class ADaPTAgent:
         """
         The policy is given a confidence score, and depending on the information given
         is capable to determine the next step for the task.
-        - <20% : treated as unrecoverable. Even though the goal is well defined, we need to propagate
-        the failure and move on.
-        - 20-60% : stays in exploration mode, this stage trigger more granular subtasks or gather
-        missing information.
+        - <20% : treated as unrecoverable. Even though the goal is well defined, we need 
+        to propagate the failure and move on.
+        - 20-60% : stays in exploration mode, this stage trigger more granular subtasks 
+        or gather missing information.
         - 60%-80% : keep executing and reiterating. At this stage we can either make simple changes 
         to increase the confidence score or run the generic agents for executing and testing.
         - > 80% : move to validator/controller.
-        the policy could be assertions, tool verification, or LLM judge, and before the task is done.
+        the policy could be assertions, tool verification, or LLM judge
+        and before the task is done.
         """
         if confidence_score < self.FAIL_THRESHOLD:
             return "fail"
@@ -615,15 +617,16 @@ class ADaPTAgent:
         if not self.validator:
             return "completed"
 
-        (ok, validation, critique) = await self.validator.verify(task=node, context=self.context)
-
-        self.context["log"] += f"\nVALIDATOR: {validation} : {critique}"
+        (ok, validation, critique) = await self.validator.verify(task=node, context=self.context.get_all_context())
+        validation_context = {}
+        validation_context["log"] += f"\nVALIDATOR: {validation} : {critique}"
+        self.context.add_agent_response(str(validation_context))
         node.confidence_score = validation
 
         return "completed" if ok else "failed-validation"
 
 
-    async def run(self, task: str, context: dict[str, Any] | None = None) -> TaskNode:
+    async def run(self, task: str) -> TaskNode:
         """Run the ADaPT agent on a given task.
         
         Creates a root task node and recursively solves it using the ADaPT algorithm,
@@ -638,8 +641,8 @@ class ADaPTAgent:
             TaskNode representing the root of the execution tree. The tree contains
             all subtasks, their execution statuses, and confidence scores.
         """
-        self.context = context or {}
-        self.context.setdefault("log", "")
+        # self.context = context or {}
+        # self.context.setdefault("log", "")
 
         root = TaskNode(
             task=task,

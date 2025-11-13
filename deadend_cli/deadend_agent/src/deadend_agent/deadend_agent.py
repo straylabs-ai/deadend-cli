@@ -63,7 +63,6 @@ class DeadEndAgent:
         self.executor = AgentExecutor(
             model=self.model,
             context=self.context,
-            model=model,
             available_agents=available_agents
         )
 
@@ -72,6 +71,7 @@ class DeadEndAgent:
         # Initialize ADaPT agent with router-aware executor
         self.adapt_agent = ADaPTAgent(
             session_id=session_id,
+            context=self.context,
             executor=self.executor,
             planner=self.planner,
             validator=self.validator,
@@ -174,8 +174,9 @@ class DeadEndAgent:
         self.available_agents = agents
 
 
-
-    async def threatmodel(self, task: str, context: Dict[str, Any] | None = None):
+#################################################################################
+########### ThreatModel 
+    async def threat_model(self, task: str):
         """Execute the threat modeling and orchestration workflow.
 
         Args:
@@ -190,7 +191,5 @@ class DeadEndAgent:
 
         # Add a plan to recon for the threat model.
         # The threat model agent is a supervisor that can call to the router for the generic agent calling
-
-        plan = await self.adapt_agent.run(task=task, context=context)
-
+        plan = await self.adapt_agent.run(task=task)
         return plan

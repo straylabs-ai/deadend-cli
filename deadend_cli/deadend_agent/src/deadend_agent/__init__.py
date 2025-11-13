@@ -14,15 +14,16 @@ from .core import config_setup, init_rag_database, sandbox_setup, setup_model_re
 from .models.registry import ModelRegistry, AIModel
 from .rag.db_cruds import RetrievalDatabaseConnector
 from .sandbox.sandbox import Sandbox
-# from .workflow_runner import WorkflowRunner
+from .deadend_agent import DeadEndAgent
 
-__all__ = [ 
+
+__all__ = [
+    'DeadEndAgent',
     'Config', 
     'ModelRegistry', 
     'AIModel',
     'RetrievalDatabaseConnector',
     'Sandbox',
-    # 'WorkflowRunner',
     'config_setup', 
     'init_rag_database', 
     'sandbox_setup', 
