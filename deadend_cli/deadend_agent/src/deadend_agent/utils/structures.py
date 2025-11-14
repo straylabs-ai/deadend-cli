@@ -10,13 +10,11 @@ injection containers, and task management structures.
 """
 
 import uuid
-from typing import Dict, Literal, Any
+from typing import Dict
 from enum import Enum
 from dataclasses import dataclass
 from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
-
-
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox
 
@@ -156,41 +154,6 @@ class RagDeps:
     target: str
     session_id: uuid.UUID
 
-class HttpMethod(Enum):
-    """
-    Enumeration of supported HTTP methods for web requests.
-    
-    This enum defines the standard HTTP methods that can be used
-    for making web requests, including RESTful operations and
-    streaming capabilities.
-    """
-    GET = "GET"
-    POST = "POST"
-    HEAD = "HEAD"
-    OPTIONS = "OPTIONS"
-    PUT = "PUT"
-    PATCH = "PATCH"
-    DELETE = "DELETE"
-    STREAM = "STREAM"
-
-@dataclass
-class RequestStruct:
-    """
-    Structure representing an HTTP request with all necessary components.
-    
-    This dataclass encapsulates all the information needed to make
-    an HTTP request, including the method, URL, headers, and content.
-    
-    Attributes:
-        method: HTTP method to use for the request
-        url: Target URL for the request
-        headers: Dictionary of HTTP headers
-        content: Request body content
-    """
-    method: HttpMethod
-    url: str
-    headers: Dict[str, str]
-    content: str
 
 class PlannerOutput(BaseModel):
     """Output model for planner agent operations.

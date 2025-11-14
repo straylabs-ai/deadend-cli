@@ -69,6 +69,7 @@ class DeadEndAgent:
 
         self.validator = Validator(model=model)
 
+        self.context = ContextEngine(session_id=session_id)
         # Initialize ADaPT agent with router-aware executor
         self.adapt_agent = ADaPTAgent(
             session_id=session_id,

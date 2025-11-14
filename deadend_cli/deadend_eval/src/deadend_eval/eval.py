@@ -123,21 +123,6 @@ async def eval_deadend_agent(
         target preparation, agent execution, validation, and reporting.
     """
 
-    # workflow_agent = WorkflowRunner(
-    #     model=model,
-    #     config=config,
-    #     code_indexer_db=code_indexer_db,
-    #     sandbox=sandbox,
-    # )
-    # workflow_agent.add_assets_to_context(eval_metadata.assets_path)
-    # TODO: changing the handling of this
-    # by for example adding description templates with jinja2
-    # available_agents = {
-    #     'webapp_recon': "Expert cybersecurity agent that enumerates a web target to understand the architecture and understand the endpoints and where an attack vector could be tested.",
-    #     # 'planner_agent': 'Expert cybersecurity agent that plans what is the next step to do',
-    #     'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
-    # }
-
     generic_agents = {
         'requester': "Agent specialized in sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites.",
         'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly.",
@@ -168,7 +153,7 @@ async def eval_deadend_agent(
     docker_client = docker.from_env()
     target_container = docker_client.containers.get(container_name)
     ip_addr_target = target_container.attrs["NetworkSettings"]["Networks"]["shared_net"]["IPAddress"]
-    print(ip_addr_target)
+    print(f"the target ip : {ip_addr_target}")
     target_host = f"{ip_addr_target}:{port}"
 
 
@@ -197,7 +182,7 @@ async def eval_deadend_agent(
     #         validation_type=eval_metadata.validation_type,
     #         validation_format=eval_metadata.validation_format
     #     )
-    # else: 
+    # else:
     #     for subtask in eval_metadata.subtasks:
     #         subtask_prompt = f"{subtask.subtask}\n{subtask.question}\n{subtask.hints}"
     #         judge_output = await workflow_agent.start_workflow(

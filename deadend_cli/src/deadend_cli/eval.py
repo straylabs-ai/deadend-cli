@@ -32,24 +32,25 @@ async def eval_interface(
     eval_metadata = EvalMetadata(**data)
 
     model_registry = ModelRegistry(config=config)
-    # Here we try to get the registry of all the models that we sat up
-    # Which means all the models configured in env file or variables
-    # We aim to evaluate the same agent on multiple models.
-    models = model_registry.get_all_models()
+    if not model_registry.has_any_model():
+        raise RuntimeError(f"No LM model configured. You can run `deadend init` to \
+            initialize the required Model configuration for {providers[0]}")
+
+    model = model_registry.get_model(provider=providers[0])
 
     try: 
         # Initializing the rag code indexer database
-        rag_db = await init_rag_database(config.db_url)
+        rag_db = await init_rag_database(config.db_url if config.db_url else "")
     except Exception: # TODO: This section need to be handled in a better way
         console_printer("Vector DB not accessible. Exiting now.")
         exit()
-    
+
     try:
         sandbox_manager = sandbox_setup()
-    except Exception as e: 
+    except Exception as e:
         console_printer(f"Sandbox manager could not be started : {e}")
         exit()
-    
+
     # Monitoring 
     logfire.configure(scrubbing=False)
     logfire.instrument_pydantic_ai()

@@ -5,7 +5,6 @@ from deadend_agent.models import AIModel
 from deadend_prompts import render_agent_instructions, render_tool_description
 from .factory import AgentRunner
 
-
 class ReconThreatModelAgent(AgentRunner):
     def __init__(
         self,

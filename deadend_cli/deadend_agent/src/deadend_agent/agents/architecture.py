@@ -84,9 +84,9 @@ class Planner:
         """
         # Adding to the system prompt instructions about the subtasking
         result = await self.agent.run(
-            prompt=f"Break down this task into subtasks: {parent_task.task}",
+            prompt=f"Break down this task into subtasks: {parent_task.task}. The context is : {str(context)}",
             deps=None,
-            message_history=context,
+            message_history="",
             usage=None,
             usage_limits=None
         )
@@ -425,6 +425,7 @@ class ADaPTAgent:
         self.executor = executor
         self.planner = planner
         self.validator = validator
+        self.context = context
 
     async def _solve(self, node: TaskNode, depth: int) -> None:
         """Recursively solve a task node using the ADaPT algorithm.
