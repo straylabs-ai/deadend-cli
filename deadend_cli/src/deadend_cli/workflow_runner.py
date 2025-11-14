@@ -301,7 +301,7 @@ class WorkflowRunner:
             raise InterruptedError("Workflow interrupted before planning")
             
         openai_embedder = AsyncOpenAI(api_key=self.config.openai_api_key)
-        self.context.set_target(target=targe        tools: listt)
+        self.context.set_target(target=target)
         self.planner = Planner(
             model=self.model,
             target=target,

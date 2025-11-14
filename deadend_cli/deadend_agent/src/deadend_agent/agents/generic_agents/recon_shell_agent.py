@@ -10,7 +10,6 @@ network scanning, file system analysis, and other command-line security tools
 for comprehensive security assessments.
 """
 from typing import Any
-from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel

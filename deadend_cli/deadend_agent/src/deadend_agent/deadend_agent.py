@@ -5,7 +5,8 @@ from deadend_agent.models.registry import AIModel
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
 # from deadend_agent.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
-from .agents.factory import (
+from .agents.factory import AgentRunner
+from deadend_agent.agents.architecture import (
     ADaPTAgent,
     AgentRunner,
     AgentExecutor,
@@ -81,7 +82,7 @@ class DeadEndAgent:
 ################################################################################
 #### Interruptions handling
 ################################################################################
-    def interrupt_workflow(self) -> Generator[str]:
+    def interrupt_workflow(self) -> Generator[str, None, None]:
         """Interrupt the workflow execution.
         
         This method sets the interrupted flag to True, which will cause
@@ -90,7 +91,7 @@ class DeadEndAgent:
         self.interrupted = True
         yield f"[yellow]Workflow interruption requested...[/yellow]"
 
-    def reset_workflow_state(self) -> Generator[str]:
+    def reset_workflow_state(self) -> Generator[str, None, None]:
         """Reset the workflow state for a new execution.
         
         This method resets the goal_achieved flag and interrupted flag
@@ -175,7 +176,8 @@ class DeadEndAgent:
 
 
 #################################################################################
-########### ThreatModel 
+########### ThreatModel
+#################################################################################
     async def threat_model(self, task: str):
         """Execute the threat modeling and orchestration workflow.
 

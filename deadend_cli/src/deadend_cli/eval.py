@@ -14,7 +14,7 @@ import json
 
 from rich import print as console_printer
 from deadend_agent import Config, init_rag_database, sandbox_setup, ModelRegistry
-from deadend_eval.eval import EvalMetadata, eval_agent
+from deadend_eval.eval import EvalMetadata, eval_deadend_agent
 from deadend_eval.ctf_evaluator import CtfEvaluator
 
 async def eval_interface(
@@ -41,13 +41,13 @@ async def eval_interface(
         # Initializing the rag code indexer database
         rag_db = await init_rag_database(config.db_url)
     except Exception: # TODO: This section need to be handled in a better way
-        console_printer.print("Vector DB not accessible. Exiting now.")
+        console_printer("Vector DB not accessible. Exiting now.")
         exit()
     
     try:
         sandbox_manager = sandbox_setup()
     except Exception as e: 
-        console_printer.print(f"Sandbox manager could not be started : {e}")
+        console_printer(f"Sandbox manager could not be started : {e}")
         exit()
     
     # Monitoring 
@@ -58,7 +58,7 @@ async def eval_interface(
     sandbox_id = sandbox_manager.create_sandbox(image="kali_deadend", volume_path=eval_metadata.assets_path)
     sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)
 
-    await eval_agent(
+    await eval_deadend_agent(
         model=model_registry.get_model(provider=providers[0]),
         # evaluators=[CtfEvaluator],
         config=config,

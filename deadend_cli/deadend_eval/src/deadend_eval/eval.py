@@ -13,10 +13,15 @@ import docker
 from typing import Literal
 from pydantic import BaseModel, Field
 from pydantic_evals.evaluators import Evaluator
-
+from uuid import uuid4
 from rich import print as console_printer
-from deadend_agent import AIModel, Config, RetrievalDatabaseConnector, Sandbox
-from deadend_cli.workflow_runner import WorkflowRunner
+from deadend_agent import (
+    AIModel,
+    Config,
+    RetrievalDatabaseConnector,
+    Sandbox,
+    DeadEndAgent
+)
 
 class Subtask(BaseModel):
     """Represents a single subtask in a guided evaluation workflow.
@@ -67,7 +72,7 @@ class EvalMetadata(BaseModel):
     solution: str = Field(..., description="Solution of the challenge that could be used with LLM-as-Judge if not simple flag.")
 
 
-async def eval_agent(
+async def eval_deadend_agent(
         model: AIModel,
         # evaluators: list[Evaluator],
         config: Config,
@@ -118,32 +123,46 @@ async def eval_agent(
         target preparation, agent execution, validation, and reporting.
     """
 
-    workflow_agent = WorkflowRunner(
-        model=model,
-        config=config,
-        code_indexer_db=code_indexer_db,
-        sandbox=sandbox,
-    )
-
-    workflow_agent.add_assets_to_context(eval_metadata.assets_path)
-
+    # workflow_agent = WorkflowRunner(
+    #     model=model,
+    #     config=config,
+    #     code_indexer_db=code_indexer_db,
+    #     sandbox=sandbox,
+    # )
+    # workflow_agent.add_assets_to_context(eval_metadata.assets_path)
     # TODO: changing the handling of this
     # by for example adding description templates with jinja2
-    available_agents = {
-        'webapp_recon': "Expert cybersecurity agent that enumerates a web target to understand the architecture and understand the endpoints and where an attack vector could be tested.",
-        # 'planner_agent': 'Expert cybersecurity agent that plans what is the next step to do', 
-        'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
-    }
-    workflow_agent.register_agents(available_agents)
+    # available_agents = {
+    #     'webapp_recon': "Expert cybersecurity agent that enumerates a web target to understand the architecture and understand the endpoints and where an attack vector could be tested.",
+    #     # 'planner_agent': 'Expert cybersecurity agent that plans what is the next step to do',
+    #     'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
+    # }
 
-    workflow_agent.register_sandbox_runner(network_name="shared_net")
-    # Setting up the prompt used 
+    generic_agents = {
+        'requester': "Agent specialized in sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites.",
+        'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly.",
+        'shell': "Agent that gives access to a terminal bash shell. Run linux commands here.",
+        'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
+
+    }
+    session_id = uuid4()
+    deadend_agent = DeadEndAgent(
+        session_id=session_id,
+        model=model,
+        available_agents=generic_agents,
+        max_depth=3
+    )
+
+    # workflow_agent.register_sandbox_runner(network_name="shared_net")
+    # Setting up the prompt used
     if hard_prompt:
         prompt = eval_metadata.hard_prompt
     else:
         prompt = eval_metadata.soft_prompt
 
     # Get IP address for the container
+    # TODO to be modified here: We need to take into account if it's not 
+    # a container name but just an IP address 
     container_name, port = eval_metadata.target_host.split(":")
     print(container_name)
     docker_client = docker.from_env()
@@ -154,44 +173,40 @@ async def eval_agent(
 
 
     if with_code_indexing:
-        workflow_agent.init_webtarget_indexer(target_host)
-        web_resources_crawler = await workflow_agent.crawl_target()
-        code_chunks = await workflow_agent.embed_target()
-        # TODO: better Handling code sections
-        # code_chunks = []
-        # for code_section in code_sections:
-        #     chunk = {
-        #             "file_path": code_section.url_path, 
-        #             "language": code_section.title, 
-        #             "code_content": str(code_section.content), 
-        #             "embedding": code_section.embeddings
-        #         }
-        #     code_chunks.append(chunk)
-        insert = await code_indexer_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
-        console_printer.print("Sync completed.", end="\r")
+        deadend_agent.init_webtarget_indexer(target_host)
+        web_resources_crawler = await deadend_agent.crawl_target()
+        code_chunks = await deadend_agent.embed_target(
+            api_key=config.openai_api_key,
+            embedding_model=config.embedding_model
+        )
 
+        insert = await code_indexer_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
+        # console_printer.print("Sync completed.", end="\r")
+
+    plan = await deadend_agent.threat_model(task=prompt)
     # if with_knowledge_base:
 
-    # adding assets to context
-    workflow_agent.context.add_assets_to_context()
+    # # adding assets to context
+    # workflow_agent.context.add_assets_to_context()
 
     # case if not guided, i.e. not using subtasks
-    if not guided:
-        judge_output = await workflow_agent.start_workflow(
-            prompt,
-            target=target_host,
-            validation_type=eval_metadata.validation_type,
-            validation_format=eval_metadata.validation_format
-        )
-    else: 
-        for subtask in eval_metadata.subtasks: 
-            subtask_prompt = f"{subtask.subtask}\n{subtask.question}\n{subtask.hints}"
-            judge_output = await workflow_agent.start_workflow(
-                subtask_prompt,
-                target=target_host,
-                validation_type=eval_metadata.validation_type,
-                validation_format=eval_metadata.validation_format
-            )
+    # if not guided:
+    #     judge_output = await workflow_agent.start_workflow(
+    #         prompt,
+    #         target=target_host,
+    #         validation_type=eval_metadata.validation_type,
+    #         validation_format=eval_metadata.validation_format
+    #     )
+    # else: 
+    #     for subtask in eval_metadata.subtasks:
+    #         subtask_prompt = f"{subtask.subtask}\n{subtask.question}\n{subtask.hints}"
+    #         judge_output = await workflow_agent.start_workflow(
+    #             subtask_prompt,
+    #             target=target_host,
+    #             validation_type=eval_metadata.validation_type,
+    #             validation_format=eval_metadata.validation_format
+    #         )
+
 
 # async def eval_all_models(models: list[AIModel], evaluators: list[Evaluator], eval_metadata_path: str, output_report: str):
 #     """
