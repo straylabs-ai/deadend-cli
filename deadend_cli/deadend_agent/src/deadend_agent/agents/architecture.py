@@ -141,16 +141,33 @@ class AgentExecutor:
         self.context = context
 
         self.router = RouterAgent(
-                    model=self.model,
-                    deps_type=None,
-                    tools=[],
-                    available_agents=self.available_agents
+            model=self.model,
+            deps_type=None,
+            tools=[],
+            available_agents=self.available_agents
         )
+
+        self.requester_deps: RequesterDeps | None = None
+        self.shell_deps: ShellDeps | None = None
+        self.webapprecon_deps: WebappreconDeps | None = None
+
+    def set_dependencies(
+        self,
+        requester_deps: RequesterDeps | None = None,
+        shell_deps: ShellDeps | None = None,
+        webapprecon_deps: WebappreconDeps | None = None,
+    ) -> None:
+        """Register dependency containers for downstream agents."""
+        if requester_deps is not None:
+            self.requester_deps = requester_deps
+        if shell_deps is not None:
+            self.shell_deps = shell_deps
+        if webapprecon_deps is not None:
+            self.webapprecon_deps = webapprecon_deps
 
     async def execute(
         self,
         task_node: TaskNode,
-        deps: Any | None = None,
         usage: RunUsage = RunUsage(),
         usage_limits: UsageLimits = UsageLimits(),
         deferred_tool_results: DeferredToolResults | None = None,
@@ -194,7 +211,8 @@ class AgentExecutor:
             if self.router:
                 try:
                     router_result = await self.router.run(
-                        prompt=f"{self.context.get_all_context()}\nWhich agent should handle: {task_node.task}",
+                        prompt=f"{self.context.get_all_context()}\n\
+                            Which agent should handle: {task_node.task}",
                         deps=None,
                         message_history=message_history or "",
                         usage=usage,
@@ -219,11 +237,12 @@ class AgentExecutor:
                     # If routing fails, continue with generic executor
                     context["log"] += f"\n[ROUTER] Routing failed: {str(e)}, using generic executor"
 
-            # Use selected agent if available, otherwise use generic runner            if isinstance(selected_agent, AgentRunner):
+            # Use selected agent if available, 
+            # otherwise use generic runner
+            if isinstance(selected_agent, AgentRunner):
                 result = await self._run_agent(
                     agent=selected_agent,
                     prompt=task_node.task,
-                    deps=deps,
                     message_history=message_history,
                     usage=usage,
                     usage_limits=usage_limits,
@@ -310,32 +329,36 @@ class AgentExecutor:
         usage: RunUsage,
         usage_limits: UsageLimits,
         deferred_tool_results: DeferredToolResults,
-        deps: RequesterDeps | ShellDeps | WebappreconDeps,
 
     ):
     # Adding a try/ except block is the deps are not formally
     # built or if anything is missing
         results = None
+        requester_deps = self.requester_deps
+        shell_deps = self.shell_deps
+        webapprecon_deps = self.webapprecon_deps
+
         if isinstance(agent, RequesterAgent):
             # TODO: add interruptions
             # if self.interrupted:
             #     raise InterruptedError("Workflow interrupted before webapp recon execution")
-            if isinstance(deps, RequesterDeps):
-                results = await agent.run(
-                    prompt=prompt,
-                    message_history=message_history,
-                    usage=usage,
-                    usage_limits=usage_limits,
-                    deps=deps,
-                    deferred_tool_results=deferred_tool_results
-                )
+            if requester_deps is None:
+                raise RuntimeError("RequesterAgent dependencies are not configured.")
+            results = await agent.run(
+                prompt=prompt,
+                message_history=message_history,
+                usage=usage,
+                usage_limits=usage_limits,
+                deps=requester_deps,
+                deferred_tool_results=deferred_tool_results
+            )
         elif isinstance(agent, PythonInterpreterAgent):
             results = await agent.run(
                 prompt=prompt,
                 message_history=message_history,
                 usage=usage,
                 usage_limits=usage_limits,
-                deps=deps,
+                deps=None,
                 deferred_tool_results=deferred_tool_results
             )
         elif isinstance(agent, RouterAgent):
@@ -344,26 +367,29 @@ class AgentExecutor:
                 message_history=message_history,
                 usage=usage,
                 usage_limits=usage_limits,
-                deps=deps,
+                deps=None,
                 deferred_tool_results=deferred_tool_results
             )
         elif isinstance(agent, ShellAgent):
-            if isinstance(deps, ShellDeps):
-                results = await agent.run(
-                    prompt=prompt,
-                    message_history=message_history,
-                    usage=usage,
-                    usage_limits=usage_limits,
-                    deps=deps,
-                    deferred_tool_results=deferred_tool_results
-                )
-        else:
+            shell_agent_deps = shell_deps
+            if shell_agent_deps is None:
+                raise RuntimeError("ShellAgent dependencies are not configured.")
             results = await agent.run(
                 prompt=prompt,
                 message_history=message_history,
                 usage=usage,
                 usage_limits=usage_limits,
-                deps=deps,
+                deps=shell_agent_deps,
+                deferred_tool_results=deferred_tool_results
+            )
+        else:
+            generic_deps = self.webapprecon_deps or self.requester_deps or self.shell_deps
+            results = await agent.run(
+                prompt=prompt,
+                message_history=message_history,
+                usage=usage,
+                usage_limits=usage_limits,
+                deps=generic_deps,
                 deferred_tool_results=deferred_tool_results
             )
         if results is None:
@@ -528,7 +554,8 @@ class ADaPTAgent:
             return
 
         confidence_score, new_context = await self.executor.execute(
-            task_node=node
+            task_node=node,
+
         )
 
         self.context.add_agent_response(str(new_context))
@@ -603,7 +630,13 @@ class ADaPTAgent:
 
         return "completed" if ok else "failed-validation"
 
-    async def run(self, task: str) -> TaskNode:
+    async def run(
+        self,
+        task: str,
+        shell_deps: ShellDeps | None = None,
+        requester_deps: RequesterDeps | None = None,
+        webapprecon_deps: WebappreconDeps | None = None,
+    ) -> TaskNode:
         """Run the ADaPT agent on a given task.
         
         Creates a root task node and recursively solves it using the ADaPT algorithm,
@@ -620,6 +653,12 @@ class ADaPTAgent:
         """
         # self.context = context or {}
         # self.context.setdefault("log", "")
+
+        self.executor.set_dependencies(
+            shell_deps=shell_deps,
+            requester_deps=requester_deps,
+            webapprecon_deps=webapprecon_deps,
+        )
 
         root = TaskNode(
             task=task,

@@ -168,6 +168,13 @@ async def eval_deadend_agent(
         insert = await code_indexer_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
         # console_printer.print("Sync completed.", end="\r")
 
+    deadend_agent.prepare_dependencies(
+        openai_api_key=config.openai_api_key,
+        rag_connector=code_indexer_db,
+        sandbox=sandbox,
+        target=target_host
+    )
+
     plan = await deadend_agent.threat_model(task=prompt)
     # if with_knowledge_base:
 

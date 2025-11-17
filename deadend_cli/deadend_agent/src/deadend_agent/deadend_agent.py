@@ -1,9 +1,12 @@
 """Main DeadEnd agent orchestration module."""
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
+from openai import AsyncOpenAI
 from deadend_agent.models.registry import AIModel
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
+from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
+from deadend_agent.sandbox.sandbox import Sandbox
 # from deadend_agent.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
 from deadend_agent.agents.architecture import (
     ADaPTAgent,
@@ -12,7 +15,12 @@ from deadend_agent.agents.architecture import (
     Planner,
     Validator
 )
-from deadend_agent.utils.structures import RequesterDeps
+from deadend_agent.utils.structures import (
+    RequesterDeps,
+    ShellDeps,
+    ShellRunner,
+    WebappreconDeps
+)
 from .agents.factory import AgentRunner
 
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
@@ -37,6 +45,10 @@ class DeadEndAgent:
     executor: AgentExecutor
     validator: Validator
     adapt_agent: ADaPTAgent
+    shell_deps: ShellDeps | None = None
+    requester_deps: RequesterDeps | None = None
+    webapprecon_deps: WebappreconDeps | None = None
+
 
     def __init__(
         self,
@@ -70,14 +82,6 @@ class DeadEndAgent:
         )
         self.planner = Planner(planner_agent=planner_runner)
 
-        # executor_runner = ExecutorAgent(
-        #     name="executor",
-        #     model=model,
-        #     instructions="Execute security testing tasks.",
-        #     deps_type=None,
-        #     output_type=None,
-        #     tools=[]
-        # )
         # Pass router, model, and available_agents to executor so it can route and execute with specialized agents
         self.executor = AgentExecutor(
             model=self.model,
@@ -193,7 +197,45 @@ class DeadEndAgent:
         """
         self.available_agents = agents
 
+    def prepare_dependencies(
+        self,
+        *,
+        openai_api_key: str,
+        rag_connector: RetrievalDatabaseConnector | Any,
+        sandbox: Sandbox,
+        target: str | None = None,
+    ) -> None:
+        """Instantiate dependency containers used by downstream agents."""
+        if sandbox is None:
+            raise ValueError("sandbox must be provided to initialize dependencies.")
 
+        target_host = target or self.target
+        if target_host is None:
+            raise ValueError("target must be provided before initializing dependencies.")
+
+        openai_client = AsyncOpenAI(api_key=openai_api_key)
+        shell_runner = ShellRunner(session=str(self.session_id), sandbox=sandbox)
+
+        self.shell_deps = ShellDeps(shell_runner=shell_runner)
+        self.requester_deps = RequesterDeps(
+            openai=openai_client,
+            rag=rag_connector,
+            target=target_host,
+            session_id=self.session_id
+        )
+        self.webapprecon_deps = WebappreconDeps(
+            openai=openai_client,
+            rag=rag_connector,
+            target=target_host,
+            shell_runner=shell_runner,
+            session_id=self.session_id
+        )
+
+        self.executor.set_dependencies(
+            requester_deps=self.requester_deps,
+            shell_deps=self.shell_deps,
+            webapprecon_deps=self.webapprecon_deps
+        )
 #################################################################################
 ########### ThreatModel
 #################################################################################

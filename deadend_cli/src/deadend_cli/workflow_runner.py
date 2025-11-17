@@ -24,7 +24,12 @@ from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
 from deadend_agent.context import ContextEngine
-from deadend_agent.utils.structures import ShellRunner, WebappreconDeps
+from deadend_agent.utils.structures import (
+    ShellRunner,
+    WebappreconDeps,
+    RequesterDeps,
+    ShellDeps
+)
 from deadend_agent.agents import (
     AgentRunner,
     Planner, RagDeps, PlannerOutput,
@@ -79,6 +84,9 @@ class WorkflowRunner:
     assets_folder: str
     session_id: uuid.UUID
     interrupted: bool = False
+    webapprecon_deps: WebappreconDeps | None = None
+    shell_deps: ShellDeps | None = None
+    requester_deps: RequesterDeps | None = None
 
     def __init__(
             self,
@@ -209,6 +217,31 @@ class WorkflowRunner:
         self.target = target
         self.code_indexer = SourceCodeIndexer(target=self.target, session_id=self.session_id)
 
+    def _build_webapp_recon_deps(self) -> WebappreconDeps:
+        """Instantiate dependency containers for recon-focused agents."""
+        if self.target is None:
+            raise ValueError("Target must be set before building recon dependencies.")
+        if self.sandbox is None:
+            raise ValueError("Sandbox is required to initialize recon dependencies.")
+
+        openai_embedder = AsyncOpenAI(api_key=self.config.openai_api_key)
+        shell_runner = ShellRunner("session_agent", self.sandbox)
+
+        self.shell_deps = ShellDeps(shell_runner=shell_runner)
+        self.requester_deps = RequesterDeps(
+            openai=openai_embedder,
+            rag=self.code_indexer_db,
+            target=self.target,
+            session_id=self.session_id
+        )
+        self.webapprecon_deps = WebappreconDeps(
+            openai=openai_embedder,
+            rag=self.code_indexer_db,
+            target=self.target,
+            shell_runner=shell_runner,
+            session_id=self.session_id
+        )
+        return self.webapprecon_deps
     async def crawl_target(self):
         """Crawl the web target to gather resources.
         
@@ -410,7 +443,7 @@ class WorkflowRunner:
                     requires_approval=requires_approval
                 )
             case "recon_shell":
-                return ReconShellAgent(
+                return ShellAgent(
                     model=self.model,
                     deps_type=WebappreconDeps,
                     target_information=self.context.target,
@@ -482,16 +515,7 @@ class WorkflowRunner:
                 if self.interrupted:
                     raise InterruptedError("Workflow interrupted before webapp recon execution")
 
-                openai_embedder = AsyncOpenAI(api_key=self.config.openai_api_key)
-                shell_runner = ShellRunner("session_agent", self.sandbox)
-
-                webapprecon_deps = WebappreconDeps(
-                    openai=openai_embedder,
-                    rag=self.code_indexer_db,
-                    target=self.target,
-                    shell_runner=shell_runner,
-                    session_id=self.session_id
-                )
+                webapprecon_deps = self._build_webapp_recon_deps()
                 resp = await agent.run(
                     prompt=user_prompt,
                     message_history=message_history+str(self.context.get_all_context()),
@@ -505,16 +529,7 @@ class WorkflowRunner:
                 if self.interrupted:
                     raise InterruptedError("Workflow interrupted before recon shell execution")
 
-                openai_embedder = AsyncOpenAI(api_key=self.config.openai_api_key)
-                shell_runner = ShellRunner("session_agent", self.sandbox)
-
-                webapprecon_deps = WebappreconDeps(
-                    openai=openai_embedder,
-                    rag=self.code_indexer_db,
-                    target=self.target,
-                    shell_runner=shell_runner,
-                    session_id=self.session_id
-                )
+                webapprecon_deps = self._build_webapp_recon_deps()
                 resp = await agent.run(
                     prompt=user_prompt,
                     message_history=message_history,
@@ -676,7 +691,7 @@ class WorkflowRunner:
 
             try:
                 judge_output = await judge_agent.run(
-                    user_prompt=self.context.get_all_context(),
+                    prompt=self.context.get_all_context(),
                     deps=None,
                     message_history="",
                     usage=usage_judge,
