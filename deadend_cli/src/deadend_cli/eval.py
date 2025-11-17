@@ -13,6 +13,7 @@ import logfire
 import json
 
 from rich import print as console_printer
+from sqlalchemy.exc import SQLAlchemyError
 from deadend_agent import Config, init_rag_database, sandbox_setup, ModelRegistry
 from deadend_eval.eval import EvalMetadata, eval_deadend_agent
 from deadend_eval.ctf_evaluator import CtfEvaluator
@@ -27,7 +28,7 @@ async def eval_interface(
     # We do so by taking the `eval_metadata_file` and processing it
     # to extract the relevant information about the evaluation and
     # the steps that needs to be taken.
-    with open(eval_metadata_file) as eval_file:
+    with open(eval_metadata_file, encoding="utf-8") as eval_file:
         data = json.load(eval_file)
     eval_metadata = EvalMetadata(**data)
 
@@ -36,20 +37,19 @@ async def eval_interface(
         raise RuntimeError(f"No LM model configured. You can run `deadend init` to \
             initialize the required Model configuration for {providers[0]}")
 
-    model = model_registry.get_model(provider=providers[0])
-
-    try: 
+    database_url = config.db_url or ""
+    try:
         # Initializing the rag code indexer database
-        rag_db = await init_rag_database(config.db_url if config.db_url else "")
-    except Exception: # TODO: This section need to be handled in a better way
-        console_printer("Vector DB not accessible. Exiting now.")
-        exit()
+        rag_db = await init_rag_database(database_url)
+    except (SQLAlchemyError, OSError) as exc:
+        console_printer(f"[red]Vector DB not accessible ({exc}). Exiting now.[/red]")
+        raise SystemExit(1) from exc
 
     try:
         sandbox_manager = sandbox_setup()
-    except Exception as e:
-        console_printer(f"Sandbox manager could not be started : {e}")
-        exit()
+    except (RuntimeError, OSError) as exc:
+        console_printer(f"[red]Sandbox manager could not be started: {exc}[/red]")
+        raise SystemExit(1) from exc
 
     # Monitoring 
     logfire.configure(scrubbing=False)

@@ -56,12 +56,14 @@ class DeadEndAgent:
         session_id: UUID,
         model: AIModel,
         available_agents: Dict[str, str],
+        target: str,
         max_depth: int = 3
     ):
         self.session_id = session_id
         self.model = model
         self.available_agents = available_agents
         self.context = ContextEngine(session_id=session_id)
+        self.context.set_target(target=target)
 
         # Initialize threat model agent for planning
         self.threat_model_agent = ReconThreatModelAgent(
@@ -72,15 +74,6 @@ class DeadEndAgent:
             tools=[]
         )
 
-        # Initialize ADaPT components
-        # planner_runner = AgentRunner(
-        #     name="planner",
-        #     model=model,
-        #     instructions="Break down security testing tasks into subtasks.",
-        #     deps_type=None,
-        #     output_type=list,
-        #     tools=[]
-        # )
         self.planner = Planner(planner_agent=self.threat_model_agent)
 
         # Pass router, model, and available_agents to executor so it can route and execute with specialized agents

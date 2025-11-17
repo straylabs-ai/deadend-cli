@@ -130,13 +130,7 @@ async def eval_deadend_agent(
         'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
 
     }
-    session_id = uuid4()
-    deadend_agent = DeadEndAgent(
-        session_id=session_id,
-        model=model,
-        available_agents=generic_agents,
-        max_depth=3
-    )
+
 
     # workflow_agent.register_sandbox_runner(network_name="shared_net")
     # Setting up the prompt used
@@ -156,7 +150,14 @@ async def eval_deadend_agent(
     print(f"the target ip : {ip_addr_target}")
     target_host = f"{ip_addr_target}:{port}"
 
-
+    session_id = uuid4()
+    deadend_agent = DeadEndAgent(
+        session_id=session_id,
+        model=model,
+        available_agents=generic_agents,
+        target=target_host,
+        max_depth=3
+    )
     if with_code_indexing:
         deadend_agent.init_webtarget_indexer(target_host)
         web_resources_crawler = await deadend_agent.crawl_target()
