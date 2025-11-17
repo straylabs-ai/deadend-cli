@@ -13,6 +13,7 @@ from deadend_agent.agents.architecture import (
     AgentRunner,
     AgentExecutor,
     Planner,
+    TaskNode,
     Validator
 )
 from deadend_agent.utils.structures import (
@@ -72,15 +73,15 @@ class DeadEndAgent:
         )
 
         # Initialize ADaPT components
-        planner_runner = AgentRunner(
-            name="planner",
-            model=model,
-            instructions="Break down security testing tasks into subtasks.",
-            deps_type=None,
-            output_type=list,
-            tools=[]
-        )
-        self.planner = Planner(planner_agent=planner_runner)
+        # planner_runner = AgentRunner(
+        #     name="planner",
+        #     model=model,
+        #     instructions="Break down security testing tasks into subtasks.",
+        #     deps_type=None,
+        #     output_type=list,
+        #     tools=[]
+        # )
+        self.planner = Planner(planner_agent=self.threat_model_agent)
 
         # Pass router, model, and available_agents to executor so it can route and execute with specialized agents
         self.executor = AgentExecutor(
@@ -255,5 +256,19 @@ class DeadEndAgent:
         # Add a plan to recon for the threat model.
         # The threat model agent is a supervisor that can call
         #  to the router for the generic agent calling
-        plan = await self.adapt_agent.run(task=task)
+        plan: TaskNode | None = None
+        async for event in self.adapt_agent.run(task=task):
+            if isinstance(event, dict):
+                if event.get("type") == "result":
+                    root_candidate = event.get("root")
+                    if isinstance(root_candidate, TaskNode):
+                        plan = root_candidate
+                else:
+                    print(event.get("message", str(event)))
+            else:
+                print(str(event))
+
+        if plan is None:
+            raise RuntimeError("ADaPT agent did not produce a plan.")
+
         return plan

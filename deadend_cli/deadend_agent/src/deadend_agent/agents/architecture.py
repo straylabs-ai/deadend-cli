@@ -1,7 +1,6 @@
 from __future__ import annotations
-from typing import Any, Literal
+from typing import Any, Literal, AsyncGenerator
 from uuid import UUID
-from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from pydantic_ai import DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
@@ -172,7 +171,7 @@ class AgentExecutor:
         usage_limits: UsageLimits = UsageLimits(),
         deferred_tool_results: DeferredToolResults | None = None,
         message_history: list | None = None
-    ) -> tuple[float, dict[str, Any]]:
+    ) -> AsyncGenerator[dict[str, Any], None]:
         """Execute a task node using the appropriate agent.
         
         The execution process:
@@ -190,29 +189,30 @@ class AgentExecutor:
             deferred_tool_results: Optional deferred tool results from previous runs
             message_history: Previous conversation messages for context
             
-        Returns:
-            Tuple of (confidence_score, updated_context) where:
-            - confidence_score: Float between 0.0 and 1.0 indicating execution confidence
-            - updated_context: Dictionary with updated context including execution log and state
+        Yields:
+            Dictionaries shaped as {"type": "log", "message": str} for streaming updates.
+            The final event is {"type": "result", "confidence": float, "context": dict}.
             
         Note:
             If routing fails or the selected agent cannot be created, execution falls back
             to the generic runner. All routing and execution information is logged in the context.
         """
-        context = {}
+        context: dict[str, Any] = {"log": ""}
+
+        def emit(message: str) -> dict[str, Any]:
+            """Append a log entry to the context and return it for streaming."""
+            context["log"] += f"\n{message}"
+            return {"type": "log", "message": message}
+
         try:
-            # Ensure context is a copy to avoid mutating the original
+            yield emit(f"[EXECUTOR] Starting task: {task_node.task}")
 
-            context.setdefault("log", "")
-
-            # Use router to determine which agent should handle this task if router is available
             routing_info = None
-            selected_agent = None
+            selected_agent: AgentRunner | None = None
             if self.router:
                 try:
                     router_result = await self.router.run(
-                        prompt=f"{self.context.get_all_context()}\n\
-                            Which agent should handle: {task_node.task}",
+                        prompt=f"{self.context.get_all_context()}\nWhich agent should handle: {task_node.task}",
                         deps=None,
                         message_history=message_history or "",
                         usage=usage,
@@ -221,24 +221,21 @@ class AgentExecutor:
                     )
                     routing_info = router_result.output
                     if isinstance(routing_info, RouterOutput):
-                        # Add routing information to context
-                        context["log"] += f"\n[ROUTER] Selected agent: \
-                            {routing_info.next_agent_name}\nReasoning: {routing_info.reasoning}"
-
-                        # Try to get or create the selected agent
+                        yield emit(
+                            "[ROUTER] Selected agent: "
+                            f"{routing_info.next_agent_name}\nReasoning: {routing_info.reasoning}"
+                        )
                         selected_agent = self._get_agent(routing_info.next_agent_name)
                         if selected_agent:
-                            context["log"] += f"\n[EXECUTOR] Using specialized agent: \
-                                {routing_info.next_agent_name}"
+                            yield emit(f"[EXECUTOR] Using specialized agent: {routing_info.next_agent_name}")
                         else:
-                            context["log"] += f"\n[EXECUTOR] Specialized agent \
-                                '{routing_info.next_agent_name}' not available, using generic executor"
-                except Exception as e:
-                    # If routing fails, continue with generic executor
-                    context["log"] += f"\n[ROUTER] Routing failed: {str(e)}, using generic executor"
+                            yield emit(
+                                "[EXECUTOR] Specialized agent "
+                                f"'{routing_info.next_agent_name}' not available, using generic executor"
+                            )
+                except Exception as exc:
+                    yield emit(f"[ROUTER] Routing failed: {exc}, using generic executor")
 
-            # Use selected agent if available, 
-            # otherwise use generic runner
             if isinstance(selected_agent, AgentRunner):
                 result = await self._run_agent(
                     agent=selected_agent,
@@ -248,14 +245,6 @@ class AgentExecutor:
                     usage_limits=usage_limits,
                     deferred_tool_results=deferred_tool_results
                 )
-                # result = await agent_to_use.run(
-                #     prompt=task_node.task,
-                #     deps=deps,
-                #     message_history=message_history,
-                #     usage=usage,
-                #     usage_limits=usage_limits,
-                #     deferred_tool_results=deferred_tool_results
-                # )
                 output = result.output
             else:
                 output = f"[AGENT RESPONSE] Error in agent running {selected_agent}"
@@ -265,21 +254,27 @@ class AgentExecutor:
                 notes = output.notes or ""
                 updated_state = output.updated_state or {}
             else:
-                confidence_score = getattr(output, 'confidence_score', 0.3)
-                notes = getattr(output, 'notes', str(output))
-                updated_state = getattr(output, 'updated_state', {})
+                confidence_score = getattr(output, "confidence_score", 0.3)
+                notes = getattr(output, "notes", str(output))
+                updated_state = getattr(output, "updated_state", {})
 
-            # Context already copied and log initialized at the start
-            context["log"] += f"\n[EXECUTOR] Task: {task_node.task}\nNotes: {notes}"
+            yield emit(f"[EXECUTOR] Task: {task_node.task}\nNotes: {notes}")
             context.update(updated_state)
-            context["last_output"] = output.model_dump() \
-                if isinstance(output, AgentOutput) else str(output)
-            return confidence_score, context
-        except Exception as e:
-            # On error, return low confidence failure
-            # Context already copied and log initialized at the start
-            context["log"] += f"\n[EXECUTOR] Error: {str(e)}"
-            return 0.0, context
+            context["last_output"] = output.model_dump() if isinstance(output, AgentOutput) else str(output)
+            yield {
+                "type": "result",
+                "confidence": confidence_score,
+                "context": context,
+            }
+            return
+        except Exception as exc:
+            yield emit(f"[EXECUTOR] Error: {exc}")
+            yield {
+                "type": "result",
+                "confidence": 0.0,
+                "context": context,
+            }
+            return
 
     def _get_agent(self, agent_name: str) -> AgentRunner:
         """Get an agent instance by name.
@@ -531,7 +526,7 @@ class ADaPTAgent:
         self.validator = validator
         self.context = context
 
-    async def _solve(self, node: TaskNode, depth: int) -> None:
+    async def _solve(self, node: TaskNode, depth: int) -> AsyncGenerator[str, None]:
         """Recursively solve a task node using the ADaPT algorithm.
         
         This is the core recursive method that implements the ADaPT algorithm:
@@ -547,42 +542,64 @@ class ADaPTAgent:
         Note:
             Tasks that exceed max_depth will be marked as "aborted:max_depth".
             The method modifies the node's status and confidence_score in place.
+            This is implemented as an async generator to stream intermediate log entries
+            upstream while still performing recursive execution.
         """
+        def emit(message: str) -> str:
+            """Record an agent response and surface it to callers."""
+            self.context.add_agent_response(message)
+            return message
+
         if depth > self.max_depth:
             node.status = "aborted:max_depth"
             node.confidence_score = 0.0
+            yield emit(f"[ADAPT] Aborted task '{node.task}' at depth {depth} (max_depth={self.max_depth})")
             return
 
-        confidence_score, new_context = await self.executor.execute(
-            task_node=node,
+        executor_stream = self.executor.execute(task_node=node)
+        confidence_score: float | None = None
+        new_context: dict[str, Any] | None = None
+        async for event in executor_stream:
+            if event.get("type") == "result":
+                confidence_score = float(event.get("confidence", 0.0))
+                new_context = event.get("context", {}) or {}
+                break
+            yield emit(str(event.get("message", "")))
 
-        )
+        if confidence_score is None or new_context is None:
+            raise RuntimeError("AgentExecutor did not produce a result.")
 
-        self.context.add_agent_response(str(new_context))
+        yield emit(str(new_context))
 
         decision = self._policy(confidence_score)
         if decision == "fail":
             node.status = "failed"
+            yield emit(f"[POLICY] Task '{node.task}' failed with confidence {confidence_score:.2f}")
             return
 
         if decision == "validate":
-            # Validate the task
             node.status = await self._validate(node)
+            yield emit(f"[POLICY] Validation completed for '{node.task}' with status {node.status}")
             return
 
         subtasks = await self.planner.expand(
             node,
-            context = self.context.get_all_context()
+            context=self.context.get_all_context()
         )
-        if not subtasks or len(subtasks) <1:
+        if not subtasks:
             node.status = "refine"
+            yield emit(f"[PLANNER] No subtasks generated for '{node.task}', requesting refinement")
             if node.parent:
-                await self._solve(node.parent, depth=node.depth)
+                async for chunk in self._solve(node.parent, depth=node.depth):
+                    yield chunk
+            return
 
         node.status = "expand"
         node.children = subtasks
+        yield emit(f"[PLANNER] Generated {len(subtasks)} subtasks for '{node.task}'")
         for subtask in subtasks:
-            await self._solve(subtask, depth+1)
+            async for chunk in self._solve(subtask, depth + 1):
+                yield chunk
 
     def _policy(self, confidence_score: float) -> Literal["fail", "expand", "refine", "validate"]:
         """
@@ -636,7 +653,7 @@ class ADaPTAgent:
         shell_deps: ShellDeps | None = None,
         requester_deps: RequesterDeps | None = None,
         webapprecon_deps: WebappreconDeps | None = None,
-    ) -> TaskNode:
+    ) -> AsyncGenerator[str | dict[str, Any], None]:
         """Run the ADaPT agent on a given task.
         
         Creates a root task node and recursively solves it using the ADaPT algorithm,
@@ -647,9 +664,9 @@ class ADaPTAgent:
             context: Optional initial context dictionary. If not provided, an empty
                 dictionary will be created with an empty "log" entry.
                 
-        Returns:
-            TaskNode representing the root of the execution tree. The tree contains
-            all subtasks, their execution statuses, and confidence scores.
+        Yields:
+            Human-readable log strings describing progress followed by a final
+            {"type": "result", "root": TaskNode} event containing the execution tree.
         """
         # self.context = context or {}
         # self.context.setdefault("log", "")
@@ -669,5 +686,8 @@ class ADaPTAgent:
             children=[]
         )
 
-        await self._solve(root, depth=0)
-        return root
+        async for chunk in self._solve(root, depth=0):
+            yield chunk
+
+        yield {"type": "result", "root": root}
+        return
