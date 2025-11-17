@@ -1,11 +1,10 @@
 """Main DeadEnd agent orchestration module."""
-from typing import Any, Dict, Generator
+from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
 from deadend_agent.models.registry import AIModel
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
 # from deadend_agent.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
-from .agents.factory import AgentRunner
 from deadend_agent.agents.architecture import (
     ADaPTAgent,
     AgentRunner,
@@ -13,12 +12,31 @@ from deadend_agent.agents.architecture import (
     Planner,
     Validator
 )
+from deadend_agent.utils.structures import RequesterDeps
+from .agents.factory import AgentRunner
+
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
+
+ApprovalCallback = Callable[..., Awaitable[str]]
+
 
 class DeadEndAgent:
     """Main orchestrator for the DeadEnd security research framework."""
 
+    session_id: UUID
+    model: AIModel
+    available_agents: Dict[str, str]
     context: ContextEngine
+    goal_achieved: bool = False
+    interrupted: bool = False
+    approval_callback: ApprovalCallback | None = None
+    target: str | None = None
+    code_indexer: SourceCodeIndexer | None = None
+    threat_model_agent: ReconThreatModelAgent
+    planner: Planner
+    executor: AgentExecutor
+    validator: Validator
+    adapt_agent: ADaPTAgent
 
     def __init__(
         self,
@@ -90,7 +108,7 @@ class DeadEndAgent:
         the workflow to stop at the next check point.
         """
         self.interrupted = True
-        yield f"[yellow]Workflow interruption requested...[/yellow]"
+        yield "[yellow]Workflow interruption requested...[/yellow]"
 
     def reset_workflow_state(self) -> Generator[str, None, None]:
         """Reset the workflow state for a new execution.
@@ -102,7 +120,7 @@ class DeadEndAgent:
         self.goal_achieved = False
         self.interrupted = False
 
-        yield f"[green]Workflow state reset for new execution[/green]"
+        yield "[green]Workflow state reset for new execution[/green]"
 
     def set_approval_callback(self, callback):
         """Set a callback function for user approval input.
@@ -193,6 +211,7 @@ class DeadEndAgent:
         # The executor within ADaPT uses the router to route tasks to appropriate agents
 
         # Add a plan to recon for the threat model.
-        # The threat model agent is a supervisor that can call to the router for the generic agent calling
+        # The threat model agent is a supervisor that can call
+        #  to the router for the generic agent calling
         plan = await self.adapt_agent.run(task=task)
         return plan

@@ -1,13 +1,13 @@
 from __future__ import annotations
 from typing import Any, Literal
 from uuid import UUID
+from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from pydantic_ai import DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.context.memory import MemoryHandler
 from deadend_agent.models.registry import AIModel
 from deadend_agent.utils.structures import PlannerOutput
-from deadend_prompts.template_renderer import render_agent_instructions
 from deadend_agent.agents import (
     RouterAgent, RouterOutput,
     RequesterAgent,
@@ -16,8 +16,10 @@ from deadend_agent.agents import (
     AgentRunner
 )
 from deadend_agent.agents.factory import AgentOutput
-from deadend_agent.utils.structures import WebappreconDeps
+from deadend_agent.utils.structures import WebappreconDeps, RequesterDeps, ShellDeps
 from deadend_agent.context import ContextEngine
+from deadend_prompts.template_renderer import render_agent_instructions
+
 
 
 class TaskNode(BaseModel):
@@ -145,47 +147,6 @@ class AgentExecutor:
                     available_agents=self.available_agents
         )
 
-    def _get_agent(self, agent_name: str) -> AgentRunner:
-        """Get an agent instance by name.
-        
-        Args:
-            agent_name: Name of the agent to retrieve
-            
-        Returns:
-            AgentRunner instance for the specified agent
-        """
-        # Determine if approval is required based on mode
-
-        match agent_name:
-            case "requester":
-                return RequesterAgent(
-                    model=self.model,
-                    deps_type=WebappreconDeps,
-                    target_information=self.context.target,
-                    requires_approval=self.requires_approval
-                )
-            case "shell":
-                return ShellAgent(
-                    model=self.model,
-                    deps_type=WebappreconDeps,
-                    target_information=self.context.target,
-                    requires_approval=self.requires_approval
-                )
-            case "python_interpreter":
-                return PythonInterpreterAgent(
-                    model=self.model,
-                    deps_type=None,
-                )
-            case _:
-                self.context.add_not_found_agent(agent_name=agent_name)
-                return RouterAgent(
-                    model=self.model,
-                    deps_type=None,
-                    tools=[],
-                    available_agents=self.available_agents
-                )
-
-
     async def execute(
         self,
         task_node: TaskNode,
@@ -258,10 +219,9 @@ class AgentExecutor:
                     # If routing fails, continue with generic executor
                     context["log"] += f"\n[ROUTER] Routing failed: {str(e)}, using generic executor"
 
-            # Use selected agent if available, otherwise use generic runner
-            agent_to_use = selected_agent
-            if isinstance(agent_to_use, AgentRunner):
-                result = await agent_to_use.run(
+            # Use selected agent if available, otherwise use generic runner            if isinstance(selected_agent, AgentRunner):
+                result = await self._run_agent(
+                    agent=selected_agent,
                     prompt=task_node.task,
                     deps=deps,
                     message_history=message_history,
@@ -269,9 +229,17 @@ class AgentExecutor:
                     usage_limits=usage_limits,
                     deferred_tool_results=deferred_tool_results
                 )
+                # result = await agent_to_use.run(
+                #     prompt=task_node.task,
+                #     deps=deps,
+                #     message_history=message_history,
+                #     usage=usage,
+                #     usage_limits=usage_limits,
+                #     deferred_tool_results=deferred_tool_results
+                # )
                 output = result.output
             else:
-                output = f"[AGENT RESPONSE] Error in agent running {agent_to_use}"
+                output = f"[AGENT RESPONSE] Error in agent running {selected_agent}"
 
             if isinstance(output, AgentOutput):
                 confidence_score = output.confidence_score
@@ -293,6 +261,116 @@ class AgentExecutor:
             # Context already copied and log initialized at the start
             context["log"] += f"\n[EXECUTOR] Error: {str(e)}"
             return 0.0, context
+
+    def _get_agent(self, agent_name: str) -> AgentRunner:
+        """Get an agent instance by name.
+        
+        Args:
+            agent_name: Name of the agent to retrieve
+            
+        Returns:
+            AgentRunner instance for the specified agent
+        """
+        # Determine if approval is required based on mode
+
+        match agent_name:
+            case "requester":
+                return RequesterAgent(
+                    model=self.model,
+                    deps_type=RequesterDeps,
+                    target_information=self.context.target,
+                    requires_approval=self.requires_approval
+                )
+            case "shell":
+                return ShellAgent(
+                    model=self.model,
+                    deps_type=WebappreconDeps,
+                    target_information=self.context.target,
+                    requires_approval=self.requires_approval
+                )
+            case "python_interpreter":
+                return PythonInterpreterAgent(
+                    model=self.model,
+                    deps_type=None,
+                )
+            case _:
+                self.context.add_not_found_agent(agent_name=agent_name)
+                return RouterAgent(
+                    model=self.model,
+                    deps_type=None,
+                    tools=[],
+                    available_agents=self.available_agents
+                )
+
+    async def _run_agent(
+        self,
+        agent: AgentRunner,
+        prompt: str,
+        message_history,
+        usage: RunUsage,
+        usage_limits: UsageLimits,
+        deferred_tool_results: DeferredToolResults,
+        deps: RequesterDeps | ShellDeps | WebappreconDeps,
+
+    ):
+    # Adding a try/ except block is the deps are not formally
+    # built or if anything is missing
+        results = None
+        if isinstance(agent, RequesterAgent):
+            # TODO: add interruptions
+            # if self.interrupted:
+            #     raise InterruptedError("Workflow interrupted before webapp recon execution")
+            if isinstance(deps, RequesterDeps):
+                results = await agent.run(
+                    prompt=prompt,
+                    message_history=message_history,
+                    usage=usage,
+                    usage_limits=usage_limits,
+                    deps=deps,
+                    deferred_tool_results=deferred_tool_results
+                )
+        elif isinstance(agent, PythonInterpreterAgent):
+            results = await agent.run(
+                prompt=prompt,
+                message_history=message_history,
+                usage=usage,
+                usage_limits=usage_limits,
+                deps=deps,
+                deferred_tool_results=deferred_tool_results
+            )
+        elif isinstance(agent, RouterAgent):
+            results = await agent.run(
+                prompt=prompt,
+                message_history=message_history,
+                usage=usage,
+                usage_limits=usage_limits,
+                deps=deps,
+                deferred_tool_results=deferred_tool_results
+            )
+        elif isinstance(agent, ShellAgent):
+            if isinstance(deps, ShellDeps):
+                results = await agent.run(
+                    prompt=prompt,
+                    message_history=message_history,
+                    usage=usage,
+                    usage_limits=usage_limits,
+                    deps=deps,
+                    deferred_tool_results=deferred_tool_results
+                )
+        else:
+            results = await agent.run(
+                prompt=prompt,
+                message_history=message_history,
+                usage=usage,
+                usage_limits=usage_limits,
+                deps=deps,
+                deferred_tool_results=deferred_tool_results
+            )
+        if results is None:
+            raise RuntimeError(
+                f"Agent {agent.__class__.__name__} could not run with provided deps."
+            )
+        return results
 
 class ValidatorOutput(BaseModel):
     """Output format for task validation results.

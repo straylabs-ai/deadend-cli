@@ -113,6 +113,28 @@ class ShellDeps:
     """
     shell_runner: ShellRunner
 
+
+@dataclass
+class RequesterDeps:
+    """
+    Dependencies container for web application reconnaissance operations.
+    
+    This dataclass holds all the necessary components for performing
+    web application reconnaissance tasks, including AI models, database
+    connectors, target information, and execution environment.
+    
+    Attributes:
+        openai: AsyncOpenAI client for AI model interactions
+        rag: RetrievalDatabaseConnector for knowledge base operations
+        target: Target web application URL or identifier
+        shell_runner: ShellRunner for executing reconnaissance commands
+        session_id: Unique session identifier for tracking operations
+    """
+    openai: AsyncOpenAI
+    rag: RetrievalDatabaseConnector
+    target: str
+    session_id: uuid.UUID
+
 @dataclass
 class WebappreconDeps:
     """

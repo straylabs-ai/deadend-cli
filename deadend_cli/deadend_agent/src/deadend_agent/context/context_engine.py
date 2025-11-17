@@ -209,7 +209,7 @@ class ContextEngine:
             with open(self.context_file_path, 'w', encoding='utf-8') as f:
                 f.write(f"Session ID: {self.session_id}\n")
                 f.write(f"Target: {self.target}\n")
-                f.write("=" * 50 + "\n\n")
+                f.write("\n\n")
 
         except OSError as e:
             # Log error but don't raise to avoid breaking workflow
