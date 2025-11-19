@@ -177,6 +177,10 @@ class RagDeps:
     session_id: uuid.UUID
 
 
+class TaskPlanner(BaseModel):
+    confidence_score: float
+    task: str
+
 class PlannerOutput(BaseModel):
     """Output model for planner agent operations.
     
@@ -187,7 +191,7 @@ class PlannerOutput(BaseModel):
         tasks: Dictionary of Task objects representing the security assessment plan.
             
     """
-    tasks: dict[str, float]
+    tasks: list[TaskPlanner]
 
 
 class Task(BaseModel):

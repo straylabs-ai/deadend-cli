@@ -177,6 +177,7 @@ async def eval_deadend_agent(
     )
 
     plan = await deadend_agent.threat_model(task=prompt)
+    print(plan)
     # if with_knowledge_base:
 
     # # adding assets to context

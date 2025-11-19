@@ -3,6 +3,7 @@ from typing import Any, Literal, AsyncGenerator
 from uuid import UUID
 from pydantic import BaseModel, Field
 from pydantic_ai import DeferredToolResults
+from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.context.memory import MemoryHandler
 from deadend_agent.models.registry import AIModel
@@ -70,7 +71,9 @@ class Planner:
     async def expand(
         self,
         parent_task: TaskNode,
-        context: str
+        context: str,
+        usage: RunUsage,
+        usage_limits: UsageLimits
 
     ) -> list[TaskNode]:
         """Expand a parent task into subtasks.
@@ -88,18 +91,19 @@ class Planner:
             prompt=f"Break down this task into subtasks: {parent_task.task}. The context is : {str(context)}",
             deps=None,
             message_history="",
-            usage=None,
-            usage_limits=None
+            usage=usage,
+            usage_limits=usage_limits
         )
 
         # Populating task nodes
         nested_tasks = []
+        print(result.output.tasks)
         if isinstance(result.output, PlannerOutput):
-            for _, (task, confidence_score) in enumerate(result.output.tasks.items()):
+            for task_plan in result.output.tasks:
                 new_task = TaskNode(
-                    task=task,
+                    task=task_plan.task,
                     depth=parent_task.depth+1,
-                    confidence_score=confidence_score,
+                    confidence_score=task_plan.confidence_score,
                     status="pending",
                     parent=parent_task,
                     children=[]
@@ -168,7 +172,7 @@ class AgentExecutor:
         self,
         task_node: TaskNode,
         usage: RunUsage = RunUsage(),
-        usage_limits: UsageLimits = UsageLimits(),
+        usage_limits: UsageLimits = UsageLimits(request_limit=None, tool_calls_limit=None),
         deferred_tool_results: DeferredToolResults | None = None,
         message_history: list | None = None
     ) -> AsyncGenerator[dict[str, Any], None]:
@@ -198,6 +202,7 @@ class AgentExecutor:
             to the generic runner. All routing and execution information is logged in the context.
         """
         context: dict[str, Any] = {"log": ""}
+        confidence_score: float | None = None
 
         def emit(message: str) -> dict[str, Any]:
             """Append a log entry to the context and return it for streaming."""
@@ -246,19 +251,20 @@ class AgentExecutor:
                     deferred_tool_results=deferred_tool_results
                 )
                 output = result.output
+                print(f"test output : {output}")
             else:
                 output = f"[AGENT RESPONSE] Error in agent running {selected_agent}"
 
             if isinstance(output, AgentOutput):
-                confidence_score = output.confidence_score
+                confidence_score = float(output.confidence_score)
                 notes = output.notes or ""
                 updated_state = output.updated_state or {}
             else:
-                confidence_score = getattr(output, "confidence_score", 0.3)
+                confidence_score = float(getattr(output, "confidence_score", 0.3))
                 notes = getattr(output, "notes", str(output))
                 updated_state = getattr(output, "updated_state", {})
 
-            yield emit(f"[EXECUTOR] Task: {task_node.task}\nNotes: {notes}")
+            yield emit(f"[EXECUTOR] Task: {task_node.task}\nNotes: {notes}\n{output}")
             context.update(updated_state)
             context["last_output"] = output.model_dump() if isinstance(output, AgentOutput) else str(output)
             yield {
@@ -267,11 +273,19 @@ class AgentExecutor:
                 "context": context,
             }
             return
+        except UsageLimitExceeded as exc:
+            yield emit(f"[EXECUTOR] Usage limit reached: {exc}")
+            yield {
+                "type": "result",
+                "confidence": confidence_score if confidence_score is not None else 0.3,
+                "context": context,
+            }
+            return
         except Exception as exc:
             yield emit(f"[EXECUTOR] Error: {exc}")
             yield {
                 "type": "result",
-                "confidence": 0.0,
+                "confidence": confidence_score if confidence_score is not None else 0.3,
                 "context": context,
             }
             return
@@ -474,7 +488,7 @@ Execution trace:
             critique = result.output.critique
         else:
             valid = getattr(result.output, "valid", False)
-            confidence_score = getattr(result.output, "confidence_score", 0.0)
+            confidence_score = getattr(result.output, "confidence_score", 0.3)
             critique = str(result.output)
 
         # adding to context
@@ -552,7 +566,7 @@ class ADaPTAgent:
 
         if depth > self.max_depth:
             node.status = "aborted:max_depth"
-            node.confidence_score = 0.0
+            node.confidence_score = 0.3
             yield emit(f"[ADAPT] Aborted task '{node.task}' at depth {depth} (max_depth={self.max_depth})")
             return
 
@@ -561,9 +575,12 @@ class ADaPTAgent:
         new_context: dict[str, Any] | None = None
         async for event in executor_stream:
             if event.get("type") == "result":
-                confidence_score = float(event.get("confidence", 0.0))
+                confidence_score = float(event.get("confidence_score", 0.3))
                 new_context = event.get("context", {}) or {}
+                self.context.add_agent_response(str(event.get("confidence_score", 0.3))+str(event.get("context", {})))
                 break
+            self.context.add_agent_response(str(event.get("message", "")))
+
             yield emit(str(event.get("message", "")))
 
         if confidence_score is None or new_context is None:
@@ -574,7 +591,7 @@ class ADaPTAgent:
         decision = self._policy(confidence_score)
         if decision == "fail":
             node.status = "failed"
-            yield emit(f"[POLICY] Task '{node.task}' failed with confidence {confidence_score:.2f}")
+            yield emit(f"[POLICY] Task '{node.task}' failed with confidence_score {confidence_score:.2f}")
             return
 
         if decision == "validate":
@@ -584,7 +601,9 @@ class ADaPTAgent:
 
         subtasks = await self.planner.expand(
             node,
-            context=self.context.get_all_context()
+            context=self.context.get_all_context(),
+            usage=RunUsage(),
+            usage_limits=UsageLimits(request_limit=None)
         )
         if not subtasks:
             node.status = "refine"
@@ -680,14 +699,21 @@ class ADaPTAgent:
         root = TaskNode(
             task=task,
             depth=0,
-            confidence_score=0.0,
+            confidence_score=0.3,
             status="pending",
             parent=None,
             children=[]
         )
-
-        async for chunk in self._solve(root, depth=0):
-            yield chunk
+        subtasks = await self.planner.expand(
+            root,
+            context=self.context.get_all_context(),
+            usage=RunUsage(),
+            usage_limits=UsageLimits(request_limit=None)
+        )
+        print(subtasks)
+        for subtask in subtasks:
+            async for chunk in self._solve(subtask, depth=0):
+                yield chunk
 
         yield {"type": "result", "root": root}
         return

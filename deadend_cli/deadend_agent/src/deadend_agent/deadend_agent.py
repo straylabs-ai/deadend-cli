@@ -20,7 +20,8 @@ from deadend_agent.utils.structures import (
     RequesterDeps,
     ShellDeps,
     ShellRunner,
-    WebappreconDeps
+    WebappreconDeps,
+    PlannerOutput
 )
 from .agents.factory import AgentRunner
 
@@ -70,7 +71,7 @@ class DeadEndAgent:
             name="threat_model",
             model=model,
             deps_type=None,
-            output_type=str,
+            output_type=PlannerOutput,
             tools=[]
         )
 
