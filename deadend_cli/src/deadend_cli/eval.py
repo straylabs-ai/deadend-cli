@@ -9,13 +9,13 @@ testing AI agent performance, and assessing security research capabilities
 through various evaluation scenarios and metrics.
 """
 
-import logfire
 import json
+import logfire
 
 from rich import print as console_printer
+from sqlalchemy.exc import SQLAlchemyError
 from deadend_agent import Config, init_rag_database, sandbox_setup, ModelRegistry
-from deadend_eval.eval import EvalMetadata, eval_agent
-from deadend_eval.ctf_evaluator import CtfEvaluator
+from deadend_eval.eval import EvalMetadata, eval_deadend_agent
 
 async def eval_interface(
         config: Config,
@@ -27,38 +27,38 @@ async def eval_interface(
     # We do so by taking the `eval_metadata_file` and processing it
     # to extract the relevant information about the evaluation and
     # the steps that needs to be taken.
-    with open(eval_metadata_file) as eval_file:
+    with open(eval_metadata_file, encoding="utf-8") as eval_file:
         data = json.load(eval_file)
     eval_metadata = EvalMetadata(**data)
 
     model_registry = ModelRegistry(config=config)
-    # Here we try to get the registry of all the models that we sat up
-    # Which means all the models configured in env file or variables
-    # We aim to evaluate the same agent on multiple models.
-    models = model_registry.get_all_models()
+    if not model_registry.has_any_model():
+        raise RuntimeError(f"No LM model configured. You can run `deadend init` to \
+            initialize the required Model configuration for {providers[0]}")
 
-    try: 
+    database_url = config.db_url or ""
+    try:
         # Initializing the rag code indexer database
-        rag_db = await init_rag_database(config.db_url)
-    except Exception: # TODO: This section need to be handled in a better way
-        console_printer.print("Vector DB not accessible. Exiting now.")
-        exit()
-    
+        rag_db = await init_rag_database(database_url)
+    except (SQLAlchemyError, OSError) as exc:
+        console_printer(f"[red]Vector DB not accessible ({exc}). Exiting now.[/red]")
+        raise SystemExit(1) from exc
+
     try:
         sandbox_manager = sandbox_setup()
-    except Exception as e: 
-        console_printer.print(f"Sandbox manager could not be started : {e}")
-        exit()
-    
+    except (RuntimeError, OSError) as exc:
+        console_printer(f"[red]Sandbox manager could not be started: {exc}[/red]")
+        raise SystemExit(1) from exc
+
     # Monitoring 
     logfire.configure(scrubbing=False)
     logfire.instrument_pydantic_ai()
 
-    # adding automatic build and ask prompt 
+    # adding automatic build and ask prompt
     sandbox_id = sandbox_manager.create_sandbox(image="kali_deadend", volume_path=eval_metadata.assets_path)
     sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)
 
-    await eval_agent(
+    await eval_deadend_agent(
         model=model_registry.get_model(provider=providers[0]),
         # evaluators=[CtfEvaluator],
         config=config,

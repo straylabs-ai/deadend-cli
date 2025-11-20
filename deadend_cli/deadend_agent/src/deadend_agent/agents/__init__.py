@@ -6,9 +6,10 @@ from .planner import Planner, PlannerAgent, PlannerOutput, RagDeps
 from .router import RouterAgent, RouterOutput
 from .judge import JudgeAgent, JudgeOutput
 from .factory import AgentRunner
-from .webapp_recon_agent import WebappReconAgent, RequesterOutput
-from .recon_shell_agent import ReconShellAgent, ShellReconOutput
-from .python_interpreter_agent import PythonInterpreterAgent, PythonInterpreterOutput
+from .generic_agents.webapp_recon_agent import WebappReconAgent, RequesterOutput
+from .generic_agents.shell_agent import ShellAgent, ShellOutput
+from .generic_agents.python_interpreter_agent import PythonInterpreterAgent, PythonInterpreterOutput
+from .generic_agents.request_agent import RequesterAgent, RequesterOutput
 
 __all__ = [
             "AgentRunner",
@@ -16,6 +17,9 @@ __all__ = [
             "RouterAgent", "RouterOutput",
             "JudgeOutput", "JudgeAgent",
             "WebappReconAgent", "RequesterOutput",
-            "ReconShellAgent", "ShellReconOutput",
-            "PythonInterpreterAgent", "PythonInterpreterOutput"
+            # Generic agents
+            "ShellAgent", "ShellOutput",
+            "PythonInterpreterAgent", "PythonInterpreterOutput",
+            "RequesterAgent", "RequesterOutput"
+
 ]

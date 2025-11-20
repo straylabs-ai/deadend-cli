@@ -10,19 +10,19 @@ network scanning, file system analysis, and other command-line security tools
 for comprehensive security assessments.
 """
 from typing import Any
-from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
+from deadend_agent.agents.factory import AgentRunner, AgentOutput
 from deadend_agent.tools import sandboxed_shell_tool
 from deadend_prompts import render_agent_instructions, render_tool_description
-from .factory import AgentRunner
 
 
-class ShellReconOutput(BaseModel):
-    reasoning: str
-    state: str
-    raw_response: str
+class ShellOutput(AgentOutput):
+    objective: str
+    stdin: str
+    stdout: str
+    stderr: str
 
 class ReconShellAgent(AgentRunner):
     """
@@ -44,16 +44,16 @@ class ReconShellAgent(AgentRunner):
         } 
 
         self.instructions = render_agent_instructions(
-            agent_name="recon_shell",
+            agent_name="shell",
             tools=tools_metadata,
             target=target_information
         )
         super().__init__(
-            name="recon_shell",
+            name="shell",
             model=model,
             instructions=self.instructions,
             deps_type=deps_type,
-            output_type=[ShellReconOutput, DeferredToolRequests],
+            output_type=[ShellOutput, DeferredToolRequests],
             tools=[
                 Tool(sandboxed_shell_tool, requires_approval=requires_approval),
             ]

@@ -12,7 +12,7 @@ routing based on current context and progress.
 import uuid
 from pathlib import Path
 from typing import Dict, List, TYPE_CHECKING
-from deadend_agent.utils.structures import Task
+from deadend_agent.utils.structures import Task, TaskPlanner
 
 if TYPE_CHECKING:
     from deadend_agent.agents import RouterOutput
@@ -73,6 +73,46 @@ class ContextEngine:
 
         # Initialize context file with empty structure
         self._initialize_context_file()
+
+    def add_tasks(self, tasks: List[TaskPlanner], depth: int = 0):
+        self.tasks[depth] = tasks
+    
+    def get_tasks(self, depth: int = 0) -> str:
+        """Return a concise textual summary of planner tasks for the given depth.
+
+        The summary includes tasks at the requested depth and recursively nests
+        any available child depths. This string is later injected into prompts,
+        so it favors short, high-signal lines.
+        """
+        if not self.tasks:
+            return "[planner tasks]\nNo planner tasks recorded."
+        if depth not in self.tasks:
+            return f"[planner tasks]\nNo tasks recorded at depth {depth}."
+
+        def build(level: int, indent: int = 0) -> List[str]:
+            level_tasks = self.tasks.get(level, [])
+            if not level_tasks:
+                return []
+
+            lines: List[str] = []
+            for task in level_tasks:
+                lines.append(
+                    f"{' ' * indent}- (depth {level}) "
+                    f"[{task.status}|conf {task.confidence_score:.2f}] {task.task}"
+                )
+
+            child_lines = build(level + 1, indent + 2)
+            if child_lines:
+                lines.append(f"{' ' * indent}↳ Subtasks:")
+                lines.extend(child_lines)
+            return lines
+
+        summary_lines = ["[planner tasks]"]
+        summary_lines.extend(build(depth))
+        summary_lines.append(
+            "Context hint: Highlight evidence, blockers, and why each next action matters."
+        )
+        return "\n".join(summary_lines)
 
     def set_tasks(self, tasks: List[Task]) -> None:
         """Set the current tasks and update workflow context.
@@ -141,11 +181,11 @@ class ContextEngine:
         Adds a message to the workflow context indicating that the
         specified agent was not found. Also saves to text file.
         """
-        self.workflow_context += f"""\n
-[agent not found{agent_name}]\n
+        self.workflow_context += f"""
+[agent not found {agent_name}]\n
 """
         self._append_to_context_file("[ai agent]", f"Not found agent name: {agent_name}")
-    def add_agent_response(self, response: str) -> None:
+    def add_agent_response(self, response: str, agent_name: str = "") -> None:
         """Add an agent response to the workflow context.
         
         Args:
@@ -155,8 +195,8 @@ class ContextEngine:
         Appends the agent response to the workflow context with
         appropriate formatting. Also saves to text file.
         """
-        self.workflow_context += f"""\n
-[ai agent]\n
+        self.workflow_context += f"""
+[Agent : {agent_name}]\n
 {response}
 """
         self._append_to_context_file("[ai agent]", f"Agent response:\n{response}")
@@ -172,7 +212,7 @@ class ContextEngine:
         """
         self.assets[file_name] = file_content
         self._append_to_context_file("[Tool use: file_asset]", f"Added asset file: {file_name}")
-    
+
     def add_assets_to_context(self) -> None:
         """Add all stored assets to the workflow context.
         
@@ -209,7 +249,7 @@ class ContextEngine:
             with open(self.context_file_path, 'w', encoding='utf-8') as f:
                 f.write(f"Session ID: {self.session_id}\n")
                 f.write(f"Target: {self.target}\n")
-                f.write("=" * 50 + "\n\n")
+                f.write("\n\n")
 
         except OSError as e:
             # Log error but don't raise to avoid breaking workflow

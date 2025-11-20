@@ -17,7 +17,7 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 from openai import AsyncOpenAI
 
 from deadend_agent.utils.structures import Task
-from .factory import AgentRunner
+from deadend_agent.agents.factory import AgentRunner
 # from deadend_agent.context import MemoryHandler
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.models.registry import AIModel
@@ -76,7 +76,7 @@ class PlannerAgent(AgentRunner):
 
     async def run(
         self,
-        user_prompt,
+        prompt,
         deps,
         message_history,
         usage,
@@ -86,7 +86,7 @@ class PlannerAgent(AgentRunner):
         """Execute the planner agent to generate security assessment tasks.
         
         Args:
-            user_prompt: The user's prompt or goal for the security assessment.
+            prompt: The user's prompt or goal for the security assessment.
             deps: Dependencies required for the agent execution (RAG dependencies).
             message_history: Historical conversation context.
             usage: Current usage tracking information.
@@ -96,99 +96,13 @@ class PlannerAgent(AgentRunner):
             The generated planner output containing the task list.
         """
         return await super().run(
-            user_prompt=user_prompt,
+            prompt=prompt,
             deps=deps,
             message_history=message_history,
             usage=usage,
             usage_limits=usage_limits,
             deferred_tool_results=deferred_tool_results
         )
-
-class ADaPTPlanner:
-    """High-level planner for orchestrating security assessment workflows.
-
-    The planner coordinates the overall security assessment process by managing
-    information about the target, tracking tasks, and replanning when necessary.
-
-    [ADAPT: As-Needed Decomposition and \
-        Planning with Language Models](https://arxiv.org/pdf/2311.05772)
-
-    It receives the following information:
-    - the target URL
-    - web crawler results of the page
-    - the authentication data if needed
-    - API endpoints or OpenAPI specification file
-
-    The planner manages this information and coordinates task execution:
-    - Creates an initial plan of security testing tasks
-    - Executes tasks sequentially by calling testing agents
-    - Analyzes results using LLM and updates task status
-    - Replans if necessary based on findings
-
-    Attributes:
-        target: The target URL to assess.
-        api_spec: API specification or OpenAPI schema.
-        tasks: List of planned security assessment tasks.
-        agent: The PlannerAgent instance used for planning.
-    """
-    def __init__(self, model: AIModel, target: str, api_spec: str):
-        """Initialize the planner with target information.
-        
-        Args:
-            model: The AI model to use for planning.
-            target: The target URL for security assessment.
-            api_spec: API specification or OpenAPI schema for the target.
-        """
-        self.target = target
-        self.api_spec = api_spec
-        self.tasks = List[Task]
-
-        self.agent = PlannerAgent(
-            model=model,
-            output_type=PlannerOutput,
-        )
-
-    async def run(self,
-            user_prompt: str,
-            message_history: str,
-            usage: RunUsage,
-            usage_limits: UsageLimits,
-            openai: AsyncOpenAI,
-            rag: RetrievalDatabaseConnector,
-            # memory: MemoryHandler,
-            session_id: uuid.UUID
-        ):
-        """Execute the planning workflow to generate security assessment tasks.
-        
-        Args:
-            user_prompt: The user's security assessment goal or objective.
-            message_history: Historical conversation context.
-            usage: Current resource usage tracking.
-            usage_limits: Limits on resource consumption.
-            openai: OpenAI client for LLM operations.
-            rag: RAG database connector for information retrieval.
-            session_id: Unique identifier for the current session.
-            
-        Returns:
-            Planner output containing the generated task list for security assessment.
-        """
-
-        rag_deps = RagDeps(
-            openai=openai,
-            rag=rag,
-            target=self.target,
-            session_id=session_id
-        )
-
-        return await self.agent.run(
-            user_prompt=user_prompt,
-            deps=rag_deps,
-            message_history=message_history,
-            usage=usage,
-            usage_limits=usage_limits,
-        )
-
-
 
 class Planner:
     """High-level planner for orchestrating security assessment workflows.
@@ -232,7 +146,7 @@ class Planner:
         )
 
     async def run(self,
-            user_prompt: str,
+            prompt: str,
             message_history: str,
             usage: RunUsage,
             usage_limits: UsageLimits,
@@ -243,7 +157,7 @@ class Planner:
         """Execute the planning workflow to generate security assessment tasks.
         
         Args:
-            user_prompt: The user's security assessment goal or objective.
+            prompt: The user's security assessment goal or objective.
             message_history: Historical conversation context.
             usage: Current resource usage tracking.
             usage_limits: Limits on resource consumption.
@@ -263,9 +177,11 @@ class Planner:
         )
 
         return await self.agent.run(
-            user_prompt=user_prompt,
+            prompt=prompt,
             deps=rag_deps,
             message_history=message_history,
             usage=usage,
             usage_limits=usage_limits
         )
+
+

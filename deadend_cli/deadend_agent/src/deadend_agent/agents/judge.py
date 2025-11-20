@@ -44,14 +44,22 @@ class JudgeAgent(AgentRunner):
         )
 
 
-    async def run(self, user_prompt, deps, message_history, usage, usage_limits):
+    async def run(
+        self,
+        prompt,
+        deps,
+        message_history,
+        usage,
+        usage_limits,
+        deferred_tool_results=None,
+    ):
         return await super().run(
-            user_prompt=user_prompt,
+            prompt=prompt,
             deps=deps,
             message_history=message_history,
             usage=usage,
             usage_limits=usage_limits,
-            deferred_tool_results=None,    
+            deferred_tool_results=deferred_tool_results,    
         )
 
     def _set_description(self):

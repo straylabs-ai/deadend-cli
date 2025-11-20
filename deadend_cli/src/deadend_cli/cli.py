@@ -14,10 +14,10 @@ import docker
 from docker.errors import DockerException
 from rich.console import Console
 
-import logfire
 import importlib.metadata
 
 from deadend_agent import config_setup
+from deadend_agent.core import start_python_sandbox
 from .chat import chat_interface, Modes
 from .eval import eval_interface
 from .banner import print_banner
@@ -112,16 +112,43 @@ def eval_agent(
         guided: If True, run subtasks instead of a single general task.
     """
     # Init configurations
+    # Check Docker availability first
+    docker_client = docker.from_env()
+    if not check_docker(docker_client):
+        console.print("\n[red]Docker is required for this application to function properly.[/red]")
+        console.print("Please install Docker from: https://docs.docker.com/get-docker/")
+        console.print("Make sure Docker daemon is running, then run this command again.")
+        raise typer.Exit(1)
+
+    # Check pgvector database and setup if not running
+    if not check_pgvector_container(docker_client):
+        console.print("\n[blue]pgvector database is not running. Setting up...[/blue]")
+        if not setup_pgvector_database(docker_client):
+            console.print("\n[red]Failed to setup pgvector database.[/red]")
+            console.print("Please check Docker logs and try again.")
+            raise typer.Exit(1)
+
     config = config_setup()
+    python_process = start_python_sandbox()
+    console.print(f"Python sandbox started: {python_process}")
     # start eval
-    asyncio.run(
-        eval_interface(
-            config=config,
-            eval_metadata_file=eval_metadata_file,
-            providers=llm_providers,
-            guided=guided
+    try:
+        asyncio.run(
+            eval_interface(
+                config=config,
+                eval_metadata_file=eval_metadata_file,
+                providers=llm_providers,
+                guided=guided
+            )
         )
-    )
+    finally:
+        if python_process.poll() is None:
+            python_process.terminate()
+        # Stop pgvector container when chat ends
+        try:
+            stop_pgvector_container(docker_client)
+        except (DockerException, OSError, ConnectionError) as e:
+            console.print(f"[yellow]Warning: Could not stop pgvector container: {e}[/yellow]")
 
 @app.command()
 def init():

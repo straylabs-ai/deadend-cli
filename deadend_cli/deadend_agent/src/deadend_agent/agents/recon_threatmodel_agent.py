@@ -5,7 +5,6 @@ from deadend_agent.models import AIModel
 from deadend_prompts import render_agent_instructions, render_tool_description
 from .factory import AgentRunner
 
-
 class ReconThreatModelAgent(AgentRunner):
     def __init__(
         self,
@@ -30,7 +29,7 @@ class ReconThreatModelAgent(AgentRunner):
 
     async def run(
         self,
-        user_prompt,
+        prompt,
         deps,
         message_history,
         usage: RunUsage | None,
@@ -38,7 +37,7 @@ class ReconThreatModelAgent(AgentRunner):
         deferred_tool_results: DeferredToolResults | None = None
     ):
         return await super().run(
-            user_prompt,
+            prompt,
             deps,
             message_history,
             usage,

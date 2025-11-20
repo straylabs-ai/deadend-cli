@@ -8,28 +8,44 @@ This module provides a factory pattern implementation for creating and
 configuring AI agents with proper error handling, retry logic, and
 usage tracking for the security research framework.
 """
-
-from pydantic.type_adapter import P
+from __future__ import annotations
+from typing import Any
+from pydantic import BaseModel
 from pydantic_ai import Agent, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
-
-from typing import Any, Literal
-
-# from deadend_agent.context import MemoryHandler
 from deadend_agent.models.registry import AIModel
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_random_exponential,
-)
+
+# from tenacity import (
+#     retry,
+#     stop_after_attempt,
+#     wait_random_exponential,
+# )
+
+class AgentOutput(BaseModel):
+    """Standard output format for agent execution results.
+    
+    This model provides a consistent structure for agent outputs, including
+    confidence scores, execution notes, and updated context state.
+    
+    Attributes:
+        confidence_score: Confidence score (0.0-1.0) indicating the agent's
+            confidence in the execution result
+        notes: Optional notes or reasoning from the agent about the execution
+        updated_state: Optional dictionary containing updated context state
+            from the agent's execution
+    """
+    confidence_score: float
+    notes: str | None = None
+    updated_state: dict[str, Any] | None = None
+
 
 class AgentRunner:
     """
-    AgentRunner sets up the Pydantic_ai agent.
-    This can be viewed as a wrapper that adds clean up to agent calls
-
+    Wrapper for Pydantic AI agents that provides a consistent interface for agent execution.
+    
+    This class encapsulates a Pydantic AI Agent instance and provides methods to run
+    agent tasks with proper configuration, error handling, and usage tracking.
     """
-
     def __init__(
         self,
         name: str,
@@ -39,6 +55,16 @@ class AgentRunner:
         output_type: Any | None,
         tools: list,
     ):
+        """Initialize an AgentRunner instance.
+        
+        Args:
+            name: Unique identifier for this agent instance
+            model: The AI model to use for agent execution
+            instructions: System instructions/prompt for the agent
+            deps_type: Optional dependency type for the agent
+            output_type: Expected output type for the agent's responses
+            tools: List of tools available to the agent
+        """
         self.name = name
         self.agent = Agent(
             model=model,
@@ -51,85 +77,35 @@ class AgentRunner:
 
     async def run(
         self,
-        user_prompt,
-        deps,
+        prompt: str,
+        deps: Any,
         message_history,
         usage: RunUsage | None,
         usage_limits: UsageLimits | None,
         deferred_tool_results: DeferredToolResults | None = None
     ):
-        # Checking if the number of tokens doesn't exceed the number of tokens accepted by the 
-        # Model
-        # Handling rate-limits
-        # Handling token number reports
-        # Handling interruptions
-        # Normal running
+        """Execute the agent with the given prompt and parameters.
+        
+        Args:
+            prompt: The user prompt/task for the agent to process
+            deps: Optional dependencies to pass to the agent
+            message_history: Previous conversation messages for context
+            usage: Optional usage tracking object
+            usage_limits: Optional limits for token usage
+            deferred_tool_results: Optional deferred tool results from previous runs
+            
+        Returns:
+            AgentRunResult containing the agent's output and metadata
+            
+        Note:
+            Future enhancements will include token limit checking, rate-limit handling,
+            and interruption support.
+        """
         return await self.agent.run(
-            user_prompt=user_prompt,
+            user_prompt=prompt,
             deps=deps,
             message_history=message_history,
             usage=usage,
             usage_limits=usage_limits,
             deferred_tool_results=deferred_tool_results
         )
-
-
-class ADaPTAgent:
-    """
-    ADaPT Agent is a recursive agent from the paper 
-    ADaPT: As-Needed Decomposition and Planning with Language Models
-    (https://arxiv.org/abs/2311.05772)
-
-    This implementation follows the algorithm presented in the paper, 
-    by retaking the most relevant information:
-    - Usage of 3 components Executors, Planner and Controller.
-    """
-
-    def __init__(
-        self,
-        session_id: str,
-        # memory: MemoryHandler,
-        max_depth: int = 3
-    ):
-        self.session = session_id
-        self.memory = memory
-        self.max_depth = max_depth
-
-    def _executor(
-        self,
-        task: str,
-        agent: AgentRunner
-    ):
-        return True
-
-    def _planner(
-        self,
-        task
-    ) -> tuple[list[str], Literal['and', 'or']]:
-        return ([], "and")
-
-    def _validate_outputs(self, outputs, logic) -> bool:
-        return True
-
-    def run(self, task, agent: AgentRunner, iteration: int) -> dict[str, bool]:
-        """Runs the ADaPT agent. 
-
-        This is an iterative function. 
-
-        """
-        if iteration > self.max_depth:
-            return { task :False }
-
-        completed = self._executor(
-            task=task,
-            agent=agent
-        )
-        outputs = {}
-        if not completed:
-            subtasks, logic = self._planner(task=task)
-            for subtask in subtasks:
-                output = self.run(task=subtask, agent=agent, iteration=iteration+1)
-                outputs[subtask] = output
-
-            completed = self._validate_outputs(outputs, logic)
-        return { task : completed }
