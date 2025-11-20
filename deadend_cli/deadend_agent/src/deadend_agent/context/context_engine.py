@@ -12,7 +12,7 @@ routing based on current context and progress.
 import uuid
 from pathlib import Path
 from typing import Dict, List, TYPE_CHECKING
-from deadend_agent.utils.structures import Task
+from deadend_agent.utils.structures import Task, TaskPlanner
 
 if TYPE_CHECKING:
     from deadend_agent.agents import RouterOutput
@@ -73,6 +73,46 @@ class ContextEngine:
 
         # Initialize context file with empty structure
         self._initialize_context_file()
+
+    def add_tasks(self, tasks: List[TaskPlanner], depth: int=0):
+        self.tasks[depth] = tasks
+    
+    def get_tasks(self, depth: int=0) -> str:
+        """Return a concise textual summary of planner tasks for the given depth.
+
+        The summary includes tasks at the requested depth and recursively nests
+        any available child depths. This string is later injected into prompts,
+        so it favors short, high-signal lines.
+        """
+        if not self.tasks:
+            return "[planner tasks]\nNo planner tasks recorded."
+        if depth not in self.tasks:
+            return f"[planner tasks]\nNo tasks recorded at depth {depth}."
+
+        def build(level: int, indent: int = 0) -> List[str]:
+            level_tasks = self.tasks.get(level, [])
+            if not level_tasks:
+                return []
+
+            lines: List[str] = []
+            for task in level_tasks:
+                lines.append(
+                    f"{' ' * indent}- (depth {level}) "
+                    f"[{task.status}|conf {task.confidence_score:.2f}] {task.task}"
+                )
+
+            child_lines = build(level + 1, indent + 2)
+            if child_lines:
+                lines.append(f"{' ' * indent}↳ Subtasks:")
+                lines.extend(child_lines)
+            return lines
+
+        summary_lines = ["[planner tasks]"]
+        summary_lines.extend(build(depth))
+        summary_lines.append(
+            "Context hint: Highlight evidence, blockers, and why each next action matters."
+        )
+        return "\n".join(summary_lines)
 
     def set_tasks(self, tasks: List[Task]) -> None:
         """Set the current tasks and update workflow context.

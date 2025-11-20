@@ -180,6 +180,7 @@ class RagDeps:
 class TaskPlanner(BaseModel):
     confidence_score: float
     task: str
+    status: str
 
 class PlannerOutput(BaseModel):
     """Output model for planner agent operations.

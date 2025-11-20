@@ -19,7 +19,7 @@ from deadend_agent.agents.factory import AgentOutput
 from deadend_agent.utils.structures import WebappreconDeps, RequesterDeps, ShellDeps
 from deadend_agent.context import ContextEngine
 from deadend_prompts.template_renderer import render_agent_instructions
-
+from rich import print
 
 
 class TaskNode(BaseModel):
@@ -171,6 +171,7 @@ class AgentExecutor:
     async def execute(
         self,
         task_node: TaskNode,
+        agent_context: str = "",
         usage: RunUsage = RunUsage(),
         usage_limits: UsageLimits = UsageLimits(request_limit=None, tool_calls_limit=None),
         deferred_tool_results: DeferredToolResults | None = None,
@@ -217,7 +218,7 @@ class AgentExecutor:
             if self.router:
                 try:
                     router_result = await self.router.run(
-                        prompt=f"{self.context.get_all_context()}\nWhich agent should handle: {task_node.task}",
+                        prompt=f"{agent_context}\nWhich agent should handle: {task_node.task}",
                         deps=None,
                         message_history=message_history or "",
                         usage=usage,
@@ -244,7 +245,7 @@ class AgentExecutor:
             if isinstance(selected_agent, AgentRunner):
                 result = await self._run_agent(
                     agent=selected_agent,
-                    prompt=task_node.task,
+                    prompt=agent_context+task_node.task,
                     message_history=message_history,
                     usage=usage,
                     usage_limits=usage_limits,
@@ -569,7 +570,7 @@ class ADaPTAgent:
             yield emit(f"[ADAPT] Aborted task '{node.task}' at depth {depth} (max_depth={self.max_depth})")
             return
 
-        executor_stream = self.executor.execute(task_node=node)
+        executor_stream = self.executor.execute(task_node=node, agent_context=self.context.get_tasks()+self.context.get_all_context())
         confidence_score: float | None = None
         new_context: dict[str, Any] | None = None
         async for event in executor_stream:
@@ -604,6 +605,7 @@ class ADaPTAgent:
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )
+        self.context.add_tasks(tasks=subtasks, depth=depth)
         if not subtasks:
             node.status = "refine"
             yield emit(f"[PLANNER] No subtasks generated for '{node.task}', requesting refinement")
@@ -709,9 +711,10 @@ class ADaPTAgent:
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )
-        print(subtasks)
+        self.context.add_tasks(subtasks)
+        print(self.context.get_tasks(0))
         for subtask in subtasks:
-            async for chunk in self._solve(subtask, depth=0):
+            async for chunk in self._solve(subtask, depth=1):
                 yield chunk
 
         yield {"type": "result", "root": root}
