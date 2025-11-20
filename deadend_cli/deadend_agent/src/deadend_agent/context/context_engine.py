@@ -311,7 +311,7 @@ class ContextEngine:
             print(f"Warning: Could not load context from file: {e}")
             return False
 
-    def add_tool_response(self, tool_name: str, response: str) -> None:
+    def add_tool_response(self, tool_name: str = "", response: str = "") -> None:
         """Add a tool response to the context file.
         
         Args:
