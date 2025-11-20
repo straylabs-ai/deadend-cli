@@ -139,16 +139,23 @@ async def eval_deadend_agent(
     else:
         prompt = eval_metadata.soft_prompt
 
-    # Get IP address for the container
-    # TODO to be modified here: We need to take into account if it's not 
-    # a container name but just an IP address 
-    container_name, port = eval_metadata.target_host.split(":")
-    print(container_name)
-    docker_client = docker.from_env()
-    target_container = docker_client.containers.get(container_name)
-    ip_addr_target = target_container.attrs["NetworkSettings"]["Networks"]["shared_net"]["IPAddress"]
-    print(f"the target ip : {ip_addr_target}")
-    target_host = f"{ip_addr_target}:{port}"
+    # Resolve the target host. Metadata may provide a docker container name,
+    # or a raw IP/host. When we detect the "container:port" form, we look up
+    # the container's IP; otherwise we pass the value through unchanged.
+    container_parts = eval_metadata.target_host.split(":")
+    if len(container_parts) == 2:
+        container_name, port = container_parts
+        ip_addr_target = container_name
+        try:
+            docker_client = docker.from_env()
+            target_container = docker_client.containers.get(container_name)
+            ip_addr_target = target_container.attrs["NetworkSettings"]["Networks"]["shared_net"]["IPAddress"]
+            print(f"the target ip : {ip_addr_target}")
+        except docker.errors.NotFound:
+            print(f"No container named {container_name}, using provided target host directly.")
+        target_host = f"{ip_addr_target}:{port}"
+    else:
+        target_host = eval_metadata.target_host
 
     session_id = uuid4()
     deadend_agent = DeadEndAgent(

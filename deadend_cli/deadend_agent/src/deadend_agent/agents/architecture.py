@@ -570,7 +570,7 @@ class ADaPTAgent:
             yield emit(f"[ADAPT] Aborted task '{node.task}' at depth {depth} (max_depth={self.max_depth})")
             return
 
-        executor_stream = self.executor.execute(task_node=node, agent_context=self.context.get_tasks()+self.context.get_all_context())
+        executor_stream = self.executor.execute(task_node=node, agent_context=self.context.get_tasks(depth=depth)+self.context.get_all_context())
         confidence_score: float | None = None
         new_context: dict[str, Any] | None = None
         async for event in executor_stream:

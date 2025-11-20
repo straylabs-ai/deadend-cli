@@ -74,10 +74,10 @@ class ContextEngine:
         # Initialize context file with empty structure
         self._initialize_context_file()
 
-    def add_tasks(self, tasks: List[TaskPlanner], depth: int=0):
+    def add_tasks(self, tasks: List[TaskPlanner], depth: int = 0):
         self.tasks[depth] = tasks
     
-    def get_tasks(self, depth: int=0) -> str:
+    def get_tasks(self, depth: int = 0) -> str:
         """Return a concise textual summary of planner tasks for the given depth.
 
         The summary includes tasks at the requested depth and recursively nests
