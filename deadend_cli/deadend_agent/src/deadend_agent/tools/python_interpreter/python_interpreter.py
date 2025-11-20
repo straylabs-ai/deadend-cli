@@ -22,6 +22,9 @@ import aiohttp
 ENDPOINT_PYTHON_SANDBOX="http://127.0.0.1:45555"
 PYTHON_SANDBOX_NAME="python-sandbox-tool-linux"
 
+class PythonInterpreterNotFoundException(FileNotFoundError):
+    """Raised when the sandbox binary cannot be found locally."""
+
 @unique
 class CommandsInterpreter(StrEnum):
     """HTTP endpoints exposed by the sandboxed Python interpreter service."""
@@ -29,10 +32,6 @@ class CommandsInterpreter(StrEnum):
     RUN_SCRIPT = f"{ENDPOINT_PYTHON_SANDBOX}/runscript"
     CHECK_PACKAGES = f"{ENDPOINT_PYTHON_SANDBOX}/checkpackages"
     SET_DIRECTORY = f"{ENDPOINT_PYTHON_SANDBOX}/setdirectory"
-
-# Linux only for now, to be changed
-SIMPLE_PYTHON_SANDBOX_URL="https://github.com/xoxruns/\
-    simple-python-interpreter-sandbox/releases/download/v0.0.1/python-sandbox-tool-linux"
 
 class PythonInterpreter:
     """Manage lifecycle of the sandboxed Python interpreter and issue HTTP commands.
@@ -67,11 +66,10 @@ class PythonInterpreter:
         # This is a lot of context managers for a simple download.
         # We need to add a checksum verification here
         if not self.cache_python_sandbox.exists():
-            async with aiohttp.ClientSession() as session:
-                async with session.get(SIMPLE_PYTHON_SANDBOX_URL) as resp:
-                    with open(self.cache_python_sandbox, "wb") as fd:
-                        async for chunk in resp.content.iter_chunked(4096):
-                            fd.write(chunk)
+            raise PythonInterpreterNotFoundException(
+                f"Python sandbox not found at {self.cache_python_sandbox}. "
+                "Download it first via deadend_agent.core.download_python_sandbox()."
+            )
 
         # and starts the process
         if self.pid and self.pid.returncode is None:

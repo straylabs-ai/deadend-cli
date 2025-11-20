@@ -9,14 +9,13 @@ testing AI agent performance, and assessing security research capabilities
 through various evaluation scenarios and metrics.
 """
 
-import logfire
 import json
+import logfire
 
 from rich import print as console_printer
 from sqlalchemy.exc import SQLAlchemyError
 from deadend_agent import Config, init_rag_database, sandbox_setup, ModelRegistry
 from deadend_eval.eval import EvalMetadata, eval_deadend_agent
-from deadend_eval.ctf_evaluator import CtfEvaluator
 
 async def eval_interface(
         config: Config,

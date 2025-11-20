@@ -14,10 +14,10 @@ import docker
 from docker.errors import DockerException
 from rich.console import Console
 
-import logfire
 import importlib.metadata
 
 from deadend_agent import config_setup
+from deadend_agent.core import start_python_sandbox
 from .chat import chat_interface, Modes
 from .eval import eval_interface
 from .banner import print_banner
@@ -127,8 +127,10 @@ def eval_agent(
             console.print("\n[red]Failed to setup pgvector database.[/red]")
             console.print("Please check Docker logs and try again.")
             raise typer.Exit(1)
-    
+
     config = config_setup()
+    python_process = start_python_sandbox()
+    console.print(f"Python sandbox started: {python_process}")
     # start eval
     try:
         asyncio.run(
@@ -140,6 +142,8 @@ def eval_agent(
             )
         )
     finally:
+        if python_process.poll() is None:
+            python_process.terminate()
         # Stop pgvector container when chat ends
         try:
             stop_pgvector_container(docker_client)

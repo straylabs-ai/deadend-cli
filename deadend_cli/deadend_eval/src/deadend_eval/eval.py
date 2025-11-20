@@ -156,7 +156,7 @@ async def eval_deadend_agent(
         model=model,
         available_agents=generic_agents,
         target=target_host,
-        max_depth=3
+        max_depth=1
     )
     if with_code_indexing:
         deadend_agent.init_webtarget_indexer(target_host)
