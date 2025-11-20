@@ -61,23 +61,24 @@ class DeadEndAgent:
         max_depth: int = 3
     ):
         self.session_id = session_id
+        self.max_depth = max_depth
         self.model = model
         self.available_agents = available_agents
         self.context = ContextEngine(session_id=session_id)
         self.context.set_target(target=target)
 
-        # Initialize threat model agent for planning
-        self.threat_model_agent = ReconThreatModelAgent(
-            name="threat_model",
-            model=model,
-            deps_type=None,
-            output_type=PlannerOutput,
-            tools=[]
-        )
+        # # Initialize threat model agent for planning
+        # self.threat_model_agent = ReconThreatModelAgent(
+        #     name="threat_model",
+        #     model=model,
+        #     deps_type=self.webapprecon_deps,
+        #     tools=[]
+        # )
 
-        self.planner = Planner(planner_agent=self.threat_model_agent)
+        # self.planner = Planner(planner_agent=self.threat_model_agent)
 
-        # Pass router, model, and available_agents to executor so it can route and execute with specialized agents
+        # Pass router, model, and available_agents to executor so 
+        # it can route and execute with specialized agents
         self.executor = AgentExecutor(
             model=self.model,
             context=self.context,
@@ -88,14 +89,14 @@ class DeadEndAgent:
 
         self.context = ContextEngine(session_id=session_id)
         # Initialize ADaPT agent with router-aware executor
-        self.adapt_agent = ADaPTAgent(
-            session_id=session_id,
-            context=self.context,
-            executor=self.executor,
-            planner=self.planner,
-            validator=self.validator,
-            max_depth=max_depth
-        )
+        # self.adapt_agent = ADaPTAgent(
+        #     session_id=session_id,
+        #     context=self.context,
+        #     executor=self.executor,
+        #     planner=self.planner,
+        #     validator=self.validator,
+        #     max_depth=max_depth
+        # )
 
 ################################################################################
 #### Interruptions handling
@@ -250,6 +251,23 @@ class DeadEndAgent:
         # Add a plan to recon for the threat model.
         # The threat model agent is a supervisor that can call
         #  to the router for the generic agent calling
+        # Initialize threat model agent for planning
+        self.threat_model_agent = ReconThreatModelAgent(
+            name="threat_model",
+            model=self.model,
+            deps_type=RequesterDeps,
+            tools=[]
+        )
+
+        self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
+        self.adapt_agent = ADaPTAgent(
+            session_id=self.session_id,
+            context=self.context,
+            executor=self.executor,
+            planner=self.planner,
+            validator=self.validator,
+            max_depth=self.max_depth
+        )
         plan: TaskNode | None = None
         async for event in self.adapt_agent.run(task=task):
             if isinstance(event, dict):

@@ -1,9 +1,22 @@
 from typing import Any
+from deadend_agent.agents.generic_agents import webapp_recon_agent
+from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models import AIModel
+from deadend_agent.tools import webapp_code_rag
+from deadend_agent.utils.structures import PlannerOutput
 from deadend_prompts import render_agent_instructions, render_tool_description
 from .factory import AgentRunner
+
+class GeneralInfoOutput(BaseModel):
+    website_general_information: str = ""
+    technology_stack: list[str] = []
+    endpoints: list[str] = []
+    security_controls: list[str] = []
+
+class ThreatModelOutput(PlannerOutput, GeneralInfoOutput):
+    pass
 
 class ReconThreatModelAgent(AgentRunner):
     def __init__(
@@ -11,20 +24,22 @@ class ReconThreatModelAgent(AgentRunner):
         name: str,
         model: AIModel,
         deps_type: Any | None,
-        output_type: Any | None,
         tools: list
     ):
+        tools_metadata = {
+            "webapp_code_rag": render_tool_description("webapp_code_rag")
+        } 
         self.instructions = render_agent_instructions(
             agent_name="recon_threatmodel",
-            tools={}
+            tools=tools_metadata
         )
         super().__init__(
             name,
             model,
             self.instructions,
             deps_type,
-            output_type,
-            []
+            output_type=ThreatModelOutput,
+            tools=[Tool(webapp_code_rag)]
         )
 
     async def run(

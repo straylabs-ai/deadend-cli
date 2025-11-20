@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any, Literal, AsyncGenerator
 from uuid import UUID
+from deadend_agent.agents.recon_threatmodel_agent import GeneralInfoOutput, ThreatModelOutput
 from pydantic import BaseModel, Field
 from pydantic_ai import DeferredToolResults
 from pydantic_ai.exceptions import UsageLimitExceeded
@@ -60,21 +61,21 @@ class Planner:
     The planner uses an AI agent to decompose complex tasks into smaller,
     more manageable subtasks with associated confidence scores.
     """
-    def __init__(self, planner_agent: AgentRunner) -> None:
+    def __init__(self, planner_agent: AgentRunner, deps: RequesterDeps) -> None:
         """Initialize the Planner.
         
         Args:
             planner_agent: The AgentRunner instance to use for task decomposition
         """
         self.agent = planner_agent
+        self.deps = deps
 
     async def expand(
         self,
         parent_task: TaskNode,
         context: str,
         usage: RunUsage,
-        usage_limits: UsageLimits
-
+        usage_limits: UsageLimits,
     ) -> list[TaskNode]:
         """Expand a parent task into subtasks.
         
@@ -87,17 +88,25 @@ class Planner:
             will have depth = parent_task.depth + 1 and parent = parent_task.
         """
         # Adding to the system prompt instructions about the subtasking
+        planner_prompt=f"""
+Start by understanding the web application you are working one by doing a threat model.
+You need to understand the architecture, endpoints, authentication mechanisms, sinks and sources.
+You can then move on to the next step.
+Break down this task into subtasks: {parent_task.task}. The context is : {str(context)}
+"""
         result = await self.agent.run(
-            prompt=f"Break down this task into subtasks: {parent_task.task}. The context is : {str(context)}",
-            deps=None,
+            prompt=planner_prompt,
+            deps=self.deps,
             message_history="",
             usage=usage,
             usage_limits=usage_limits
         )
+        # website info
+        website_data_gathered = GeneralInfoOutput()
 
         # Populating task nodes
         nested_tasks = []
-        print(result.output.tasks)
+        print(result.output)
         if isinstance(result.output, PlannerOutput):
             for task_plan in result.output.tasks:
                 new_task = TaskNode(
@@ -109,7 +118,12 @@ class Planner:
                     children=[]
                 )
                 nested_tasks.append(new_task)
-        return nested_tasks
+
+        if isinstance(result.output, ThreatModelOutput):
+            website_data_gathered.website_general_information = result.output.website_general_information
+            website_data_gathered.endpoints = result.output.endpoints
+            website_data_gathered.technology_stack = result.output.technology_stack
+        return nested_tasks, website_data_gathered
 
 class AgentExecutor:
     """Executor component that executes tasks using appropriate agents.
@@ -599,12 +613,13 @@ class ADaPTAgent:
             yield emit(f"[POLICY] Validation completed for '{node.task}' with status {node.status}")
             return
 
-        subtasks = await self.planner.expand(
+        subtasks, website_info = await self.planner.expand(
             node,
             context=self.context.get_all_context(),
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )
+        self.context.add_tool_response(website_info.model_dump())
         self.context.add_tasks(tasks=subtasks, depth=depth)
         if not subtasks:
             node.status = "refine"
@@ -669,10 +684,7 @@ class ADaPTAgent:
 
     async def run(
         self,
-        task: str,
-        shell_deps: ShellDeps | None = None,
-        requester_deps: RequesterDeps | None = None,
-        webapprecon_deps: WebappreconDeps | None = None,
+        task: str
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         """Run the ADaPT agent on a given task.
         
@@ -691,11 +703,11 @@ class ADaPTAgent:
         # self.context = context or {}
         # self.context.setdefault("log", "")
 
-        self.executor.set_dependencies(
-            shell_deps=shell_deps,
-            requester_deps=requester_deps,
-            webapprecon_deps=webapprecon_deps,
-        )
+        # self.executor.set_dependencies(
+        #     shell_deps=shell_deps,
+        #     requester_deps=requester_deps,
+        #     webapprecon_deps=webapprecon_deps,
+        # )
 
         root = TaskNode(
             task=task,
@@ -705,12 +717,13 @@ class ADaPTAgent:
             parent=None,
             children=[]
         )
-        subtasks = await self.planner.expand(
+        subtasks, website_info = await self.planner.expand(
             root,
             context=self.context.get_all_context(),
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )
+        self.context.add_agent_response(website_info.model_dump())
         self.context.add_tasks(subtasks)
         print(self.context.get_tasks(0))
         for subtask in subtasks:
