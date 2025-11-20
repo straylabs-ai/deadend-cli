@@ -561,7 +561,6 @@ class ADaPTAgent:
         """
         def emit(message: str) -> str:
             """Record an agent response and surface it to callers."""
-            self.context.add_agent_response(message)
             return message
 
         if depth > self.max_depth:

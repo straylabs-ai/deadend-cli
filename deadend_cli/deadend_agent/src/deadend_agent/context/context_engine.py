@@ -141,11 +141,11 @@ class ContextEngine:
         Adds a message to the workflow context indicating that the
         specified agent was not found. Also saves to text file.
         """
-        self.workflow_context += f"""\n
-[agent not found{agent_name}]\n
+        self.workflow_context += f"""
+[agent not found {agent_name}]\n
 """
         self._append_to_context_file("[ai agent]", f"Not found agent name: {agent_name}")
-    def add_agent_response(self, response: str) -> None:
+    def add_agent_response(self, response: str, agent_name: str = "") -> None:
         """Add an agent response to the workflow context.
         
         Args:
@@ -155,8 +155,8 @@ class ContextEngine:
         Appends the agent response to the workflow context with
         appropriate formatting. Also saves to text file.
         """
-        self.workflow_context += f"""\n
-[ai agent]\n
+        self.workflow_context += f"""
+[Agent : {agent_name}]\n
 {response}
 """
         self._append_to_context_file("[ai agent]", f"Agent response:\n{response}")
@@ -172,7 +172,7 @@ class ContextEngine:
         """
         self.assets[file_name] = file_content
         self._append_to_context_file("[Tool use: file_asset]", f"Added asset file: {file_name}")
-    
+
     def add_assets_to_context(self) -> None:
         """Add all stored assets to the workflow context.
         
