@@ -1,7 +1,6 @@
 from typing import Any
-from deadend_agent.agents.generic_agents import webapp_recon_agent
 from pydantic import BaseModel
-from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
+from pydantic_ai import Tool, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models import AIModel
 from deadend_agent.tools import webapp_code_rag

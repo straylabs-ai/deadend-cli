@@ -17,7 +17,7 @@ from .browser_automation import (
     cleanup_playwright_session_for_target
 )
 
-from .python_interpreter import run_python_file
+from .python_interpreter import run_python_file, read_auth_storage
 from .webapp_code_rag import webapp_code_rag
 
 
@@ -26,6 +26,7 @@ __all__ = [
     "sandboxed_shell_tool", 
     #Python interpreter
     "run_python_file",
+    "read_auth_storage",
     # Webapp Rag
     "webapp_code_rag",
     # Playwright

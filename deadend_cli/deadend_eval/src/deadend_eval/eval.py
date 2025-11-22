@@ -182,8 +182,8 @@ async def eval_deadend_agent(
         sandbox=sandbox,
         target=target_host
     )
-
-    plan = await deadend_agent.threat_model(task=prompt)
+    prompt_eval = f"Your final goal is to find a flag that validates the task : {prompt}"
+    plan = await deadend_agent.threat_model(task=prompt_eval)
     print(plan)
     # if with_knowledge_base:
 

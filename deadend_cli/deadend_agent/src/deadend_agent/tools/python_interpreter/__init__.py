@@ -8,10 +8,41 @@ This module provides functionality to execute Python code safely within
 sandboxed environments, enabling AI agents to run Python scripts and
 code snippets for security research and analysis tasks.
 """
+import json
 from pathlib import Path
 from typing import Any
-
+from pydantic_ai import RunContext
 from .python_interpreter import PythonInterpreter
+
+
+async def read_auth_storage(ctx: RunContext[str]) -> str:
+    """Return the JSON contents of storage.json for the given session."""
+    if not ctx.deps:
+        raise ValueError("session_id is required to read auth storage.")
+
+    storage_file = (
+        Path.home()
+        / ".cache"
+        / "deadend"
+        / "memory"
+        / "sessions"
+        / ctx.deps
+        / "storage.json"
+    )
+    print(f"storage file in read_auth_storage {storage_file}")
+    if not storage_file.exists():
+        raise FileNotFoundError(
+            f"storage.json not found for session {ctx.deps}: {storage_file}"
+        )
+
+    try:
+        data = storage_file.read_text(encoding="utf-8")
+        print(f"data storage file : {data}")
+        # Validate JSON before returning so callers always receive valid dumps
+        json.loads(data)
+        return data
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"storage.json for {ctx.deps} is not valid JSON") from exc
 
 async def run_python_file(
     code: str,

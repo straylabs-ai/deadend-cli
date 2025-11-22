@@ -1,0 +1,6 @@
+This tool returns the raw `storage.json` captured by Playwright sessions.
+Always run this tool to gather the information for the current session and authentication information. 
+Use cases:
+- Retrieve saved cookies/tokens before calling `run_python_file`.
+- Share session auth artifacts with the Python interpreter so generated code can reuse authenticated contexts.
+- Inspect/parse stored credentials or CSRF tokens when crafting follow-up requests.

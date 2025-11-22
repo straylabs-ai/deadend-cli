@@ -9,12 +9,12 @@ vulnerability assessment, and exploit development, then executes the code in a
 sandboxed WebAssembly-based Python interpreter environment.
 """
 from typing import Any
-from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
+from pydantic_ai import Tool, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 # from deadend_agent.context import MemoryHandler
 from deadend_agent.models import AIModel
 from deadend_agent.agents.factory import AgentRunner, AgentOutput
-from deadend_agent.tools import run_python_file
+from deadend_agent.tools import run_python_file, read_auth_storage
 from deadend_prompts import render_agent_instructions, render_tool_description
 
 class PythonInterpreterOutput(AgentOutput):
@@ -70,7 +70,9 @@ class PythonInterpreterAgent(AgentRunner):
             tools: Optional list of additional tools (defaults to run_python_file).
         """
         tools_metadata = {
-            "run_python_file" : render_tool_description("run_python_file")
+            # "read_auth_storage": render_tool_description("read_auth_storage"),
+            "run_python_file" : render_tool_description("run_python_file"),
+
         }
         self.name = "python_interpreter"
         self.instructions = render_agent_instructions(
@@ -85,7 +87,7 @@ class PythonInterpreterAgent(AgentRunner):
             deps_type=deps_type,
             output_type=PythonInterpreterOutput,
             tools=[
-                Tool(run_python_file)
+                Tool(run_python_file),
             ]
         )
 
@@ -116,9 +118,15 @@ class PythonInterpreterAgent(AgentRunner):
         Returns:
             AgentRunResult containing the PythonInterpreterOutput with execution results.
         """
-
+        auth_info = read_auth_storage(ctx=deps)
+        prompt_with_auth = f"""Auth info :
+{str(auth_info)}
+You task is :
+{prompt}
+"""
+        print(f"prompt pythoninterpreter: {prompt_with_auth}")
         agent_response = await super().run(
-            prompt,
+            prompt_with_auth,
             deps,
             message_history,
             usage,

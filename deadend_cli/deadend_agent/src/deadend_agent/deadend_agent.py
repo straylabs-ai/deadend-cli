@@ -10,7 +10,6 @@ from deadend_agent.sandbox.sandbox import Sandbox
 # from deadend_agent.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
 from deadend_agent.agents.architecture import (
     ADaPTAgent,
-    AgentRunner,
     AgentExecutor,
     Planner,
     TaskNode,
@@ -20,11 +19,9 @@ from deadend_agent.utils.structures import (
     RequesterDeps,
     ShellDeps,
     ShellRunner,
-    WebappreconDeps,
-    PlannerOutput
+    WebappreconDeps
 )
-from .agents.factory import AgentRunner
-
+from deadend_agent.tools.browser_automation.http_parser import extract_host_port
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
 
 ApprovalCallback = Callable[..., Awaitable[str]]
@@ -67,36 +64,19 @@ class DeadEndAgent:
         self.context = ContextEngine(session_id=session_id)
         self.context.set_target(target=target)
 
-        # # Initialize threat model agent for planning
-        # self.threat_model_agent = ReconThreatModelAgent(
-        #     name="threat_model",
-        #     model=model,
-        #     deps_type=self.webapprecon_deps,
-        #     tools=[]
-        # )
 
-        # self.planner = Planner(planner_agent=self.threat_model_agent)
-
-        # Pass router, model, and available_agents to executor so 
+        # Pass router, model, and available_agents to executor so
         # it can route and execute with specialized agents
-        self.executor = AgentExecutor(
-            model=self.model,
-            context=self.context,
-            available_agents=available_agents
-        )
+        # self.executor = AgentExecutor(
+        #     model=self.model,
+        #     context=self.context,
+        #     available_agents=available_agents
+        # )
 
         self.validator = Validator(model=model)
 
         self.context = ContextEngine(session_id=session_id)
-        # Initialize ADaPT agent with router-aware executor
-        # self.adapt_agent = ADaPTAgent(
-        #     session_id=session_id,
-        #     context=self.context,
-        #     executor=self.executor,
-        #     planner=self.planner,
-        #     validator=self.validator,
-        #     max_depth=max_depth
-        # )
+
 
 ################################################################################
 #### Interruptions handling
@@ -226,6 +206,16 @@ class DeadEndAgent:
             shell_runner=shell_runner,
             session_id=self.session_id
         )
+        # setup session key
+        host, port = extract_host_port(target_host=self.target)
+        session_key = f"{host}_{port}"
+
+        self.executor = AgentExecutor(
+            model=self.model,
+            context=self.context,
+            available_agents=self.available_agents,
+            session_id=session_key
+        )
 
         self.executor.set_dependencies(
             requester_deps=self.requester_deps,
@@ -259,7 +249,12 @@ class DeadEndAgent:
             tools=[]
         )
 
+
+
         self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
+
+
+
         self.adapt_agent = ADaPTAgent(
             session_id=self.session_id,
             context=self.context,

@@ -176,8 +176,8 @@ class RagDeps:
     target: str
     session_id: uuid.UUID
 
-
-class TaskPlanner(BaseModel):
+@dataclass(frozen=True)
+class TaskPlanner:
     confidence_score: float
     task: str
     status: str

@@ -36,7 +36,7 @@ class ContextEngine:
     """
     workflow_context: str = ""
     # Defines the whole context from the start of the workflow
-    tasks: Dict[int, Task]
+    tasks: dict[TaskPlanner, dict]
     # Defines the new last tasks set
     next_agent: str
     # Name of the next agent
@@ -59,6 +59,8 @@ class ContextEngine:
         initializes the next_agent to an empty string, and creates the context file path.
         """
         self.session_id = session_id
+        self.root_goal = ""
+        self.final_goal = ""
         self.tasks = {}
         self.next_agent = ""
         self.assets = {}
@@ -74,8 +76,18 @@ class ContextEngine:
         # Initialize context file with empty structure
         self._initialize_context_file()
 
-    def add_tasks(self, tasks: List[TaskPlanner], depth: int = 0):
-        self.tasks[depth] = tasks
+    def set_root_task(self, root: str):
+        self.final_goal = root
+
+    def add_tasks(self, parent_task: TaskPlanner | None,  tasks: List[TaskPlanner]):
+        if parent_task is None:
+            for task in tasks:
+                self.tasks[task] = {}
+        else:
+            nested_tasks = {}
+            for task in tasks:
+                nested_tasks[task] = {}
+            self.tasks[parent_task] = nested_tasks
     
     def get_tasks(self, depth: int = 0) -> str:
         """Return a concise textual summary of planner tasks for the given depth.
@@ -84,35 +96,34 @@ class ContextEngine:
         any available child depths. This string is later injected into prompts,
         so it favors short, high-signal lines.
         """
+        header = "[planner tasks]"
+        depth_line = f"Depth: {depth}"
+
+        goal_line = f"Final goal: {self.final_goal}" if self.final_goal else "Final goal: No goal recorded."
+
         if not self.tasks:
-            return "[planner tasks]\nNo planner tasks recorded."
-        if depth not in self.tasks:
-            return f"[planner tasks]\nNo tasks recorded at depth {depth}."
+            return f"{header}\n{goal_line}\n{depth_line}\nNo planner tasks recorded."
 
-        def build(level: int, indent: int = 0) -> List[str]:
-            level_tasks = self.tasks.get(level, [])
-            if not level_tasks:
-                return []
+        task_tree = self.tasks
 
-            lines: List[str] = []
-            for task in level_tasks:
-                lines.append(
-                    f"{' ' * indent}- (depth {level}) "
-                    f"[{task.status}|conf {task.confidence_score:.2f}] {task.task}"
-                )
+        def format_tasks(branch: dict[TaskPlanner, dict], current_depth: int) -> list[str]:
+            formatted: list[str] = []
+            for task, children in branch.items():
+                include_line = current_depth >= depth
+                indent_level = max(current_depth - depth, 0) if include_line else 0
+                indent = "  " * indent_level
+                description = task.task
+                status = task.status.strip()
+                status_suffix = f" [{status}]" if status else ""
+                if include_line:
+                    formatted.append(f"{indent}- {description}{status_suffix}")
+                if isinstance(children, dict) and children:
+                    formatted.extend(format_tasks(children, current_depth + 1))
+            return formatted
 
-            child_lines = build(level + 1, indent + 2)
-            if child_lines:
-                lines.append(f"{' ' * indent}↳ Subtasks:")
-                lines.extend(child_lines)
-            return lines
-
-        summary_lines = ["[planner tasks]"]
-        summary_lines.extend(build(depth))
-        summary_lines.append(
-            "Context hint: Highlight evidence, blockers, and why each next action matters."
-        )
-        return "\n".join(summary_lines)
+        task_lines = format_tasks(task_tree, current_depth=0)
+        tasks_block = "\n".join(task_lines) if task_lines else f"No planner tasks recorded at depth {depth}."
+        return f"{header}\n{goal_line}\n{depth_line}\n{tasks_block}"
 
     def set_tasks(self, tasks: List[Task]) -> None:
         """Set the current tasks and update workflow context.
@@ -247,7 +258,6 @@ class ContextEngine:
         # If no existing file or loading failed, create new file
         try:
             with open(self.context_file_path, 'w', encoding='utf-8') as f:
-                f.write(f"Session ID: {self.session_id}\n")
                 f.write(f"Target: {self.target}\n")
                 f.write("\n\n")
 
