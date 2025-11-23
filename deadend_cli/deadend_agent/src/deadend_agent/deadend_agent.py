@@ -62,7 +62,6 @@ class DeadEndAgent:
         self.model = model
         self.available_agents = available_agents
         self.context = ContextEngine(session_id=session_id)
-        self.context.set_target(target=target)
 
 
         # Pass router, model, and available_agents to executor so
@@ -128,6 +127,7 @@ class DeadEndAgent:
             Must be called before crawl_target() and embed_target() methods.
         """
         self.target = target
+        self.context.set_target(target)
         self.code_indexer = SourceCodeIndexer(target=self.target, session_id=self.session_id)
 
 
@@ -253,7 +253,42 @@ class DeadEndAgent:
 
         self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
 
+        self.adapt_agent = ADaPTAgent(
+            session_id=self.session_id,
+            context=self.context,
+            executor=self.executor,
+            planner=self.planner,
+            validator=self.validator,
+            max_depth=1
+        )
+        plan: TaskNode | None = None
+        async for event in self.adapt_agent.run(task=task):
+            if isinstance(event, dict):
+                if event.get("type") == "result":
+                    root_candidate = event.get("root")
+                    if isinstance(root_candidate, TaskNode):
+                        plan = root_candidate
+                else:
+                    print(event.get("message", str(event)))
+            else:
+                print(str(event))
 
+        if plan is None:
+            raise RuntimeError("ADaPT agent did not produce a plan.")
+
+        return plan
+
+    async def run_exploitation(self, threat_model: str, task: str):
+        self.threat_model_agent = ReconThreatModelAgent(
+            name="threat_model",
+            model=self.model,
+            deps_type=RequesterDeps,
+            tools=[]
+        )
+
+
+
+        self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
 
         self.adapt_agent = ADaPTAgent(
             session_id=self.session_id,
@@ -261,7 +296,7 @@ class DeadEndAgent:
             executor=self.executor,
             planner=self.planner,
             validator=self.validator,
-            max_depth=self.max_depth
+            max_depth=1
         )
         plan: TaskNode | None = None
         async for event in self.adapt_agent.run(task=task):

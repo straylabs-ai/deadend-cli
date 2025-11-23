@@ -96,6 +96,7 @@ class PythonInterpreterAgent(AgentRunner):
         prompt,
         deps,
         message_history,
+        session_key: str,
         usage: RunUsage | None,
         usage_limits: UsageLimits | None,
         deferred_tool_results: DeferredToolResults | None = None
@@ -103,7 +104,7 @@ class PythonInterpreterAgent(AgentRunner):
         """Execute the agent with a user prompt and optional memory handling.
         
         Runs the agent to generate and execute Python code based on the security
-        testing goal. If memory is provided, saves the execution results for
+        testing goal. If memory is providedauthz, saves the execution results for
         future reference and context building.
         
         Args:
@@ -118,7 +119,7 @@ class PythonInterpreterAgent(AgentRunner):
         Returns:
             AgentRunResult containing the PythonInterpreterOutput with execution results.
         """
-        auth_info = read_auth_storage(ctx=deps)
+        auth_info = await read_auth_storage(ctx=session_key)
         prompt_with_auth = f"""Auth info :
 {str(auth_info)}
 You task is :

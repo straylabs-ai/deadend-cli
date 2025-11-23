@@ -483,6 +483,7 @@ class AgentExecutor:
                 usage=usage,
                 usage_limits=usage_limits,
                 deps=self.session_id,
+                session_key=self.session_id,
                 deferred_tool_results=deferred_tool_results
             )
         elif isinstance(agent, RouterAgent):

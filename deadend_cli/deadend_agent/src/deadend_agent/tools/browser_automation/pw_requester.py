@@ -82,7 +82,7 @@ class PlaywrightRequester:
             except Exception as e:
                 print(f"Warning: Could not prepare storage path: {e}")
                 storage_path = None
-        
+
         # Configure browser context options
         context_options = {
             'ignore_https_errors': not self.verify_ssl,

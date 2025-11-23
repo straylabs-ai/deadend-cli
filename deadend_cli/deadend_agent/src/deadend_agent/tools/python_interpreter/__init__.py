@@ -15,9 +15,9 @@ from pydantic_ai import RunContext
 from .python_interpreter import PythonInterpreter
 
 
-async def read_auth_storage(ctx: RunContext[str]) -> str:
+async def read_auth_storage(ctx: str) -> str:
     """Return the JSON contents of storage.json for the given session."""
-    if not ctx.deps:
+    if not ctx:
         raise ValueError("session_id is required to read auth storage.")
 
     storage_file = (
@@ -26,13 +26,13 @@ async def read_auth_storage(ctx: RunContext[str]) -> str:
         / "deadend"
         / "memory"
         / "sessions"
-        / ctx.deps
+        / ctx
         / "storage.json"
     )
     print(f"storage file in read_auth_storage {storage_file}")
     if not storage_file.exists():
         raise FileNotFoundError(
-            f"storage.json not found for session {ctx.deps}: {storage_file}"
+            f"storage.json not found for session {ctx}: {storage_file}"
         )
 
     try:
@@ -42,7 +42,7 @@ async def read_auth_storage(ctx: RunContext[str]) -> str:
         json.loads(data)
         return data
     except json.JSONDecodeError as exc:
-        raise ValueError(f"storage.json for {ctx.deps} is not valid JSON") from exc
+        raise ValueError(f"storage.json for {ctx} is not valid JSON") from exc
 
 async def run_python_file(
     code: str,

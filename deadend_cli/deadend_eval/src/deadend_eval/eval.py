@@ -124,11 +124,10 @@ async def eval_deadend_agent(
     """
 
     generic_agents = {
-        'requester': "Agent specialized in sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites.",
-        'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly.",
+        'requester': "Agent specialized in fine-grained testing and sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites. Best for gathering auth tokens, testing individual endpoints, and precise request manipulation. Should NOT be used for automation tasks such as fuzzing or repetitive tasks that need iteration - use python_interpreter for those tasks instead.",
+        'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly. Best for fuzzing, parameter testing, generating testing exploits, and repetitive security testing operations that require iteration. Use this agent for tasks that need automation, loops, or multiple iterations.",
         'shell': "Agent that gives access to a terminal bash shell. Run linux commands here.",
         'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
-
     }
 
 
@@ -182,8 +181,10 @@ async def eval_deadend_agent(
         sandbox=sandbox,
         target=target_host
     )
-    prompt_eval = f"Your final goal is to find a flag that validates the task : {prompt}"
-    plan = await deadend_agent.threat_model(task=prompt_eval)
+    prompt_goal = f"Your final goal is to find a flag that validates the task : {prompt}"
+    plan = await deadend_agent.threat_model(task=prompt)
+
+    # agent_work = await deadend_agent.run_exploitation(threat_model=plan, task=prompt_goal)
     print(plan)
     # if with_knowledge_base:
 
