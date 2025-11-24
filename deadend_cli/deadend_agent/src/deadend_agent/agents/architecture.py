@@ -673,6 +673,26 @@ Execution trace:
         # adding to context
         return (valid, confidence_score, critique)
 
+def _format_dict_for_context(data: dict[str, Any]) -> str:
+    """Format a dictionary into a readable string for context storage.
+    
+    Args:
+        data: Dictionary to format
+        
+    Returns:
+        Formatted string with keys and values properly displayed
+    """
+    formatted_parts = []
+    for key, value in data.items():
+        if isinstance(value, dict):
+            formatted_parts.append(f"{key}:\n{_format_dict_for_context(value)}")
+        elif isinstance(value, list):
+            formatted_parts.append(f"{key}:\n" + "\n".join(f"  - {item}" for item in value))
+        else:
+            formatted_parts.append(f"{key}: {value}")
+    return "\n".join(formatted_parts)
+
+
 class ADaPTAgent:
     """
     ADaPT Agent is a recursive agent from the paper 
@@ -756,7 +776,9 @@ class ADaPTAgent:
             if isinstance(event, ResultEvent):
                 confidence_score = event.confidence_score
                 new_context = event.context
-                self.context.add_agent_response(str(event.confidence_score) + str(event.context))
+                formatted_context = f"Confidence Score for the following task: {event.confidence_score}\n"
+                formatted_context += _format_dict_for_context(event.context)
+                self.context.add_agent_response(formatted_context)
                 break
             elif isinstance(event, LogEvent):
                 self.context.add_agent_response(event.message)
@@ -765,7 +787,8 @@ class ADaPTAgent:
         if confidence_score is None or new_context is None:
             raise RuntimeError("AgentExecutor did not produce a result.")
 
-        yield emit(str(new_context))
+        formatted_new_context = _format_dict_for_context(new_context)
+        yield emit(formatted_new_context)
 
         decision = self._policy(confidence_score)
         print(f"task : {node.task} decision: {decision}, confidence_score : {confidence_score}")
@@ -797,9 +820,11 @@ Change the confidence_score with have been done. Reason step by step to retrieve
                 usage=RunUsage(),
                 usage_limits=UsageLimits(request_limit=None)
             )
-            self.context.add_tool_response(website_info.model_dump())
+            formatted_website_info = _format_dict_for_context(website_info.model_dump())
+            self.context.add_tool_response("website_info", formatted_website_info)
             if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
-                self.context.add_tool_response(exploit_info.model_dump())
+                formatted_exploit_info = _format_dict_for_context(exploit_info.model_dump())
+                self.context.add_tool_response("exploit_info", formatted_exploit_info)
             planner_subtasks = []
 
             # Because it's not hashable
@@ -846,9 +871,11 @@ Update the confidence_score for what have been done. Reason step by step to retr
                 usage=RunUsage(),
                 usage_limits=UsageLimits(request_limit=None)
             )
-            self.context.add_tool_response(website_info.model_dump())
+            formatted_website_info = _format_dict_for_context(website_info.model_dump())
+            self.context.add_tool_response("website_info", formatted_website_info)
             if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
-                self.context.add_tool_response(exploit_info.model_dump())
+                formatted_exploit_info = _format_dict_for_context(exploit_info.model_dump())
+                self.context.add_tool_response("exploit_info", formatted_exploit_info)
 
             # Store parent reference before updating node
             parent_task = node.parent
@@ -938,7 +965,8 @@ Update the confidence_score for what have been done. Reason step by step to retr
         (ok, validation, critique) = await self.validator.verify(task=node, context=self.context.get_all_context())
         validation_context = {}
         validation_context["log"] = f"\nVALIDATOR: {validation} : {critique}"
-        self.context.add_agent_response(str(validation_context))
+        formatted_validation = _format_dict_for_context(validation_context)
+        self.context.add_agent_response(formatted_validation)
         node.confidence_score = validation
 
         return "completed" if ok else "failed-validation"
@@ -978,9 +1006,11 @@ Update the confidence_score for what have been done. Reason step by step to retr
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )
-        self.context.add_agent_response(website_info.model_dump())
+        formatted_website_info = _format_dict_for_context(website_info.model_dump())
+        self.context.add_agent_response(formatted_website_info)
         if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
-            self.context.add_agent_response(exploit_info.model_dump())
+            formatted_exploit_info = _format_dict_for_context(exploit_info.model_dump())
+            self.context.add_agent_response(formatted_exploit_info)
         planner_subtasks = []
         for subtask in subtasks:
             planner_subtask = TaskPlanner(

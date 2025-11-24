@@ -304,7 +304,7 @@ class DeadEndAgent:
         self.exploit_agent = PlannerExploitAgent(
             model=self.model,
             deps_type=str,  # session_key will be passed as string
-            target_information=f"{self.target}\n\nThreat Model:\n{threat_model}"
+            target_information=f"{self.target}"
         )
 
         # Pass session_key as deps for the exploit agent
@@ -316,10 +316,10 @@ class DeadEndAgent:
             executor=self.executor,
             planner=self.planner,
             validator=self.validator,
-            max_depth=1
+            max_depth=3
         )
         plan: TaskNode | None = None
-        async for event in self.adapt_agent.run(task=task):
+        async for event in self.adapt_agent.run(task=f"{task}\n Threat model done is :\n{threat_model} "):
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")
