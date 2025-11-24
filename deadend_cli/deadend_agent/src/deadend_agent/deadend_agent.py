@@ -2,15 +2,15 @@
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
 from openai import AsyncOpenAI
+from pydantic_ai import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox
-# from deadend_agent.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
+from deadend_agent.agents.reporter import ReporterAgent, ReporterOutput
 from deadend_agent.agents.architecture import (
     ADaPTAgent,
-    AgentRunner,
     AgentExecutor,
     Planner,
     TaskNode,
@@ -20,12 +20,11 @@ from deadend_agent.utils.structures import (
     RequesterDeps,
     ShellDeps,
     ShellRunner,
-    WebappreconDeps,
-    PlannerOutput
+    WebappreconDeps
 )
-from .agents.factory import AgentRunner
-
+from deadend_agent.tools.browser_automation.http_parser import extract_host_port
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
+from .agents.exploit_web_agent import PlannerExploitAgent
 
 ApprovalCallback = Callable[..., Awaitable[str]]
 
@@ -43,6 +42,7 @@ class DeadEndAgent:
     target: str | None = None
     code_indexer: SourceCodeIndexer | None = None
     threat_model_agent: ReconThreatModelAgent
+    exploit_agent: PlannerExploitAgent | None = None
     planner: Planner
     executor: AgentExecutor
     validator: Validator
@@ -65,38 +65,20 @@ class DeadEndAgent:
         self.model = model
         self.available_agents = available_agents
         self.context = ContextEngine(session_id=session_id)
-        self.context.set_target(target=target)
 
-        # # Initialize threat model agent for planning
-        # self.threat_model_agent = ReconThreatModelAgent(
-        #     name="threat_model",
-        #     model=model,
-        #     deps_type=self.webapprecon_deps,
-        #     tools=[]
-        # )
 
-        # self.planner = Planner(planner_agent=self.threat_model_agent)
-
-        # Pass router, model, and available_agents to executor so 
+        # Pass router, model, and available_agents to executor so
         # it can route and execute with specialized agents
-        self.executor = AgentExecutor(
-            model=self.model,
-            context=self.context,
-            available_agents=available_agents
-        )
+        # self.executor = AgentExecutor(
+        #     model=self.model,
+        #     context=self.context,
+        #     available_agents=available_agents
+        # )
 
         self.validator = Validator(model=model)
 
         self.context = ContextEngine(session_id=session_id)
-        # Initialize ADaPT agent with router-aware executor
-        # self.adapt_agent = ADaPTAgent(
-        #     session_id=session_id,
-        #     context=self.context,
-        #     executor=self.executor,
-        #     planner=self.planner,
-        #     validator=self.validator,
-        #     max_depth=max_depth
-        # )
+
 
 ################################################################################
 #### Interruptions handling
@@ -148,6 +130,7 @@ class DeadEndAgent:
             Must be called before crawl_target() and embed_target() methods.
         """
         self.target = target
+        self.context.set_target(target)
         self.code_indexer = SourceCodeIndexer(target=self.target, session_id=self.session_id)
 
 
@@ -226,6 +209,16 @@ class DeadEndAgent:
             shell_runner=shell_runner,
             session_id=self.session_id
         )
+        # setup session key
+        host, port = extract_host_port(target_host=self.target)
+        session_key = f"{host}_{port}"
+
+        self.executor = AgentExecutor(
+            model=self.model,
+            context=self.context,
+            available_agents=self.available_agents,
+            session_id=session_key
+        )
 
         self.executor.set_dependencies(
             requester_deps=self.requester_deps,
@@ -260,16 +253,73 @@ class DeadEndAgent:
         )
 
         self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
+
         self.adapt_agent = ADaPTAgent(
             session_id=self.session_id,
             context=self.context,
             executor=self.executor,
             planner=self.planner,
             validator=self.validator,
-            max_depth=self.max_depth
+            max_depth=1
         )
         plan: TaskNode | None = None
         async for event in self.adapt_agent.run(task=task):
+            if isinstance(event, dict):
+                if event.get("type") == "result":
+                    root_candidate = event.get("root")
+                    if isinstance(root_candidate, TaskNode):
+                        plan = root_candidate
+                else:
+                    print(event.get("message", str(event)))
+            else:
+                print(str(event))
+        if plan is None:
+            raise RuntimeError("ADaPT agent did not produce a plan.")
+
+        reporter_agent = ReporterAgent(
+            model=self.model,
+            deps_type=None,
+            tools=None,
+            validation_format="Information",
+            validation_type="threat model"
+        )
+        prompt_threat_model = f"From the data that you have, extract a well defined threat model. {self.context.get_all_context()}"
+        threat_model_data = await reporter_agent.run(
+            prompt=prompt_threat_model,
+            deps=None,
+            usage=RunUsage(),
+            usage_limits=UsageLimits(),
+            deferred_tool_results=None,
+            message_history=""
+        )
+
+        return plan, threat_model_data
+
+    async def run_exploitation(self, threat_model: str, task: str):
+        # setup session key for exploit agent
+        host, port = extract_host_port(target_host=self.target)
+        session_key = f"{host}_{port}"
+        
+        # Create exploit agent as planner
+        self.exploit_agent = PlannerExploitAgent(
+            model=self.model,
+            deps_type=str,  # session_key will be passed as string
+            target_information=f"{self.target}"
+        )
+
+        # Pass session_key as deps for the exploit agent
+        self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
+
+        self.adapt_agent = ADaPTAgent(
+            session_id=self.session_id,
+            context=self.context,
+            executor=self.executor,
+            planner=self.planner,
+            validator=self.validator,
+            max_depth=3
+        )
+        plan: TaskNode | None = None
+        async for event in self.adapt_agent.run(task=f"{task}\n Threat model done is :\n{threat_model} "):
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")

@@ -82,7 +82,7 @@ class PlaywrightRequester:
             except Exception as e:
                 print(f"Warning: Could not prepare storage path: {e}")
                 storage_path = None
-        
+
         # Configure browser context options
         context_options = {
             'ignore_https_errors': not self.verify_ssl,
@@ -309,7 +309,7 @@ class PlaywrightRequester:
             # Two-step approach to ensure cookies are captured:
             # 1. First request without following redirects to capture Set-Cookie headers
             # 2. Second request with redirects enabled, now that we have the cookies
-            
+
             # Step 1: Send request without following redirects to capture cookies
             initial_response = await self._send_request(
                 method=parsed_request['method'],
@@ -322,10 +322,10 @@ class PlaywrightRequester:
             print(f"initial response : {initial_response}")
             # Extract cookies and auth tokens from the initial response
             await self._extract_cookies_and_tokens_from_response(initial_response, target_url)
-            
+
             # Check if this was a redirect response
             is_redirect = initial_response.status in (301, 302, 303, 307, 308)
-            
+
             if is_redirect:
                 # Step 2: Send the same request again, but now with redirects enabled
                 # This time we have the cookies from step 1, so they'll be included
@@ -337,13 +337,13 @@ class PlaywrightRequester:
                     follow_redirects=True,
                     max_redirects=20
                 )
-                
+
                 # Extract any additional cookies from the final response
                 await self._extract_cookies_and_tokens_from_response(response, target_url)
             else:
                 # Not a redirect, use the initial response
                 response = initial_response
-            
+
             # Detecting and storing access keys or important reusable tokens
             # from the request
             response_body = await response.body()
@@ -367,7 +367,7 @@ class PlaywrightRequester:
                     print(
                         f"Warning: Could not save storage state for session {self.session_id}: {e}"
                     )
-            
+
             # Format and return both responses
             # First, return the initial response (without redirects)
             formatted_initial_response = await self._format_response(initial_response)

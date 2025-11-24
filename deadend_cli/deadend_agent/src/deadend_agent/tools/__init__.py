@@ -17,8 +17,9 @@ from .browser_automation import (
     cleanup_playwright_session_for_target
 )
 
-from .python_interpreter import run_python_file
+from .python_interpreter import run_python_file, read_auth_storage
 from .webapp_code_rag import webapp_code_rag
+from .grep import grep_session_logs
 
 
 __all__ = [
@@ -26,11 +27,14 @@ __all__ = [
     "sandboxed_shell_tool", 
     #Python interpreter
     "run_python_file",
+    "read_auth_storage",
     # Webapp Rag
     "webapp_code_rag",
     # Playwright
     "is_valid_request_detailed",
     "pw_send_payload",
     "cleanup_playwright_sessions",
-    "cleanup_playwright_session_for_target"
+    "cleanup_playwright_session_for_target",
+    # Grep
+    "grep_session_logs"
 ]

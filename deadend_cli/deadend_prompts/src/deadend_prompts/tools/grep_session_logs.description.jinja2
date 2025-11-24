@@ -1,0 +1,80 @@
+This tool searches for regular expression patterns in session log files (requester.jsonl and python_interpreter.jsonl) stored in the current session's cache directory. It allows you to find specific information, patterns, or data from previous tool executions within the same session.
+
+## WHAT THIS TOOL PROVIDES:
+- **Pattern search**: Search for regular expressions in session log files
+- **Multi-file search**: Automatically searches both requester.jsonl and python_interpreter.jsonl files
+- **Detailed results**: Returns file name, line number, matched text, position, and context for each match
+- **Session-scoped**: Only searches within the current session's log files
+- **Error handling**: Gracefully handles missing files or read errors
+
+## WHEN TO USE THIS TOOL:
+- **Finding previous requests**: Search for specific URLs, endpoints, or request patterns from previous requester agent executions
+- **Extracting data**: Find authentication tokens, cookies, session IDs, or other sensitive data captured in previous requests
+- **Analyzing responses**: Search for specific response patterns, status codes, or error messages from previous tool runs
+- **Python script results**: Find specific output, errors, or data from previous python_interpreter agent executions
+- **Pattern discovery**: Identify recurring patterns, anomalies, or interesting data across session history
+- **Context retrieval**: Retrieve specific information from session logs to inform current testing strategy
+
+## REQUIRED PARAMETERS:
+- **pattern**: Regular expression pattern to search for
+  - Must be a valid Python regular expression
+  - Examples: `"status_code.*200"`, `"token.*[A-Za-z0-9]+"`, `"password.*="`, `"error|Error|ERROR"`
+  - Use regex syntax: `.*` for any characters, `|` for OR, `[0-9]+` for digits, etc.
+
+## SEARCH LOCATIONS:
+The tool searches in the following files (if they exist):
+- `~/.cache/deadend/memory/sessions/{session_key}/requester.jsonl` - Contains HTTP request/response data from requester agent
+- `~/.cache/deadend/memory/sessions/{session_key}/python_interpreter.jsonl` - Contains execution results from python_interpreter agent
+
+## OUTPUT FORMAT:
+The tool returns a formatted string with:
+- Total number of matches found
+- For each match:
+  - File name and line number: `[requester.jsonl:42]`
+  - Matched text: `Match: 'token=abc123'`
+  - Position in line: `(position 10-25)`
+  - Context: First 200 characters of the line containing the match
+
+## EXAMPLE USAGE SCENARIOS:
+- **Find authentication tokens**:
+  ```
+  grep_session_logs(pattern="token.*[A-Za-z0-9]{20,}")
+  ```
+- **Search for specific endpoints**:
+  ```
+  grep_session_logs(pattern="/api/v1/.*")
+  ```
+- **Find error messages**:
+  ```
+  grep_session_logs(pattern="error|Error|ERROR|exception|Exception")
+  ```
+- **Extract status codes**:
+  ```
+  grep_session_logs(pattern="status.*code.*[0-9]{3}")
+  ```
+- **Find sensitive data**:
+  ```
+  grep_session_logs(pattern="password|secret|api_key|apikey")
+  ```
+- **Search for specific response patterns**:
+  ```
+  grep_session_logs(pattern="Content-Type.*application/json")
+  ```
+
+## IMPORTANT NOTES:
+- **Session context**: The tool automatically uses the current session_key from the RunContext - no need to specify it
+- **File existence**: The tool gracefully handles missing files - if a file doesn't exist, it's simply skipped
+- **Regex validation**: Invalid regular expressions will raise a ValueError with details about the error
+- **Case sensitivity**: Regular expressions are case-sensitive by default - use `(?i)` flag for case-insensitive matching
+- **Multiple matches**: If a pattern matches multiple times in a line, all matches are reported
+- **Context limitation**: Only the first 200 characters of each matching line are shown as context
+- **Read-only**: This tool only reads from log files - it does not modify or delete any data
+
+## WHEN NOT TO USE THIS TOOL:
+- **DO NOT** use for searching files outside the session directory
+- **DO NOT** use for modifying or deleting log entries (this tool is read-only)
+- **DO NOT** use for searching in real-time (it only searches previously logged data)
+- **DO NOT** use invalid regular expression patterns (validate your regex before calling)
+
+This tool is essential for analyzing session history, extracting previously captured data, and finding patterns across multiple tool executions within the same session.
+

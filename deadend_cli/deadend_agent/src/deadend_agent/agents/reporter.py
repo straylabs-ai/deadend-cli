@@ -38,9 +38,9 @@ class ReporterAgent(AgentRunner):
             output_type=ReporterOutput,
             tools=[]
         )
-    async def run(self, user_prompt, deps, message_history, usage, usage_limits, deferred_tool_results=None):
+    async def run(self, prompt, deps, message_history, usage, usage_limits, deferred_tool_results=None):
         return await super().run(
-            user_prompt=user_prompt,
+            prompt=prompt,
             deps=deps,
             message_history=message_history,
             usage=usage,
@@ -70,7 +70,7 @@ Current workflow context:
 
         # Run the reporter agent to get the summary
         result = await self.run(
-            user_prompt=summarization_prompt,
+            prompt=summarization_prompt,
             deps=None,
             message_history="",
             usage=None,

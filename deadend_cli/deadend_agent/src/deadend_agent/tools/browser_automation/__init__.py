@@ -1,3 +1,6 @@
+import json
+from anyio import Path
+from rich.pretty import pprint
 
 from .http_parser import is_valid_request_detailed, extract_host_port
 
@@ -57,16 +60,12 @@ async def pw_send_payload(
             via_proxy=proxy
         ):
             responses.append(response)
-        # Saving the request/response into the cache
-        # if memory_handler:
-        #     memory_handler.save_tool_results(
-        #         tool_name="pw_send_payload",
-        #         raw_request=raw_request_anon,
-        #         responses=responses,
-        #         proxy=proxy,
-        #         verify_ssl=verify_ssl
-        #     )
-        print(responses)
+
+        # Save responses to requester.jsonl file
+        await _save_responses_to_file(session_key, responses)
+        
+        # Pretty print responses using rich
+        pprint(responses)
         return str(responses)
 
     except Exception as e:
@@ -81,6 +80,47 @@ async def cleanup_playwright_sessions():
     you want to clear all session data (cookies, etc.).
     """
     await PlaywrightSessionManager.cleanup_all_sessions()
+
+
+async def _save_responses_to_file(session_key: str, responses: list):
+    """
+    Save responses to requester.jsonl file in the session directory.
+    
+    Args:
+        session_key (str): Session identifier
+        responses (list): List of response objects to save
+    """
+    try:
+        # Create the directory path
+        cache_dir = await Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_key
+        await cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create the file path (convert to string for regular open())
+        file_path_str = str(cache_dir / "requester.jsonl")
+
+        # Convert responses to JSON-serializable format and append to file
+        with open(file_path_str, "a", encoding="utf-8") as f:
+            for response in responses:
+                # Handle bytes responses
+                if isinstance(response, bytes):
+                    try:
+                        response_str = response.decode('utf-8', errors='replace')
+                    except Exception:
+                        response_str = str(response)
+                else:
+                    response_str = str(response)
+
+                # Create JSON object for this response
+                response_data = {
+                    "response": response_str
+                }
+                
+                # Append to file with pretty-printed JSON (indented for readability)
+                json_line = json.dumps(response_data, ensure_ascii=False, indent=2)
+                f.write(json_line + "\n")
+
+    except Exception as e:
+        print(f"Warning: Could not save responses to file: {e}")
 
 
 async def cleanup_playwright_session_for_target(target_host: str, proxy: bool = False, verify_ssl: bool = False):
