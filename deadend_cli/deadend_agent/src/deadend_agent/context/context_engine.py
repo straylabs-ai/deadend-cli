@@ -9,6 +9,7 @@ workflows, including task tracking, workflow state management, and agent
 routing based on current context and progress.
 """
 
+import json
 import uuid
 from pathlib import Path
 from typing import Dict, List, TYPE_CHECKING
@@ -188,7 +189,6 @@ class ContextEngine:
         appropriate formatting. Also saves to text file.
         """
         self.workflow_context += f"""
-[Agent : {agent_name}]\n
 {response}
 """
         self._append_to_context_file("[ai agent]", f"Agent response:\n{response}")
@@ -239,9 +239,7 @@ class ContextEngine:
         # If no existing file or loading failed, create new file
         try:
             with open(self.context_file_path, 'w', encoding='utf-8') as f:
-                f.write(f"Session ID: {self.session_id}\n")
-                f.write(f"Target: {self.target}\n")
-                f.write("\n\n")
+                f.write("\n")
 
         except OSError as e:
             # Log error but don't raise to avoid breaking workflow
@@ -285,10 +283,7 @@ class ContextEngine:
             # Extract session information from the file
             lines = content.split('\n')
             for line in lines:
-                if line.startswith('Session ID:'):
-                    # Session ID is already set in __init__
-                    continue
-                elif line.startswith('Target:'):
+                if line.startswith('Target:'):
                     self.target = line.replace('Target:', '').strip()
                 elif line.startswith('='):
                     # End of header section
@@ -332,3 +327,192 @@ class ContextEngine:
             Path: The path to the text context file for this session.
         """
         return self.context_file_path
+
+    def _read_last_lines_from_jsonl(self, file_path: Path, num_lines: int = 200) -> List[dict]:
+        """Read the last N lines from a JSONL file.
+        
+        Handles both single-line and pretty-printed (multi-line) JSON entries.
+        
+        Args:
+            file_path: Path to the JSONL file
+            num_lines: Number of lines to read from the end (default: 200)
+            
+        Returns:
+            List[dict]: List of parsed JSON objects from the last N lines
+        """
+        if not file_path.exists():
+            return []
+
+        try:
+            # Read all lines
+            with open(file_path, 'r', encoding='utf-8') as f:
+                all_lines = f.readlines()
+
+            # Read more lines than requested to ensure we get complete entries
+            # (pretty-printed JSON may span multiple lines)
+            # Then we'll take the last N complete entries
+            lines_to_read = min(num_lines * 2, len(all_lines))
+            last_lines = all_lines[-lines_to_read:] if len(all_lines) > lines_to_read else all_lines
+
+            # Parse JSON entries (handling both single-line and multi-line pretty-printed JSON)
+            parsed_entries = []
+            current_entry = []
+            brace_count = 0
+
+            for line in last_lines:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                
+                # Count braces to detect complete JSON objects
+                brace_count += stripped.count('{') - stripped.count('}')
+                current_entry.append(stripped)
+                
+                # When braces are balanced, we have a complete JSON object
+                if brace_count == 0 and current_entry:
+                    try:
+                        entry_text = '\n'.join(current_entry)
+                        parsed = json.loads(entry_text)
+                        parsed_entries.append(parsed)
+                    except json.JSONDecodeError as e:
+                        # If parsing fails, try to extract just the content part
+                        # This handles cases where pretty-printed JSON might have extra whitespace
+                        try:
+                            # Try to find the JSON object boundaries
+                            entry_text = '\n'.join(current_entry)
+                            # Remove any leading/trailing whitespace and try again
+                            entry_text = entry_text.strip()
+                            parsed = json.loads(entry_text)
+                            parsed_entries.append(parsed)
+                        except json.JSONDecodeError:
+                            # Skip this entry if we can't parse it
+                            print(e)
+                    current_entry = []
+                    brace_count = 0
+            
+            # Handle any remaining entry (incomplete at end of file)
+            if current_entry and brace_count == 0:
+                try:
+                    entry_text = '\n'.join(current_entry)
+                    parsed = json.loads(entry_text)
+                    parsed_entries.append(parsed)
+                except json.JSONDecodeError:
+                    pass
+            
+            # Return the last N entries (or all if we have fewer)
+            return parsed_entries[-num_lines:] if len(parsed_entries) > num_lines else parsed_entries
+            
+        except Exception as e:
+            print(f"Warning: Could not read JSONL file {file_path}: {e}")
+            return []
+
+    def _get_session_directory(self, session_key: str | None = None) -> Path | None:
+        """Determine the session directory path.
+        
+        Args:
+            session_key: Optional session key (e.g., "host_port"). If not provided,
+                        will try to extract from target or use session_id.
+        
+        Returns:
+            Path to the session directory, or None if it cannot be determined.
+        """
+        if session_key:
+            return Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_key
+        elif self.target:
+            # Try to extract host and port from target
+            try:
+                from deadend_agent.tools.browser_automation.http_parser import extract_host_port
+                host, port = extract_host_port(target_host=self.target)
+                session_key = f"{host}_{port}"
+                return Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_key
+            except Exception:
+                # Fallback to using session_id if target parsing fails
+                if self.session_id:
+                    return Path.home() / ".cache" / "deadend" / "memory" / "sessions" / str(self.session_id)
+                else:
+                    return None
+        elif self.session_id:
+            return Path.home() / ".cache" / "deadend" / "memory" / "sessions" / str(self.session_id)
+        else:
+            return None
+
+    def get_requester_history(self, session_key: str | None = None, num_lines: int = 200) -> str:
+        """Get the last N lines from requester.jsonl as a formatted string.
+        
+        Args:
+            session_key: Optional session key (e.g., "host_port"). If not provided,
+                        will try to extract from target or use session_id.
+            num_lines: Number of lines to read from the file (default: 200)
+        
+        Returns:
+            str: Formatted string containing the requester history, or empty string if no history found.
+        """
+        session_dir = self._get_session_directory(session_key)
+        if not session_dir:
+            return ""
+        
+        requester_file = session_dir / "requester.jsonl"
+        requester_entries = self._read_last_lines_from_jsonl(requester_file, num_lines)
+        
+        if not requester_entries:
+            return ""
+        
+        context_sections = [f"[HTTP Request/Response History - Last {len(requester_entries)} entries]"]
+        for i, entry in enumerate(requester_entries, 1):
+            response = entry.get("response", "")
+            context_sections.append(f"Entry {i}:\n{response}\n")
+        
+        return "\n".join(context_sections)
+
+    def get_python_interpreter_history(self, session_key: str | None = None, num_lines: int = 200) -> str:
+        """Get the last N lines from python_interpreter.jsonl as a formatted string.
+        
+        Args:
+            session_key: Optional session key (e.g., "host_port"). If not provided,
+                        will try to extract from target or use session_id.
+            num_lines: Number of lines to read from the file (default: 200)
+        
+        Returns:
+            str: Formatted string containing the Python interpreter history, or empty string if no history found.
+        """
+        session_dir = self._get_session_directory(session_key)
+        if not session_dir:
+            return ""
+        
+        python_interpreter_file = session_dir / "python_interpreter.jsonl"
+        python_interpreter_entries = self._read_last_lines_from_jsonl(python_interpreter_file, num_lines)
+        
+        if not python_interpreter_entries:
+            return ""
+        
+        context_sections = [f"[Python Interpreter History - Last {len(python_interpreter_entries)} entries]"]
+        for i, entry in enumerate(python_interpreter_entries, 1):
+            result = entry.get("result", "")
+            context_sections.append(f"Entry {i}:\n{result}\n")
+        
+        return "\n".join(context_sections)
+
+    def load_jsonl_history_to_context(self, session_key: str | None = None, num_lines: int = 200) -> None:
+        """Load the last N lines from JSONL files (requester.jsonl and python_interpreter.jsonl) into context.
+        
+        This method reads the last N lines from both requester.jsonl and python_interpreter.jsonl
+        files in the session directory and adds them to the workflow context.
+        
+        Args:
+            session_key: Optional session key (e.g., "host_port"). If not provided,
+                        will try to extract from target or use session_id.
+            num_lines: Number of lines to read from each file (default: 200)
+        """
+        requester_history = self.get_requester_history(session_key, num_lines)
+        python_interpreter_history = self.get_python_interpreter_history(session_key, num_lines)
+        
+        context_sections = []
+        if requester_history:
+            context_sections.append(requester_history)
+        if python_interpreter_history:
+            context_sections.append(python_interpreter_history)
+        
+        if context_sections:
+            history_content = "\n".join(context_sections)
+            self.workflow_context += f"\n\n[Tool History]\n{history_content}\n"
+            self._append_to_context_file("[Tool History]", history_content)

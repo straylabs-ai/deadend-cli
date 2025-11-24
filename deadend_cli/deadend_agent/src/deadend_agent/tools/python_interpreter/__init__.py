@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 from pydantic_ai import RunContext
+from rich.pretty import pprint
 from .python_interpreter import PythonInterpreter
 
 
@@ -45,11 +46,10 @@ async def read_auth_storage(ctx: str) -> str:
         raise ValueError(f"storage.json for {ctx} is not valid JSON") from exc
 
 async def run_python_file(
+    ctx: RunContext[str],
     code: str,
     filename: str,
-    packages: list[str],
-    _directory: str | None = None,
-    _session_id: str | None = None
+    packages: list[str]
 ) -> Any:
     """Write Python code to a file and execute it in the sandbox.
 
@@ -78,14 +78,13 @@ async def run_python_file(
     file_path = cache_dir / filename
     file_path.write_text(code, encoding="utf-8")
 
-    # Use cache directory as working directory if not specified
-    directory = _directory if _directory is not None else str(cache_dir)
-
-    # Generate session_id if not provided
-    session_id = _session_id or f"session_{id(file_path)}"
-
+    # Get session_id from context deps (passed from agent), or generate one if not provided
+    # ctx.deps is the session_id string passed from PythonInterpreterAgent
+    session_id = ctx.deps if ctx.deps and isinstance(ctx.deps, str) else f"session_{id(file_path)}"
+    print(f"session id inside run8python8file : {session_id}")
     # Initializing the PythonInterpreter
-    interpreter = PythonInterpreter(session_id=session_id, directory=directory)
+    # Convert cache_dir Path to string for the directory parameter
+    interpreter = PythonInterpreter(session_id=session_id, directory=str(cache_dir))
     await interpreter.initialize()
 
     try:
@@ -96,9 +95,53 @@ async def run_python_file(
         # Running the file (use just filename since directory is set)
         result = await interpreter.run_file(filename)
 
+        # Save result to python_interpreter.jsonl file
+        await _save_result_to_file(session_id, result)
+
+        # Pretty print result using rich
+        pprint(result)
+
         # Returning the results
         return result
 
     finally:
         # Closing the process
         await interpreter.shutdown()
+
+
+async def _save_result_to_file(session_id: str, result: Any):
+    """
+    Save Python interpreter result to python_interpreter.jsonl file in the session directory.
+
+    Args:
+        session_id (str): Session identifier
+        result (Any): Result object to save
+    """
+    try:
+        # Create the directory path
+        cache_dir = Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_id
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create the file path
+        file_path = cache_dir / "python_interpreter.jsonl"
+
+        # Convert result to JSON-serializable format
+        if isinstance(result, (dict, list, str, int, float, bool, type(None))):
+            # Already JSON-serializable
+            result_data = result
+        else:
+            # Convert to string if not directly serializable
+            result_data = str(result)
+
+        # Create JSON object for this result
+        result_entry = {
+            "result": result_data
+        }
+
+        # Append to file with pretty-printed JSON (indented for readability)
+        with open(file_path, "a", encoding="utf-8") as f:
+            json_line = json.dumps(result_entry, ensure_ascii=False, indent=2)
+            f.write(json_line + "\n")
+
+    except Exception as e:
+        print(f"Warning: Could not save Python interpreter result to file: {e}")

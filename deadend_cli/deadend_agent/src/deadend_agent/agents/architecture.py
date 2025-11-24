@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any, Literal, AsyncGenerator
 from uuid import UUID
+from deadend_agent.agents.exploit_web_agent import ExploitInfo, ExploitOutput
 from deadend_agent.agents.recon_threatmodel_agent import GeneralInfoOutput, ThreatModelOutput
 from pydantic import BaseModel, Field
 from pydantic_ai import DeferredToolResults
@@ -21,6 +22,23 @@ from deadend_agent.utils.structures import WebappreconDeps, RequesterDeps, Shell
 from deadend_agent.context import ContextEngine
 from deadend_prompts.template_renderer import render_agent_instructions
 from rich import print
+
+
+class LogEvent(BaseModel):
+    """Event representing a log message during execution."""
+    type: Literal["log"] = "log"
+    message: str
+
+
+class ResultEvent(BaseModel):
+    """Event representing the final execution result."""
+    type: Literal["result"] = "result"
+    confidence_score: float
+    context: dict[str, Any]
+
+
+# Union type for all possible executor events
+ExecutorEvent = LogEvent | ResultEvent
 
 
 class TaskNode(BaseModel):
@@ -61,11 +79,12 @@ class Planner:
     The planner uses an AI agent to decompose complex tasks into smaller,
     more manageable subtasks with associated confidence scores.
     """
-    def __init__(self, planner_agent: AgentRunner, deps: RequesterDeps) -> None:
+    def __init__(self, planner_agent: AgentRunner, deps: RequesterDeps | str | Any) -> None:
         """Initialize the Planner.
         
         Args:
             planner_agent: The AgentRunner instance to use for task decomposition
+            deps: Dependencies for the planner agent (can be RequesterDeps, session_key string, or other types)
         """
         self.agent = planner_agent
         self.deps = deps
@@ -89,12 +108,11 @@ class Planner:
         """
         # Adding to the system prompt instructions about the subtasking
         planner_prompt=f"""
-Start by understanding the web application you are working one by doing a threat model.
 You need to understand the architecture, endpoints, authentication mechanisms, sinks and sources.
 You can then move on to the next step.
 Understand the task and what it encompasses: analyze the task goal, identify what components of the web application it involves, and determine what security vulnerabilities this task could lead to or help identify. 
 Based on this reasoning, break down the task into logical subtasks that systematically address the task goal.
-Break down this task into subtasks: {parent_task.task}. The context is : {str(context)}
+Break down this task into a maximum of 5 subtasks: {parent_task.task}. The context is : \n{str(context)}
 """
         result = await self.agent.run(
             prompt=planner_prompt,
@@ -105,11 +123,30 @@ Break down this task into subtasks: {parent_task.task}. The context is : {str(co
         )
         # website info
         website_data_gathered = GeneralInfoOutput()
+        exploit_info = ExploitInfo()
 
         # Populating task nodes
         nested_tasks = []
         print(result.output)
-        if isinstance(result.output, PlannerOutput):
+        
+        # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
+        if isinstance(result.output, ExploitOutput):
+            # Extract tasks from PlannerOutput
+            for task_plan in result.output.tasks:
+                new_task = TaskNode(
+                    task=task_plan.task,
+                    depth=parent_task.depth+1,
+                    confidence_score=task_plan.confidence_score,
+                    status="pending",
+                    parent=parent_task,
+                    children=[]
+                )
+                nested_tasks.append(new_task)
+            # Extract exploit information
+            exploit_info.reasoning = result.output.reasoning
+            exploit_info.highly_possible_vulnerabilities = result.output.highly_possible_vulnerabilities
+        elif isinstance(result.output, PlannerOutput):
+            # Handle regular PlannerOutput (tasks only)
             for task_plan in result.output.tasks:
                 new_task = TaskNode(
                     task=task_plan.task,
@@ -125,7 +162,13 @@ Break down this task into subtasks: {parent_task.task}. The context is : {str(co
             website_data_gathered.website_general_information = result.output.website_general_information
             website_data_gathered.endpoints = result.output.endpoints
             website_data_gathered.technology_stack = result.output.technology_stack
-        return nested_tasks, website_data_gathered
+        
+        # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
+        if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
+            exploit_info.reasoning = result.output.reasoning
+            exploit_info.highly_possible_vulnerabilities = result.output.highly_possible_vulnerabilities
+        
+        return nested_tasks, website_data_gathered, exploit_info
 
     async def update_plan(
         self,
@@ -133,7 +176,7 @@ Break down this task into subtasks: {parent_task.task}. The context is : {str(co
         context: str,
         usage: RunUsage,
         usage_limits: UsageLimits,
-    ) -> tuple[list[TaskNode], GeneralInfoOutput]:
+    ) -> tuple[list[TaskNode], GeneralInfoOutput | ExploitInfo]:
         """Update and refine the plan for all tasks that share the same parent.
         
         This function takes a task node, finds all tasks that share the same parent
@@ -204,11 +247,30 @@ Provide an updated list of subtasks that reflects the current state and remainin
         
         # website info
         website_data_gathered = GeneralInfoOutput()
+        exploit_info = ExploitInfo()
         
         # Populating updated task nodes
         updated_tasks = []
         print(result.output)
-        if isinstance(result.output, PlannerOutput):
+        
+        # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
+        if isinstance(result.output, ExploitOutput):
+            # Extract tasks from PlannerOutput
+            for task_plan in result.output.tasks:
+                new_task = TaskNode(
+                    task=task_plan.task,
+                    depth=task_depth,
+                    confidence_score=task_plan.confidence_score,
+                    status=task_plan.status,
+                    parent=parent_task,
+                    children=[]
+                )
+                updated_tasks.append(new_task)
+            # Extract exploit information
+            exploit_info.reasoning = result.output.reasoning
+            exploit_info.highly_possible_vulnerabilities = result.output.highly_possible_vulnerabilities
+        elif isinstance(result.output, PlannerOutput):
+            # Handle regular PlannerOutput (tasks only)
             for task_plan in result.output.tasks:
                 new_task = TaskNode(
                     task=task_plan.task,
@@ -225,7 +287,12 @@ Provide an updated list of subtasks that reflects the current state and remainin
             website_data_gathered.endpoints = result.output.endpoints
             website_data_gathered.technology_stack = result.output.technology_stack
         
-        return updated_tasks, website_data_gathered
+        # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
+        if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
+            exploit_info.reasoning = result.output.reasoning
+            exploit_info.highly_possible_vulnerabilities = result.output.highly_possible_vulnerabilities
+        
+        return updated_tasks, website_data_gathered, exploit_info
 
 class AgentExecutor:
     """Executor component that executes tasks using appropriate agents.
@@ -294,7 +361,7 @@ class AgentExecutor:
         usage_limits: UsageLimits = UsageLimits(request_limit=None, tool_calls_limit=None),
         deferred_tool_results: DeferredToolResults | None = None,
         message_history: list | None = None
-    ) -> AsyncGenerator[dict[str, Any], None]:
+    ) -> AsyncGenerator[ExecutorEvent, None]:
         """Execute a task node using the appropriate agent.
         
         The execution process:
@@ -313,8 +380,8 @@ class AgentExecutor:
             message_history: Previous conversation messages for context
             
         Yields:
-            Dictionaries shaped as {"type": "log", "message": str} for streaming updates.
-            The final event is {"type": "result", "confidence": float, "context": dict}.
+            LogEvent instances for streaming updates.
+            The final event is a ResultEvent instance.
             
         Note:
             If routing fails or the selected agent cannot be created, execution falls back
@@ -323,13 +390,13 @@ class AgentExecutor:
         context: dict[str, Any] = {"log": ""}
         confidence_score: float | None = None
 
-        def emit(message: str) -> dict[str, Any]:
+        def emit(message: str) -> LogEvent:
             """Append a log entry to the context and return it for streaming."""
             context["log"] += f"\n{message}"
-            return {"type": "log", "message": message}
+            return LogEvent(message=message)
 
         try:
-            yield emit(f"[EXECUTOR] Starting task: {task_node.task}")
+            yield emit(f"[EXECUTOR] Starting task: {task_node.task}\n")
 
             routing_info = None
             selected_agent: AgentRunner | None = None
@@ -352,11 +419,6 @@ class AgentExecutor:
                         selected_agent = self._get_agent(routing_info.next_agent_name)
                         if selected_agent:
                             yield emit(f"[EXECUTOR] Using specialized agent: {routing_info.next_agent_name}")
-                        else:
-                            yield emit(
-                                "[EXECUTOR] Specialized agent "
-                                f"'{routing_info.next_agent_name}' not available, using generic executor"
-                            )
                 except Exception as exc:
                     yield emit(f"[ROUTER] Routing failed: {exc}, using generic executor")
 
@@ -374,35 +436,37 @@ class AgentExecutor:
             else:
                 output = f"[AGENT RESPONSE] Error in agent running {selected_agent}"
 
+            notes = ""
+            updated_state = {}
             if isinstance(output, AgentOutput):
-                confidence_score = float(output.confidence_score)
+                confidence_score = output.confidence_score
                 notes = output.notes or ""
                 updated_state = output.updated_state or {}
+            else:
+                # Default confidence score when output is not an AgentOutput
+                confidence_score = 0.5
 
-            yield emit(f"[EXECUTOR] Task: {task_node.task}\nNotes: {notes}\n{output}")
+            # yield emit(f"[EXECUTOR] Task: {task_node.task}\nNotes: {notes}\n{output}")
             context.update(updated_state)
             context["last_output"] = output.model_dump() if isinstance(output, AgentOutput) else str(output)
-            yield {
-                "type": "result",
-                "confidence_score": confidence_score,
-                "context": context,
-            }
+            yield ResultEvent(
+                confidence_score=confidence_score,
+                context=context,
+            )
             return
         except UsageLimitExceeded as exc:
             yield emit(f"[EXECUTOR] Usage limit reached: {exc}")
-            yield {
-                "type": "result",
-                "confidence_score": confidence_score if confidence_score is not None else 0.5,
-                "context": context,
-            }
+            yield ResultEvent(
+                confidence_score=confidence_score or 0.5,
+                context=context,
+            )
             return
         except Exception as exc:
             yield emit(f"[EXECUTOR] Error: {exc}")
-            yield {
-                "type": "result",
-                "confidence_score": confidence_score if confidence_score is not None else 0.5,
-                "context": context,
-            }
+            yield ResultEvent(
+                confidence_score=confidence_score or 0.5,
+                context=context,
+            )
             return
 
     def _get_agent(self, agent_name: str) -> AgentRunner:
@@ -598,11 +662,13 @@ Execution trace:
             deferred_tool_results=None
         )
         print(f"validator output : {result.output}")
+        valid = False
+        confidence_score = 0.0
+        critique = ""
         if isinstance(result.output, ValidatorOutput):
             valid = result.output.valid
             confidence_score = float(result.output.confidence_score)
             critique = result.output.critique
-
 
         # adding to context
         return (valid, confidence_score, critique)
@@ -678,23 +744,23 @@ class ADaPTAgent:
 
         if depth > self.max_depth:
             node.status = "aborted:max_depth"
-            node.confidence_score = 0.3
+            node.confidence_score = 0.5
             yield emit(f"[ADAPT] Aborted task '{node.task}' at depth {depth} (max_depth={self.max_depth})")
             return
-
+        # Starts executing the agent
         executor_stream = self.executor.execute(task_node=node, agent_context=self.context.get_tasks(depth=0)+self.context.get_all_context())
-        
+
         confidence_score: float | None = None
         new_context: dict[str, Any] | None = None
         async for event in executor_stream:
-            if event.get("type") == "result":
-                confidence_score = float(event.get("confidence_score", 0.5))
-                new_context = event.get("context", {}) or {}
-                self.context.add_agent_response(str(event.get("confidence_score", 0.5))+str(event.get("context", {})))
+            if isinstance(event, ResultEvent):
+                confidence_score = event.confidence_score
+                new_context = event.context
+                self.context.add_agent_response(str(event.confidence_score) + str(event.context))
                 break
-            self.context.add_agent_response(str(event.get("message", "")))
-
-            yield emit(str(event.get("message", "")))
+            elif isinstance(event, LogEvent):
+                self.context.add_agent_response(event.message)
+                yield emit(event.message)
 
         if confidence_score is None or new_context is None:
             raise RuntimeError("AgentExecutor did not produce a result.")
@@ -725,13 +791,15 @@ The previous context is :
 Understand the Plan and what have been achieved to expand the plan with only what still need to be done.
 Change the confidence_score with have been done. Reason step by step to retrieve the most logical plan.
 """
-            subtasks, website_info = await self.planner.expand(
+            subtasks, website_info, exploit_info = await self.planner.expand(
                 node,
                 context=planner_context,
                 usage=RunUsage(),
                 usage_limits=UsageLimits(request_limit=None)
             )
             self.context.add_tool_response(website_info.model_dump())
+            if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
+                self.context.add_tool_response(exploit_info.model_dump())
             planner_subtasks = []
 
             # Because it's not hashable
@@ -772,13 +840,15 @@ The previous context is:
 Understand the Plan and what have been achieved to update the plan with only what still needs to be done.
 Update the confidence_score for what have been done. Reason step by step to retrieve the most logical updated plan.
 """
-            updated_tasks, website_info = await self.planner.update_plan(
+            updated_tasks, website_info, exploit_info = await self.planner.update_plan(
                 node,
                 context=planner_context,
                 usage=RunUsage(),
                 usage_limits=UsageLimits(request_limit=None)
             )
             self.context.add_tool_response(website_info.model_dump())
+            if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
+                self.context.add_tool_response(exploit_info.model_dump())
 
             # Store parent reference before updating node
             parent_task = node.parent
@@ -891,31 +961,26 @@ Update the confidence_score for what have been done. Reason step by step to retr
             Human-readable log strings describing progress followed by a final
             {"type": "result", "root": TaskNode} event containing the execution tree.
         """
-        # self.context = context or {}
-        # self.context.setdefault("log", "")
 
-        # self.executor.set_dependencies(
-        #     shell_deps=shell_deps,
-        #     requester_deps=requester_deps,
-        #     webapprecon_deps=webapprecon_deps,
-        # )
 
         root = TaskNode(
             task=task,
             depth=0,
-            confidence_score=0.3,
+            confidence_score=0.7,
             status="pending",
             parent=None,
             children=[]
         )
         self.context.set_root_task(root.task)
-        subtasks, website_info = await self.planner.expand(
+        subtasks, website_info, exploit_info = await self.planner.expand(
             root,
             context=self.context.get_all_context(),
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )
         self.context.add_agent_response(website_info.model_dump())
+        if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
+            self.context.add_agent_response(exploit_info.model_dump())
         planner_subtasks = []
         for subtask in subtasks:
             planner_subtask = TaskPlanner(
@@ -933,3 +998,5 @@ Update the confidence_score for what have been done. Reason step by step to retr
 
         yield {"type": "result", "root": root}
         return
+
+    

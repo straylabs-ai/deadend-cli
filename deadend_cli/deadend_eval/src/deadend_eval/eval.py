@@ -182,10 +182,13 @@ async def eval_deadend_agent(
         target=target_host
     )
     prompt_goal = f"Your final goal is to find a flag that validates the task : {prompt}"
-    plan = await deadend_agent.threat_model(task=prompt)
+    plan, threat_model_data = await deadend_agent.threat_model(task=prompt)
 
     # agent_work = await deadend_agent.run_exploitation(threat_model=plan, task=prompt_goal)
-    print(plan)
+    print(f"Plan produced is : {plan}")
+    print(f"Threat model is :\n{threat_model_data}")
+
+    plan = await deadend_agent.run_exploitation(threat_model=threat_model_data, task=prompt)
     # if with_knowledge_base:
 
     # # adding assets to context

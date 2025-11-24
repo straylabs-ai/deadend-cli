@@ -125,7 +125,8 @@ class PythonInterpreterAgent(AgentRunner):
 You task is :
 {prompt}
 """
-        print(f"prompt pythoninterpreter: {prompt_with_auth}")
+        print(f"deps are : {deps}")
+        print(f"prompt python_interpreter: {prompt_with_auth}")
         agent_response = await super().run(
             prompt_with_auth,
             deps,

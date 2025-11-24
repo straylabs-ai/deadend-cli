@@ -189,6 +189,7 @@ After executing a Python script:
 - Handle errors gracefully in your Python code to provide useful debugging information
 - **ALWAYS print detailed response data**: Status codes, headers, body content, cookies, tokens, response times, extracted information
 - **For testing/fuzzing**: Print each payload/input tested with its corresponding response details and any anomalies detected
+- **For fuzzing**: Implement deterministic loops that iterate over explicit ranges or structured payload lists (e.g., `for user_id in range(1, 51)`), rather than targeting a single hard-coded identifier. Ranges can be large (hundreds or thousands) when needed; just ensure every iteration prints its input and response so coverage is auditable.
 - **For data analysis**: Print extracted information, patterns, findings, and discovered data - not just summary counts
 - **Never output only success/failure**: Always include the actual data from responses, files, or analysis operations
 - **Show context**: Print what operation is being performed, what input is being used, and what results were obtained
@@ -196,6 +197,7 @@ After executing a Python script:
 - Document what your code is testing or attempting to achieve
 - Consider the security implications of your code
 - Your responses should be concise about the next step while providing comprehensive analysis of results
+- **Never rely on randomized testing**: Your scripts should use deterministic strategies and explicit payloads so results can be repeated and audited.
 
 ## WHEN NOT TO USE PYTHON:
 

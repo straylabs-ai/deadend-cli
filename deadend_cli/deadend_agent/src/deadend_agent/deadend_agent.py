@@ -2,12 +2,13 @@
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
 from openai import AsyncOpenAI
+from pydantic_ai import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox
-# from deadend_agent.embedders.knowledge_base_indexer import KnowledgeBaseIndexer
+from deadend_agent.agents.reporter import ReporterAgent, ReporterOutput
 from deadend_agent.agents.architecture import (
     ADaPTAgent,
     AgentExecutor,
@@ -23,6 +24,7 @@ from deadend_agent.utils.structures import (
 )
 from deadend_agent.tools.browser_automation.http_parser import extract_host_port
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
+from .agents.exploit_web_agent import PlannerExploitAgent
 
 ApprovalCallback = Callable[..., Awaitable[str]]
 
@@ -40,6 +42,7 @@ class DeadEndAgent:
     target: str | None = None
     code_indexer: SourceCodeIndexer | None = None
     threat_model_agent: ReconThreatModelAgent
+    exploit_agent: PlannerExploitAgent | None = None
     planner: Planner
     executor: AgentExecutor
     validator: Validator
@@ -249,8 +252,6 @@ class DeadEndAgent:
             tools=[]
         )
 
-
-
         self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
 
         self.adapt_agent = ADaPTAgent(
@@ -272,23 +273,42 @@ class DeadEndAgent:
                     print(event.get("message", str(event)))
             else:
                 print(str(event))
-
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
 
-        return plan
-
-    async def run_exploitation(self, threat_model: str, task: str):
-        self.threat_model_agent = ReconThreatModelAgent(
-            name="threat_model",
+        reporter_agent = ReporterAgent(
             model=self.model,
-            deps_type=RequesterDeps,
-            tools=[]
+            deps_type=None,
+            tools=None,
+            validation_format="Information",
+            validation_type="threat model"
+        )
+        prompt_threat_model = f"From the data that you have, extract a well defined threat model. {self.context.get_all_context()}"
+        threat_model_data = await reporter_agent.run(
+            prompt=prompt_threat_model,
+            deps=None,
+            usage=RunUsage(),
+            usage_limits=UsageLimits(),
+            deferred_tool_results=None,
+            message_history=""
         )
 
+        return plan, threat_model_data
 
+    async def run_exploitation(self, threat_model: str, task: str):
+        # setup session key for exploit agent
+        host, port = extract_host_port(target_host=self.target)
+        session_key = f"{host}_{port}"
+        
+        # Create exploit agent as planner
+        self.exploit_agent = PlannerExploitAgent(
+            model=self.model,
+            deps_type=str,  # session_key will be passed as string
+            target_information=f"{self.target}\n\nThreat Model:\n{threat_model}"
+        )
 
-        self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
+        # Pass session_key as deps for the exploit agent
+        self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
 
         self.adapt_agent = ADaPTAgent(
             session_id=self.session_id,
