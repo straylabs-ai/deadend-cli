@@ -65,6 +65,8 @@ class ContextEngine:
         self.next_agent = ""
         self.assets = {}
         self.target = ""
+        self.workflow_context = ""
+        self.final_goal = ""
 
         # Create context directory if it doesn't exist
         context_dir = Path.home() / ".cache" / "deadend" / "sessions" / str(self.session_id)
@@ -328,6 +330,38 @@ class ContextEngine:
         """
         return self.context_file_path
 
+    def reset(self, clear_file: bool = False) -> None:
+        """Reset the context engine to its initial empty state.
+        
+        Args:
+            clear_file: If True, also clears the context file. If False (default),
+                       only resets in-memory state, preserving the file.
+        
+        Resets all workflow state including:
+        - workflow_context: Cleared to empty string
+        - tasks: Cleared to empty dictionary
+        - next_agent: Cleared to empty string
+        - target: Cleared to empty string
+        - assets: Cleared to empty dictionary
+        - root_goal: Cleared to empty string
+        - final_goal: Cleared to empty string
+        """
+        self.workflow_context = ""
+        self.tasks = {}
+        self.next_agent = ""
+        self.target = ""
+        self.assets = {}
+        self.root_goal = ""
+        self.final_goal = ""
+        
+        if clear_file:
+            # Clear the context file
+            try:
+                with open(self.context_file_path, 'w', encoding='utf-8') as f:
+                    f.write("\n")
+            except OSError as e:
+                print(f"Warning: Could not clear context file: {e}")
+
     def _read_last_lines_from_jsonl(self, file_path: Path, num_lines: int = 200) -> List[dict]:
         """Read the last N lines from a JSONL file.
         
@@ -436,83 +470,3 @@ class ContextEngine:
         else:
             return None
 
-    def get_requester_history(self, session_key: str | None = None, num_lines: int = 200) -> str:
-        """Get the last N lines from requester.jsonl as a formatted string.
-        
-        Args:
-            session_key: Optional session key (e.g., "host_port"). If not provided,
-                        will try to extract from target or use session_id.
-            num_lines: Number of lines to read from the file (default: 200)
-        
-        Returns:
-            str: Formatted string containing the requester history, or empty string if no history found.
-        """
-        session_dir = self._get_session_directory(session_key)
-        if not session_dir:
-            return ""
-        
-        requester_file = session_dir / "requester.jsonl"
-        requester_entries = self._read_last_lines_from_jsonl(requester_file, num_lines)
-        
-        if not requester_entries:
-            return ""
-        
-        context_sections = [f"[HTTP Request/Response History - Last {len(requester_entries)} entries]"]
-        for i, entry in enumerate(requester_entries, 1):
-            response = entry.get("response", "")
-            context_sections.append(f"Entry {i}:\n{response}\n")
-        
-        return "\n".join(context_sections)
-
-    def get_python_interpreter_history(self, session_key: str | None = None, num_lines: int = 200) -> str:
-        """Get the last N lines from python_interpreter.jsonl as a formatted string.
-        
-        Args:
-            session_key: Optional session key (e.g., "host_port"). If not provided,
-                        will try to extract from target or use session_id.
-            num_lines: Number of lines to read from the file (default: 200)
-        
-        Returns:
-            str: Formatted string containing the Python interpreter history, or empty string if no history found.
-        """
-        session_dir = self._get_session_directory(session_key)
-        if not session_dir:
-            return ""
-        
-        python_interpreter_file = session_dir / "python_interpreter.jsonl"
-        python_interpreter_entries = self._read_last_lines_from_jsonl(python_interpreter_file, num_lines)
-        
-        if not python_interpreter_entries:
-            return ""
-        
-        context_sections = [f"[Python Interpreter History - Last {len(python_interpreter_entries)} entries]"]
-        for i, entry in enumerate(python_interpreter_entries, 1):
-            result = entry.get("result", "")
-            context_sections.append(f"Entry {i}:\n{result}\n")
-        
-        return "\n".join(context_sections)
-
-    def load_jsonl_history_to_context(self, session_key: str | None = None, num_lines: int = 200) -> None:
-        """Load the last N lines from JSONL files (requester.jsonl and python_interpreter.jsonl) into context.
-        
-        This method reads the last N lines from both requester.jsonl and python_interpreter.jsonl
-        files in the session directory and adds them to the workflow context.
-        
-        Args:
-            session_key: Optional session key (e.g., "host_port"). If not provided,
-                        will try to extract from target or use session_id.
-            num_lines: Number of lines to read from each file (default: 200)
-        """
-        requester_history = self.get_requester_history(session_key, num_lines)
-        python_interpreter_history = self.get_python_interpreter_history(session_key, num_lines)
-        
-        context_sections = []
-        if requester_history:
-            context_sections.append(requester_history)
-        if python_interpreter_history:
-            context_sections.append(python_interpreter_history)
-        
-        if context_sections:
-            history_content = "\n".join(context_sections)
-            self.workflow_context += f"\n\n[Tool History]\n{history_content}\n"
-            self._append_to_context_file("[Tool History]", history_content)

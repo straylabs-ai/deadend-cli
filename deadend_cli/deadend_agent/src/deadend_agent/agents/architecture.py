@@ -1028,5 +1028,3 @@ Update the confidence_score for what have been done. Reason step by step to retr
 
         yield {"type": "result", "root": root}
         return
-
-    
