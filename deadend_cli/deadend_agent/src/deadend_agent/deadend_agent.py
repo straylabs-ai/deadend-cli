@@ -306,10 +306,9 @@ class DeadEndAgent:
             deps_type=str,  # session_key will be passed as string
             target_information=f"{self.target}"
         )
-
+        self.context.reset()
         # Pass session_key as deps for the exploit agent
         self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
-
         self.adapt_agent = ADaPTAgent(
             session_id=self.session_id,
             context=self.context,
@@ -319,7 +318,13 @@ class DeadEndAgent:
             max_depth=3
         )
         plan: TaskNode | None = None
-        async for event in self.adapt_agent.run(task=f"{task}\n Threat model done is :\n{threat_model} "):
+        task_exploit = f"""
+You final goal is to find a flag that corresponds to the following task : {task}
+The flag that you need to find has the following format : FLAG{{}}.
+The threat model has been done :
+{threat_model}
+"""
+        async for event in self.adapt_agent.run(task=task_exploit):
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")
