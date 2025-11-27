@@ -13,10 +13,21 @@ import json
 import uuid
 from pathlib import Path
 from typing import Dict, List, TYPE_CHECKING
+
+import tiktoken
+
+from deadend_agent.models import AIModel
 from deadend_agent.utils.structures import Task, TaskPlanner
 
 if TYPE_CHECKING:
     from deadend_agent.agents import RouterOutput
+    from deadend_agent.agents.reporter import ReporterAgent
+
+
+def num_tokens_from_string(string: str, encoding_name: str = "o200k_base") -> int:
+    """Returns the number of tokens in a text string using tiktoken."""
+    encoding = tiktoken.get_encoding(encoding_name)
+    return len(encoding.encode(string))
 
 class ContextEngine:
     """Context engine for managing workflow state and task coordination.
@@ -49,8 +60,9 @@ class ContextEngine:
     # Unique session identifier
     context_file_path: Path
     # Path to the text context file
-
-    def __init__(self, session_id: uuid.UUID | None = None) -> None:
+    model: AIModel
+    # Adding AI model for summarization if input tokens too long
+    def __init__(self, model: AIModel, session_id: uuid.UUID | None = None) -> None:
         """Initialize the ContextEngine with empty state.
         
         Args:
@@ -67,6 +79,7 @@ class ContextEngine:
         self.target = ""
         self.workflow_context = ""
         self.final_goal = ""
+        self.model = model
 
         # Create context directory if it doesn't exist
         context_dir = Path.home() / ".cache" / "deadend" / "sessions" / str(self.session_id)
@@ -141,14 +154,58 @@ class ContextEngine:
         self.target = target
         self._append_to_context_file("[user input]", f"Target: {target}")
 
-    def get_all_context(self) -> str:
+    async def get_all_context(self) -> str:
         """Get the complete workflow context.
         
         Returns:
             str: The complete workflow context string containing all
                  accumulated information from the workflow execution.
         """
+        # Optionally summarize if context is too large before returning it.
+        tokens = await self.maybe_summarize_context()
+        print(tokens)
         return self.workflow_context
+
+    async def maybe_summarize_context(
+        self,
+        token_threshold: int = 200_000,
+        encoding_name: str = "o200k_base",
+    ) -> int:
+        """Summarize workflow context with the reporter agent if token count is high.
+
+        This helper estimates the token count of ``workflow_context`` using a simple
+        whitespace split. When the count exceeds ``token_threshold``, it uses the
+        provided reporter agent to summarize and overwrite the current context.
+
+        Args:
+            reporter_agent: An initialized ``ReporterAgent`` instance that will be
+                used to summarize the context.
+            token_threshold: Maximum allowed token count before summarization is
+                triggered. Defaults to 200,000.
+
+        Returns:
+            int: The estimated token count before any summarization took place.
+        """
+        # Use tiktoken to estimate token count for the current context.
+        current_context = self.workflow_context
+        token_count = num_tokens_from_string(current_context, encoding_name)
+
+        if token_count > token_threshold:
+            # Import here to avoid a hard import cycle at module import time.
+            from deadend_agent.agents.reporter import ReporterAgent
+
+            reporter_agent = ReporterAgent(
+                model=self.model,
+                deps_type=None,
+                tools=[],
+                validation_format="New context with the relevant information",
+                validation_type="Summarize context",
+            )
+            # ReporterAgent.summarize_context will update workflow_context via
+            # ContextEngine.set_new_workflow, so no direct assignment is needed.
+            result = await reporter_agent.summarize_context(self)
+            self.workflow_context = result.output
+        return token_count
 
     def add_next_agent(self, router_output: "RouterOutput") -> None:
         """Add router output information and set the next agent.

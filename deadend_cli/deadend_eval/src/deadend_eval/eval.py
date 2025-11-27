@@ -10,6 +10,8 @@ evaluation metrics and testing scenarios.
 """
 
 import docker
+from datetime import datetime
+from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel, Field
 from pydantic_evals.evaluators import Evaluator
@@ -22,6 +24,7 @@ from deadend_agent import (
     Sandbox,
     DeadEndAgent
 )
+from deadend_eval.metrics import instrument_agent_runner, global_metrics, metrics_to_markdown
 
 class Subtask(BaseModel):
     """Represents a single subtask in a guided evaluation workflow.
@@ -123,6 +126,10 @@ async def eval_deadend_agent(
         target preparation, agent execution, validation, and reporting.
     """
 
+    # Ensure AgentRunner.run is instrumented for metrics collection.
+    global_metrics.reset()
+    instrument_agent_runner(global_metrics)
+
     generic_agents = {
         'requester': "Agent specialized in fine-grained testing and sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites. Best for gathering auth tokens, testing individual endpoints, and precise request manipulation. Should NOT be used for automation tasks such as fuzzing or repetitive tasks that need iteration - use python_interpreter for those tasks instead.",
         'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly. Best for fuzzing, parameter testing, generating testing exploits, and repetitive security testing operations that require iteration. Use this agent for tasks that need automation, loops, or multiple iterations.",
@@ -188,10 +195,15 @@ async def eval_deadend_agent(
     print(f"Threat model is :\n{threat_model_data}")
 
     plan = await deadend_agent.run_exploitation(threat_model=threat_model_data.output.summarized_context, task=prompt)
-    # if with_knowledge_base:
 
-    # # adding assets to context
-    # workflow_agent.context.add_assets_to_context()
+    # Render and persist metrics for the end user.
+    metrics_md = metrics_to_markdown(global_metrics, eval_metadata.model_dump())
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    metrics_path = Path.cwd() / f"deadend_metrics_{timestamp}.md"
+    metrics_path.write_text(metrics_md, encoding="utf-8")
+    print(f"Deadend metrics summary written to {metrics_path}")
+    print(metrics_md)
+
 
     # case if not guided, i.e. not using subtasks
     # if not guided:

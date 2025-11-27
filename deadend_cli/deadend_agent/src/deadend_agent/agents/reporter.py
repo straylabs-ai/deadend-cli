@@ -22,7 +22,6 @@ class ReporterAgent(AgentRunner):
     Reporter Agent 
     """
     def __init__(self, model, deps_type, tools, validation_type: str | None, validation_format: str | None):
-
         reporter_instructions = render_agent_instructions(
             "reporter", 
             tools={},
@@ -57,13 +56,12 @@ class ReporterAgent(AgentRunner):
         Returns:
             ReporterOutput: The summarized context output.
         """
-        # Get the current workflow context
-        current_context = context_engine.get_all_context()
+        # Get the current workflow context (with possible summarization)
+        current_context = context_engine.workflow_context
 
         # Create a prompt for summarization
         summarization_prompt = f"""
 analyze and summarize the following workflow context while preserving all critical security information, vulnerabilities, and technical details. Keep the summary under 150,000 tokens while maintaining actionable intelligence for continued security testing.
-
 Current workflow context:
 {current_context}
         """
