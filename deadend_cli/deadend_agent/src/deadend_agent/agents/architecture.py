@@ -768,7 +768,8 @@ class ADaPTAgent:
             yield emit(f"[ADAPT] Aborted task '{node.task}' at depth {depth} (max_depth={self.max_depth})")
             return
         # Starts executing the agent
-        executor_stream = self.executor.execute(task_node=node, agent_context=self.context.get_tasks(depth=0)+self.context.get_all_context())
+        agent_context = self.context.get_tasks(depth=0) + await self.context.get_all_context()
+        executor_stream = self.executor.execute(task_node=node, agent_context=agent_context)
 
         confidence_score: float | None = None
         new_context: dict[str, Any] | None = None
@@ -806,11 +807,11 @@ class ADaPTAgent:
             return
         # If between 20%-60%
         elif decision == "expand":
-            planner_context =f"""
+            planner_context = f"""
 The precedent plan is:
 {self.context.get_tasks()}
 The previous context is :
-{self.context.get_all_context()}
+{await self.context.get_all_context()}
 Understand the Plan and what have been achieved to expand the plan with only what still need to be done.
 Change the confidence_score with have been done. Reason step by step to retrieve the most logical plan.
 """
@@ -861,7 +862,7 @@ Change the confidence_score with have been done. Reason step by step to retrieve
 The precedent plan is:
 {self.context.get_tasks()}
 The previous context is:
-{self.context.get_all_context()}
+{await self.context.get_all_context()}
 Understand the Plan and what have been achieved to update the plan with only what still needs to be done.
 Update the confidence_score for what have been done. Reason step by step to retrieve the most logical updated plan.
 """
@@ -962,7 +963,8 @@ Update the confidence_score for what have been done. Reason step by step to retr
         if not self.validator:
             return "completed"
 
-        (ok, validation, critique) = await self.validator.verify(task=node, context=self.context.get_all_context())
+        context_text = await self.context.get_all_context()
+        (ok, validation, critique) = await self.validator.verify(task=node, context=context_text)
         validation_context = {}
         validation_context["log"] = f"\nVALIDATOR: {validation} : {critique}"
         formatted_validation = _format_dict_for_context(validation_context)
@@ -1000,9 +1002,10 @@ Update the confidence_score for what have been done. Reason step by step to retr
             children=[]
         )
         self.context.set_root_task(root.task)
+        initial_context = await self.context.get_all_context()
         subtasks, website_info, exploit_info = await self.planner.expand(
             root,
-            context=self.context.get_all_context(),
+            context=initial_context,
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )

@@ -397,8 +397,9 @@ class WorkflowRunner:
         usage_limits_router = UsageLimits()
 
         try:
+            context_text = await self.context.get_all_context()
             resp = await self.router.run(
-                prompt=prompt + self.context.get_all_context(),
+                prompt=prompt + context_text,
                 deps=None,
                 message_history="",
                 usage=usage_router,
@@ -484,10 +485,11 @@ class WorkflowRunner:
         agent = self._get_agent(agent_name=agent_name)
         usage_agent = RunUsage()
         usage_limits_agent = UsageLimits()
-        if prompt is None :
+        if prompt is None:
             user_prompt = None
         else:
-            user_prompt = prompt + self.context.get_all_context()
+            context_text = await self.context.get_all_context()
+            user_prompt = prompt + context_text
 
         try:
             if agent.name == "planner_agent":
@@ -518,7 +520,7 @@ class WorkflowRunner:
                 webapprecon_deps = self._build_webapp_recon_deps()
                 resp = await agent.run(
                     prompt=user_prompt,
-                    message_history=message_history+str(self.context.get_all_context()),
+                    message_history=message_history + str(await self.context.get_all_context()),
                     usage=usage_agent,
                     deps=webapprecon_deps,
                     usage_limits=usage_limits_agent,
@@ -639,11 +641,11 @@ class WorkflowRunner:
             try:
                 agent_response = await self.run_agent(
                     agent_name=self.context.next_agent,
-                    prompt=prompt + self.context.get_all_context(),
+                    prompt=prompt + await self.context.get_all_context(),
                     message_history=""
                 )
                 if isinstance(agent_response.output, DeferredToolRequests):
-                    messages = [self.context.get_all_context()]
+                    messages = [await self.context.get_all_context()]
                     messages.extend(agent_response.all_messages())
                     approval =  await self._get_user_approval_for_tool_requests(
                         agent_response,
@@ -690,8 +692,9 @@ class WorkflowRunner:
                 break
 
             try:
+                context_text = await self.context.get_all_context()
                 judge_output = await judge_agent.run(
-                    prompt=self.context.get_all_context(),
+                    prompt=context_text,
                     deps=None,
                     message_history="",
                     usage=usage_judge,

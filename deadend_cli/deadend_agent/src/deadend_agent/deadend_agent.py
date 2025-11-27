@@ -64,7 +64,6 @@ class DeadEndAgent:
         self.max_depth = max_depth
         self.model = model
         self.available_agents = available_agents
-        self.context = ContextEngine(session_id=session_id)
 
 
         # Pass router, model, and available_agents to executor so
@@ -77,7 +76,7 @@ class DeadEndAgent:
 
         self.validator = Validator(model=model)
 
-        self.context = ContextEngine(session_id=session_id)
+        self.context = ContextEngine(model=self.model, session_id=session_id)
 
 
 ################################################################################
@@ -283,7 +282,8 @@ class DeadEndAgent:
             validation_format="Information",
             validation_type="threat model"
         )
-        prompt_threat_model = f"From the data that you have, extract a well defined threat model. {self.context.get_all_context()}"
+        context_text = await self.context.get_all_context()
+        prompt_threat_model = f"From the data that you have, extract a well defined threat model. {context_text}"
         threat_model_data = await reporter_agent.run(
             prompt=prompt_threat_model,
             deps=None,
