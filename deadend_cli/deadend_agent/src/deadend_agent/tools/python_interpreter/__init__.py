@@ -77,6 +77,7 @@ async def run_python_file(
     cache_dir.mkdir(parents=True, exist_ok=True)
     file_path = cache_dir / filename
     file_path.write_text(code, encoding="utf-8")
+    print(code)
 
     # Get session_id from context deps (passed from agent), or generate one if not provided
     # ctx.deps is the session_id string passed from PythonInterpreterAgent
@@ -94,7 +95,6 @@ async def run_python_file(
 
         # Running the file (use just filename since directory is set)
         result = await interpreter.run_file(filename)
-
         # Save result to python_interpreter.jsonl file
         await _save_result_to_file(session_id, result)
 

@@ -71,19 +71,66 @@ if response.status_code != 200:
 
 ### Fuzzing and Parameter Testing Output:
 ```python
-# Fuzzing can be done over long ranges (hundreds or thousands of iterations)
-# Example: Testing IDs from 1 to 1000, or parameter values across a wide range
-for payload in payloads:  # or: for user_id in range(1, 1001):
-    response = requests.get(url, params={'id': payload})
-    print(f"\n[TEST] Payload: {payload}")
-    print(f"  Status: {response.status_code}")
-    print(f"  Length: {len(response.content)} bytes")
-    print(f"  Headers: {dict(response.headers)}")
-    if response.status_code != 200:
-        print(f"  [ANOMALY] Non-200 status code detected!")
-        print(f"  Response: {response.text[:200]}")
-    if len(response.content) != expected_length:
-        print(f"  [ANOMALY] Unexpected response length!")
+# Before fuzzing, REASON about the context and known identifiers.
+# 1. Extract candidate IDs / parameters from previous responses or context.
+#    - Example sources: URLs like /user/123, JSON fields like {"id": 42}, table indices, etc.
+# 2. Infer ranges and patterns:
+#    - If you have at least two IDs (e.g. 1 and 10), infer a plausible range (e.g. 1–10, 1–100).
+#    - If you see gaps (e.g. 1, 5, 10), fuzz in and between them (1–5, 5–10).
+# 3. Infer type and encoding:
+#    - Pure digits → probably integer IDs.
+#    - Hex/base16 (0–9a–f) or base64‑like → possibly tokens/hashes.
+#    - Mixed alphanumerics with separators → possibly slugs or compound keys.
+# 4. Build a fuzzing plan BEFORE coding:
+#    - Which parameter(s) to fuzz (id, user_id, product_id, etc.).
+#    - What ranges (min, max, step) and which “special” values to test (0, -1, 999999, etc.).
+#    - Which encodings/representations to try: plain, URL‑encoded, hex, base64, JSON, etc.
+#    - Which HTTP methods and endpoints to target, based on what you have already seen.
+#
+# Then implement that plan deterministically.
+
+# Example: reasoning‑driven fuzzing over an inferred ID range and encodings
+base_url = "https://target/app/user"  # inferred from context
+min_id = 1          # inferred from smallest ID seen
+max_id = 50         # inferred from largest ID seen or conservative guess
+step = 1            # can increase if range is very large
+
+def generate_candidate_ids(min_id, max_id, step=1):
+    # Core integer range
+    for i in range(min_id, max_id + 1, step):
+        yield i
+    # Edge and special values
+    for special in [0, -1, max_id + 1, 999999, 2**31 - 1]:
+        yield special
+
+def encode_variants(value: int) -> dict:
+    # Try different encodings for the same logical value
+    import base64
+    as_str = str(value)
+    variants = {
+        "int": value,
+        "str": as_str,
+        "zero_padded": as_str.zfill(5),
+        "hex": hex(value),
+        "base64": base64.b64encode(as_str.encode()).decode(),
+        "url_encoded": as_str.replace(" ", "%20"),
+    }
+    return variants
+
+for candidate in generate_candidate_ids(min_id, max_id, step):
+    encodings = encode_variants(candidate)
+    for enc_name, enc_value in encodings.items():
+        params = {"id": enc_value}
+        response = requests.get(base_url, params=params)
+        print(f"\n[TEST] id={candidate} ({enc_name} -> {enc_value})")
+        print(f"  URL: {response.url}")
+        print(f"  Status: {response.status_code}")
+        print(f"  Length: {len(response.content)} bytes")
+        print(f"  Headers: {dict(response.headers)}")
+        # Highlight anomalies or type‑dependent behavior
+        if response.status_code != 200 or "error" in response.text.lower():
+            print(f"  [ANOMALY] Suspicious or error‑like behavior detected!")
+            print(f"  Response (first 300 chars): {response.text[:300]}")
 ```
 
 ### Data Analysis and Processing Output:
@@ -207,7 +254,12 @@ After executing a Python script:
 - Handle errors gracefully in your Python code to provide useful debugging information
 - **ALWAYS print detailed response data**: Status codes, headers, body content, cookies, tokens, response times, extracted information
 - **For testing/fuzzing**: Print each payload/input tested with its corresponding response details and any anomalies detected
-- **For fuzzing**: Implement deterministic loops that iterate over explicit ranges or structured payload lists (e.g., `for user_id in range(1, 1001)` or `for param_value in range(0, 10000)`). Ranges can be very large (hundreds, thousands, or even tens of thousands) when needed for comprehensive testing; just ensure every iteration prints its input and response so coverage is auditable.
+- **For fuzzing**: Before writing code, REASON from the available context (responses, URLs, JSON)
+  to infer likely ID ranges, parameter types, and encodings, then design a deterministic fuzzing
+  plan (ranges, edge cases, and encoded variants) and implement exactly that plan.
+- **For fuzzing**: Prefer context‑driven ranges (min/max IDs you have seen) over arbitrary ranges;
+  explicitly explain in comments how you inferred the range and why specific values are chosen.
+- **For fuzzing**: Implement deterministic loops (for loops essentially) that iterate over explicit ranges or structured payload lists (e.g., `for id in range(1, 1001)` or `for param_value in range(0, 10000)`). Ranges can be very large (hundreds, thousands, or even tens of thousands) when needed for comprehensive testing; just ensure every iteration prints its input and response so coverage is auditable.
 - **For data analysis**: Print extracted information, patterns, findings, and discovered data - not just summary counts
 - **Never output only success/failure**: Always include the actual data from responses, files, or analysis operations
 - **Show context**: Print what operation is being performed, what input is being used, and what results were obtained

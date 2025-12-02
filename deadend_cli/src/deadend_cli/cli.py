@@ -13,6 +13,7 @@ import typer
 import docker
 from docker.errors import DockerException
 from rich.console import Console
+import logfire
 
 import importlib.metadata
 
@@ -73,9 +74,10 @@ def chat(
     config = config_setup()
     print_banner(config=config)
     # Monitoring
-    # logfire.configure(scrubbing=False, console=None)
-    # logfire.instrument_pydantic_ai()
-
+    logfire.configure(scrubbing=False, console=None)
+    logfire.instrument_pydantic_ai()
+    python_process = start_python_sandbox()
+    console.print(f"Python sandbox started: {python_process}")
     try:
         asyncio.run(
             chat_interface(
@@ -88,6 +90,8 @@ def chat(
             )
         )
     finally:
+        if python_process.poll() is None:
+            python_process.terminate()
         # Stop pgvector container when chat ends
         try:
             stop_pgvector_container(docker_client)

@@ -617,10 +617,10 @@ Please provide a target URL.[/yellow]")
                         console_printer.print(f"[bold yellow]Target extracted information:[/bold yellow] {item.website_general_information}")
                         console_printer.print(f"[bold yellow]The tech stack is :[/bold yellow] {item.technology_stack}")
                         console_printer.print(f"[bold yellow]Discovered endpoints:[/bold yellow] {item.endpoints}")
-                        threat_model += item.model_dump()
+                        threat_model += str(item.model_dump())
                     if isinstance(item, ReporterOutput):
                         console_printer.print(f"The threat model analyzed is : \n{item.summarized_context}")
-                        threat_model += item.model_dump()
+                        threat_model += str(item.model_dump())
                     # Special handling for RequesterOutput - print just the reasoning
                     if hasattr(item, 'output') and isinstance(item.output, RequesterOutput):
                         console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.output.reasoning}")
@@ -633,6 +633,7 @@ Please provide a target URL.[/yellow]")
 
                     # Check if this is a Pydantic BaseModel object
                     if isinstance(item, BaseModel):
+                        threat_model += str(item.model_dump())
                         # Special handling for RouterOutput - print as simple text
                         if type(item).__name__ == "RouterOutput":
                             console_printer.print(f"[cyan]Router:[/cyan] \
@@ -662,7 +663,8 @@ Please provide a target URL.[/yellow]")
                         console_printer.print(task_panel)
                     else:
                         # Print regular string messages
-                        console_printer.print(item)
+                        console_printer.print(f"[bold red]No output format : [/bold red]{item}")
+                        threat_model += str(item)
 
                     # Check for interruption
                     if agent_interrupted or deadend_agent.interrupted:

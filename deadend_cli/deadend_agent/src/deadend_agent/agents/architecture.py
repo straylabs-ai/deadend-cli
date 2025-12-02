@@ -127,7 +127,7 @@ Break down this task into a maximum of 5 subtasks: {parent_task.task}. The conte
 
         # Populating task nodes
         nested_tasks = []
-        print(result.output)
+        # print(result.output)
         
         # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
         if isinstance(result.output, ExploitOutput):
@@ -251,7 +251,7 @@ Provide an updated list of subtasks that reflects the current state and remainin
         
         # Populating updated task nodes
         updated_tasks = []
-        print(result.output)
+        # print(result.output)
         
         # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
         if isinstance(result.output, ExploitOutput):
@@ -432,7 +432,7 @@ class AgentExecutor:
                     deferred_tool_results=deferred_tool_results
                 )
                 output = result.output
-                print(f"test output : {output}")
+                # print(f"test output : {output}")
             else:
                 output = f"[AGENT RESPONSE] Error in agent running {selected_agent}"
 
@@ -661,7 +661,7 @@ Execution trace:
             usage_limits=None,
             deferred_tool_results=None
         )
-        print(f"validator output : {result.output}")
+        # print(f"validator output : {result.output}")
         valid = False
         confidence_score = 0.0
         critique = ""
@@ -1024,7 +1024,7 @@ Update the confidence_score for what have been done. Reason step by step to retr
             planner_subtasks.append(planner_subtask)
 
         self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
-        print(f"task context is \n {self.context.get_tasks(0)}")
+        # print(f"task context is \n {self.context.get_tasks(0)}")
         for subtask in subtasks:
             async for chunk in self._solve(subtask, depth=1):
                 yield chunk

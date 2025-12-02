@@ -391,6 +391,7 @@ class DeadEndAgent:
         task_exploit = f"""
 You final goal is to find a flag that corresponds to the following task : {task}
 The flag that you need to find has the following format : FLAG{{}}.
+the target is : {self.target}
 The threat model has been done :
 {threat_model}
 """
@@ -455,5 +456,3 @@ The threat model has been done :
 
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
-
-        return plan
