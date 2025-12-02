@@ -49,13 +49,31 @@ print(f"[+] Response Headers: {dict(response.headers)}")
 print(f"[+] Response Body (first 500 chars): {response.text[:500]}")
 print(f"[+] Cookies: {response.cookies}")
 print(f"[+] Response Time: {response.elapsed.total_seconds()}s")
+print(f"[+] Full Response Content:\n{response.text}")
+# NOTE: The regex extraction below is just an EXAMPLE. Adapt the patterns based on your specific task.
+# For example, if looking for SQL injection results, extract database errors; if testing authentication, extract tokens/sessions.
+# Only use regex extraction when it's relevant to your security testing goal.
+import re
+patterns = {
+    'tokens': r'(?:token|auth|session|jwt|bearer|api[_-]?key)\s*[:=]\s*([a-zA-Z0-9_\-\.]+)',
+    'flags': r'flag\{[^}]+\}|FLAG\{[^}]+\}|[a-zA-Z0-9]{32,}',
+    'secrets': r'(?:password|secret|key|credential)\s*[:=]\s*([a-zA-Z0-9_\-\.!@#$%^&*()]+)',
+    'emails': r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
+    'urls': r'https?://[^\s<>"{}|\\^`\[\]]+',
+}
+for pattern_name, pattern in patterns.items():
+    matches = re.findall(pattern, response.text, re.IGNORECASE)
+    if matches:
+        print(f"[+] Extracted {pattern_name}: {matches}")
 if response.status_code != 200:
     print(f"[!] Non-200 status - Full response: {response.text}")
 ```
 
 ### Fuzzing and Parameter Testing Output:
 ```python
-for payload in payloads:
+# Fuzzing can be done over long ranges (hundreds or thousands of iterations)
+# Example: Testing IDs from 1 to 1000, or parameter values across a wide range
+for payload in payloads:  # or: for user_id in range(1, 1001):
     response = requests.get(url, params={'id': payload})
     print(f"\n[TEST] Payload: {payload}")
     print(f"  Status: {response.status_code}")
@@ -189,7 +207,7 @@ After executing a Python script:
 - Handle errors gracefully in your Python code to provide useful debugging information
 - **ALWAYS print detailed response data**: Status codes, headers, body content, cookies, tokens, response times, extracted information
 - **For testing/fuzzing**: Print each payload/input tested with its corresponding response details and any anomalies detected
-- **For fuzzing**: Implement deterministic loops that iterate over explicit ranges or structured payload lists (e.g., `for user_id in range(1, 51)`), rather than targeting a single hard-coded identifier. Ranges can be large (hundreds or thousands) when needed; just ensure every iteration prints its input and response so coverage is auditable.
+- **For fuzzing**: Implement deterministic loops that iterate over explicit ranges or structured payload lists (e.g., `for user_id in range(1, 1001)` or `for param_value in range(0, 10000)`). Ranges can be very large (hundreds, thousands, or even tens of thousands) when needed for comprehensive testing; just ensure every iteration prints its input and response so coverage is auditable.
 - **For data analysis**: Print extracted information, patterns, findings, and discovered data - not just summary counts
 - **Never output only success/failure**: Always include the actual data from responses, files, or analysis operations
 - **Show context**: Print what operation is being performed, what input is being used, and what results were obtained

@@ -57,7 +57,6 @@ class DeadEndAgent:
         session_id: UUID,
         model: AIModel,
         available_agents: Dict[str, str],
-        target: str,
         max_depth: int = 3
     ):
         self.session_id = session_id
@@ -180,7 +179,7 @@ class DeadEndAgent:
         *,
         openai_api_key: str,
         rag_connector: RetrievalDatabaseConnector | Any,
-        sandbox: Sandbox,
+        sandbox: Sandbox | None,
         target: str | None = None,
     ) -> None:
         """Instantiate dependency containers used by downstream agents."""
@@ -295,18 +294,89 @@ class DeadEndAgent:
 
         return plan, threat_model_data
 
+    async def threat_model_stream(self, task: str):
+        """Execute the threat modeling and orchestration workflow.
+
+        Args:
+            task: The security testing task to perform
+            context: Optional context dictionary
+
+        Returns:
+            TaskNode with the execution plan and results
+        """
+        # ADaPT agent handles both planning and execution, with router integration
+        # The executor within ADaPT uses the router to route tasks to appropriate agents
+
+        # Add a plan to recon for the threat model.
+        # The threat model agent is a supervisor that can call
+        #  to the router for the generic agent calling
+        # Initialize threat model agent for planning
+        self.threat_model_agent = ReconThreatModelAgent(
+            name="threat_model",
+            model=self.model,
+            deps_type=RequesterDeps,
+            tools=[]
+        )
+
+        self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
+
+        self.adapt_agent = ADaPTAgent(
+            session_id=self.session_id,
+            context=self.context,
+            executor=self.executor,
+            planner=self.planner,
+            validator=self.validator,
+            max_depth=1
+        )
+        plan: TaskNode | None = None
+        async for event in self.adapt_agent.run(task=task):
+            if isinstance(event, dict):
+                if event.get("type") == "result":
+                    root_candidate = event.get("root")
+                    if isinstance(root_candidate, TaskNode):
+                        plan = root_candidate
+                else:
+                    yield event.get("message", str(event))
+            else:
+                yield str(event)
+        if plan is None:
+            raise RuntimeError("ADaPT agent did not produce a plan.")
+
+        reporter_agent = ReporterAgent(
+            model=self.model,
+            deps_type=None,
+            tools=None,
+            validation_format="Information",
+            validation_type="threat model"
+        )
+        context_text = await self.context.get_all_context()
+        prompt_threat_model = f"From the data that you have, extract a well defined threat model. {context_text}"
+        threat_model_data = await reporter_agent.run(
+            prompt=prompt_threat_model,
+            deps=None,
+            usage=RunUsage(),
+            usage_limits=UsageLimits(),
+            deferred_tool_results=None,
+            message_history=""
+        )
+
+        yield plan, threat_model_data.output
+
     async def run_exploitation(self, threat_model: str, task: str):
+        """Runs the exploitation workflow"""
         # setup session key for exploit agent
         host, port = extract_host_port(target_host=self.target)
         session_key = f"{host}_{port}"
-        
+
         # Create exploit agent as planner
         self.exploit_agent = PlannerExploitAgent(
             model=self.model,
             deps_type=str,  # session_key will be passed as string
             target_information=f"{self.target}"
         )
+        # We reset the context to make space and less confusion
         self.context.reset()
+        
         # Pass session_key as deps for the exploit agent
         self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
         self.adapt_agent = ADaPTAgent(
@@ -315,7 +385,7 @@ class DeadEndAgent:
             executor=self.executor,
             planner=self.planner,
             validator=self.validator,
-            max_depth=3
+            max_depth=self.max_depth
         )
         plan: TaskNode | None = None
         task_exploit = f"""
