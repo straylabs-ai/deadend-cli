@@ -15,6 +15,8 @@ import asyncio
 import sys
 from enum import Enum
 from typing import Dict, List, Callable, Optional
+from deadend_agent.agents.recon_threatmodel_agent import ThreatModelOutput
+from deadend_agent.agents.reporter import ReporterOutput
 from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
@@ -471,7 +473,10 @@ Please provide a target URL.[/yellow]")
     )
     code_chunks = await chat_interface.wait_response(
         func=deadend_agent.embed_target,
-        status="Indexing the different webpage resources..."
+        status="Indexing the different webpage resources...",
+        api_key=config.openai_api_key,
+        embedding_model=config.embedding_model
+
     )
 
     # Inserting in database
@@ -555,7 +560,9 @@ Please provide a target URL.[/yellow]")
                         )
                         code_chunks = await chat_interface.wait_response(
                             func=deadend_agent.embed_target,
-                            status="Indexing the different webpage resources for new target..."
+                            status="Indexing the different webpage resources for new target...",
+                            api_key=config.openai_api_key,
+                            embedding_model=config.embedding_model
                         )
                         if rag_db is not None and config.openai_api_key and config.embedding_model:
                             insert = await chat_interface.wait_response(
@@ -597,6 +604,8 @@ Please provide a target URL.[/yellow]")
             deadend_agent.reset_workflow_state()
 
             judge_output = None
+
+            threat_model = ""
             try:
                 async for item in deadend_agent.threat_model_stream(
                     task=user_prompt
@@ -604,7 +613,14 @@ Please provide a target URL.[/yellow]")
                     # Skip printing DeferredToolRequests objects
                     if hasattr(item, 'output') and isinstance(item.output, DeferredToolRequests):
                         continue
-
+                    if isinstance(item, ThreatModelOutput):
+                        console_printer.print(f"[bold yellow]Target extracted information:[/bold yellow] {item.website_general_information}")
+                        console_printer.print(f"[bold yellow]The tech stack is :[/bold yellow] {item.technology_stack}")
+                        console_printer.print(f"[bold yellow]Discovered endpoints:[/bold yellow] {item.endpoints}")
+                        threat_model += item.model_dump()
+                    if isinstance(item, ReporterOutput):
+                        console_printer.print(f"The threat model analyzed is : \n{item.summarized_context}")
+                        threat_model += item.model_dump()
                     # Special handling for RequesterOutput - print just the reasoning
                     if hasattr(item, 'output') and isinstance(item.output, RequesterOutput):
                         console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.output.reasoning}")
@@ -661,6 +677,77 @@ Please provide a target URL.[/yellow]")
                 console_printer.print(f"[red]Workflow error: {e}[/red]")
                 judge_output = None
 
+            try:
+                async for item in deadend_agent.start_testing_stream(
+                    task=user_prompt,
+                    threat_model=threat_model
+                ):
+                    # Skip printing DeferredToolRequests objects
+                    if hasattr(item, 'output') and isinstance(item.output, DeferredToolRequests):
+                        continue
+                    if isinstance(item, ThreatModelOutput):
+                        console_printer.print(f"[bold yellow]Target extracted information:[/bold yellow] {item.website_general_information}")
+                        console_printer.print(f"[bold yellow]The tech stack is :[/bold yellow] {item.technology_stack}")
+                        console_printer.print(f"[bold yellow]Discovered endpoints:[/bold yellow] {item.endpoints}")
+                    if isinstance(item, ReporterOutput):
+                        console_printer.print(f"The threat model analyzed is : \n{item.summarized_context}")
+                    # Special handling for RequesterOutput - print just the reasoning
+                    if hasattr(item, 'output') and isinstance(item.output, RequesterOutput):
+                        console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.output.reasoning}")
+                        console_printer.print(f"[bold green]Raw response:[/bold green] {item.output.raw_response}")
+                        continue
+
+                    # Check if this is the final result (JudgeOutput)
+                    if isinstance(item, JudgeOutput):
+                        judge_output = item
+
+                    # Check if this is a Pydantic BaseModel object
+                    if isinstance(item, BaseModel):
+                        # Special handling for RouterOutput - print as simple text
+                        if type(item).__name__ == "RouterOutput":
+                            console_printer.print(f"[cyan]Router:[/cyan] \
+{item.next_agent_name}")
+                            console_printer.print(f"[cyan]Reasoning:[/cyan] {item.reasoning}")
+                        else:
+                            # Determine the type of model for better title
+                            model_type = type(item).__name__
+                            print_pydantic_model(item, f"{model_type} Output")
+
+                    elif isinstance(item, list) and len(item) > 0 and hasattr(item[0], 'goal'):
+                        tasks_text = ""
+                        for i, task in enumerate(item, 1):
+                            tasks_text += f"[cyan]Step {i}:[/cyan]"
+                            tasks_text += f"[white]{task.goal}[/white]\n"
+                            tasks_text += f"[grey39]{task.output}[/grey39]\n"
+
+                        style = RichStyle(italic=True)
+
+                        task_panel = Panel(
+                            tasks_text.strip(),
+                            style=style,
+                            title="Planned tasks",
+                            border_style="grey39",
+                            box=box.ROUNDED
+                        )
+                        console_printer.print(task_panel)
+                    else:
+                        # Print regular string messages
+                        console_printer.print(item)
+
+                    # Check for interruption
+                    if agent_interrupted or deadend_agent.interrupted:
+                        break
+
+                    # Small delay to allow for interruption
+                    await asyncio.sleep(0.1)
+            except InterruptedError as e:
+                console_printer.print(f"[yellow]Workflow interrupted: {e}[/yellow]")
+                judge_output = None
+            except Exception as e:
+                console_printer.print(f"[red]Workflow error: {e}[/red]")
+                judge_output = None
+
+                
             # Check if agent was interrupted
             if agent_interrupted or deadend_agent.interrupted:
                 console_printer.print("[yellow]Agent execution was interrupted[/yellow]")

@@ -409,3 +409,51 @@ The threat model has been done :
             raise RuntimeError("ADaPT agent did not produce a plan.")
 
         return plan
+
+    async def start_testing_stream(self, threat_model: str, task: str):
+        """Runs the exploitation workflow"""
+        # setup session key for exploit agent
+        host, port = extract_host_port(target_host=self.target)
+        session_key = f"{host}_{port}"
+
+        # Create exploit agent as planner
+        self.exploit_agent = PlannerExploitAgent(
+            model=self.model,
+            deps_type=str,  # session_key will be passed as string
+            target_information=f"{self.target}"
+        )
+        # We reset the context to make space and less confusion
+        self.context.reset()
+
+        # Pass session_key as deps for the exploit agent
+        self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
+        self.adapt_agent = ADaPTAgent(
+            session_id=self.session_id,
+            context=self.context,
+            executor=self.executor,
+            planner=self.planner,
+            validator=self.validator,
+            max_depth=self.max_depth
+        )
+        plan: TaskNode | None = None
+        task_exploit = f"""
+You final goal is to find a flag that corresponds to the following task : {task}
+The flag that you need to find has the following format : FLAG{{}}.
+The threat model has been done :
+{threat_model}
+"""
+        async for event in self.adapt_agent.run(task=task_exploit):
+            if isinstance(event, dict):
+                if event.get("type") == "result":
+                    root_candidate = event.get("root")
+                    if isinstance(root_candidate, TaskNode):
+                        plan = root_candidate
+                else:
+                    yield event.get("message", str(event))
+            else:
+                yield str(event)
+
+        if plan is None:
+            raise RuntimeError("ADaPT agent did not produce a plan.")
+
+        return plan

@@ -286,12 +286,12 @@ Provide an updated list of subtasks that reflects the current state and remainin
             website_data_gathered.website_general_information = result.output.website_general_information
             website_data_gathered.endpoints = result.output.endpoints
             website_data_gathered.technology_stack = result.output.technology_stack
-        
+
         # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
         if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
             exploit_info.reasoning = result.output.reasoning
             exploit_info.highly_possible_vulnerabilities = result.output.highly_possible_vulnerabilities
-        
+
         return updated_tasks, website_data_gathered, exploit_info
 
 class AgentExecutor:
