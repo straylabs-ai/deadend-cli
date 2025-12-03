@@ -37,6 +37,9 @@ class ResultEvent(BaseModel):
     context: dict[str, Any]
 
 
+def yield_formatted_response(message) -> RouterOutput | ExploitOutput | ThreatModelOutput
+
+
 # Union type for all possible executor events
 ExecutorEvent = LogEvent | ResultEvent
 
@@ -234,6 +237,7 @@ Analyze the new context and determine how the plan should be updated:
 3. Consider if any tasks should be modified, removed, or if new tasks should be added
 4. Update confidence scores based on progress and new information
 5. Ensure the updated plan aligns with the parent task goal and the new context
+6. if the flag is in the context the task is achieved
 
 Provide an updated list of subtasks that reflects the current state and remaining work.
 """
@@ -352,6 +356,9 @@ class AgentExecutor:
             self.shell_deps = shell_deps
         if webapprecon_deps is not None:
             self.webapprecon_deps = webapprecon_deps
+
+    def _executor_message_yield(self, message) -> RouterOutput | AgentOutput | LogEvent | ResultEvent:
+        pass
 
     async def execute(
         self,
@@ -525,7 +532,8 @@ class AgentExecutor:
         requester_deps = self.requester_deps
         shell_deps = self.shell_deps
         webapprecon_deps = self.webapprecon_deps
-
+        prompt = f"If you think the result is found, always return confidence score of 1. Execute the following : {prompt}"
+        print(prompt)
         if isinstance(agent, RequesterAgent):
             # TODO: add interruptions
             # if self.interrupted:
@@ -1022,7 +1030,8 @@ Update the confidence_score for what have been done. Reason step by step to retr
                 status=subtask.status
             )
             planner_subtasks.append(planner_subtask)
-
+        # TODO: handling the termination
+        end_loop = False
         self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
         # print(f"task context is \n {self.context.get_tasks(0)}")
         for subtask in subtasks:
