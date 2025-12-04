@@ -82,7 +82,7 @@ async def run_python_file(
     # Get session_id from context deps (passed from agent), or generate one if not provided
     # ctx.deps is the session_id string passed from PythonInterpreterAgent
     session_id = ctx.deps if ctx.deps and isinstance(ctx.deps, str) else f"session_{id(file_path)}"
-    print(f"session id inside run8python8file : {session_id}")
+
     # Initializing the PythonInterpreter
     # Convert cache_dir Path to string for the directory parameter
     interpreter = PythonInterpreter(session_id=session_id, directory=str(cache_dir))
