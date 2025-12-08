@@ -50,7 +50,7 @@ async def eval_interface(
         console_printer(f"[red]Sandbox manager could not be started: {exc}[/red]")
         raise SystemExit(1) from exc
 
-    # Monitoring 
+    # Monitoring
     logfire.configure(scrubbing=False)
     logfire.instrument_pydantic_ai()
 

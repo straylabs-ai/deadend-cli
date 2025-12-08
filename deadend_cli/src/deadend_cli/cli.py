@@ -6,15 +6,14 @@
 
 Defines commands to run interactive chat and evaluation agents.
 """
-
+import importlib.metadata
 import asyncio
 from typing import List
 import typer
 import docker
 from docker.errors import DockerException
 from rich.console import Console
-
-import importlib.metadata
+import logfire
 
 from deadend_agent import config_setup
 from deadend_agent.core import start_python_sandbox
@@ -73,9 +72,10 @@ def chat(
     config = config_setup()
     print_banner(config=config)
     # Monitoring
-    # logfire.configure(scrubbing=False, console=None)
-    # logfire.instrument_pydantic_ai()
-
+    logfire.configure(scrubbing=False, console=None)
+    logfire.instrument_pydantic_ai()
+    python_process = start_python_sandbox()
+    console.print(f"Python sandbox started: {python_process}")
     try:
         asyncio.run(
             chat_interface(
@@ -88,6 +88,8 @@ def chat(
             )
         )
     finally:
+        if python_process.poll() is None:
+            python_process.terminate()
         # Stop pgvector container when chat ends
         try:
             stop_pgvector_container(docker_client)

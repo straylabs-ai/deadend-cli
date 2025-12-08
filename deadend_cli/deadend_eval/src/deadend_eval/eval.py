@@ -74,7 +74,6 @@ class EvalMetadata(BaseModel):
     validation_format: str = Field(..., description="Format of the validation type. It gives hints and information of what the solution could be.")
     solution: str = Field(..., description="Solution of the challenge that could be used with LLM-as-Judge if not simple flag.")
 
-
 async def eval_deadend_agent(
         model: AIModel,
         # evaluators: list[Evaluator],
@@ -168,7 +167,6 @@ async def eval_deadend_agent(
         session_id=session_id,
         model=model,
         available_agents=generic_agents,
-        target=target_host,
         max_depth=2
     )
     if with_code_indexing:

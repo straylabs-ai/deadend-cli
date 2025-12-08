@@ -9,6 +9,7 @@ workflows, including task tracking, workflow state management, and agent
 routing based on current context and progress.
 """
 
+from heapq import heappush
 import json
 import uuid
 from pathlib import Path
@@ -116,11 +117,20 @@ class ContextEngine:
         depth_line = f"Depth: {depth}"
 
         goal_line = f"Final goal: {self.final_goal}" if self.final_goal else "Final goal: No goal recorded."
-
+        tasks_context = f"""{header} {depth_line}
+{goal_line}
+"""
         if not self.tasks:
-            return "[planner tasks]\nNo planner tasks recorded."
-        if depth not in self.tasks:
-            return f"[planner tasks]\nNo tasks recorded at depth {depth}."
+            return tasks_context
+        tasks_lines = ""
+        for task, children in enumerate(self.tasks.items()):
+            task_line = f"""{task} :\n
+        {children}
+"""
+            tasks_lines += "\n" + task_line
+        tasks_context += "\n" + tasks_lines
+        return tasks_context
+
 
     def set_tasks(self, tasks: List[Task]) -> None:
         """Set the current tasks and update workflow context.

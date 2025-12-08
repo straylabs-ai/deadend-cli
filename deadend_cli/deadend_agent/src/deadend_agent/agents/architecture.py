@@ -37,6 +37,10 @@ class ResultEvent(BaseModel):
     context: dict[str, Any]
 
 
+def yield_formatted_response(message) -> RouterOutput | ExploitOutput | ThreatModelOutput:
+    pass
+
+
 # Union type for all possible executor events
 ExecutorEvent = LogEvent | ResultEvent
 
@@ -127,7 +131,7 @@ Break down this task into a maximum of 5 subtasks: {parent_task.task}. The conte
 
         # Populating task nodes
         nested_tasks = []
-        print(result.output)
+        # print(result.output)
         
         # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
         if isinstance(result.output, ExploitOutput):
@@ -234,6 +238,7 @@ Analyze the new context and determine how the plan should be updated:
 3. Consider if any tasks should be modified, removed, or if new tasks should be added
 4. Update confidence scores based on progress and new information
 5. Ensure the updated plan aligns with the parent task goal and the new context
+6. if the flag is in the context the task is achieved
 
 Provide an updated list of subtasks that reflects the current state and remaining work.
 """
@@ -251,7 +256,7 @@ Provide an updated list of subtasks that reflects the current state and remainin
         
         # Populating updated task nodes
         updated_tasks = []
-        print(result.output)
+        # print(result.output)
         
         # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
         if isinstance(result.output, ExploitOutput):
@@ -286,12 +291,12 @@ Provide an updated list of subtasks that reflects the current state and remainin
             website_data_gathered.website_general_information = result.output.website_general_information
             website_data_gathered.endpoints = result.output.endpoints
             website_data_gathered.technology_stack = result.output.technology_stack
-        
+
         # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
         if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
             exploit_info.reasoning = result.output.reasoning
             exploit_info.highly_possible_vulnerabilities = result.output.highly_possible_vulnerabilities
-        
+
         return updated_tasks, website_data_gathered, exploit_info
 
 class AgentExecutor:
@@ -352,6 +357,9 @@ class AgentExecutor:
             self.shell_deps = shell_deps
         if webapprecon_deps is not None:
             self.webapprecon_deps = webapprecon_deps
+
+    def _executor_message_yield(self, message) -> RouterOutput | AgentOutput | LogEvent | ResultEvent:
+        pass
 
     async def execute(
         self,
@@ -432,7 +440,7 @@ class AgentExecutor:
                     deferred_tool_results=deferred_tool_results
                 )
                 output = result.output
-                print(f"test output : {output}")
+                # print(f"test output : {output}")
             else:
                 output = f"[AGENT RESPONSE] Error in agent running {selected_agent}"
 
@@ -525,7 +533,8 @@ class AgentExecutor:
         requester_deps = self.requester_deps
         shell_deps = self.shell_deps
         webapprecon_deps = self.webapprecon_deps
-
+        prompt = f"If you think the result is found, always return confidence score of 1. Execute the following : {prompt}"
+        print(prompt)
         if isinstance(agent, RequesterAgent):
             # TODO: add interruptions
             # if self.interrupted:
@@ -661,7 +670,7 @@ Execution trace:
             usage_limits=None,
             deferred_tool_results=None
         )
-        print(f"validator output : {result.output}")
+        # print(f"validator output : {result.output}")
         valid = False
         confidence_score = 0.0
         critique = ""
@@ -1022,9 +1031,10 @@ Update the confidence_score for what have been done. Reason step by step to retr
                 status=subtask.status
             )
             planner_subtasks.append(planner_subtask)
-
+        # TODO: handling the termination
+        end_loop = False
         self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
-        print(f"task context is \n {self.context.get_tasks(0)}")
+        # print(f"task context is \n {self.context.get_tasks(0)}")
         for subtask in subtasks:
             async for chunk in self._solve(subtask, depth=1):
                 yield chunk

@@ -10,17 +10,19 @@ and manage workflow execution through an intuitive conversational interface.
 """
 
 import time
-import os
+from uuid import uuid4
 import asyncio
 import sys
 from enum import Enum
 from typing import Dict, List, Callable, Optional
+from deadend_agent.agents.recon_threatmodel_agent import ThreatModelOutput
+from deadend_agent.agents.reporter import ReporterOutput
 from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
 from rich.box import ROUNDED
 from rich.table import Table
-from rich import box, color
+from rich import box
 from rich.style import Style as RichStyle
 from prompt_toolkit.application import Application
 from prompt_toolkit.widgets import TextArea, Frame, Label, RadioList
@@ -31,10 +33,8 @@ from prompt_toolkit.layout.containers import HSplit
 from prompt_toolkit.layout import Dimension as D
 from pydantic import BaseModel
 from pydantic_ai import DeferredToolRequests
-
-
-
-from deadend_agent import Config, init_rag_database, sandbox_setup, ModelRegistry
+from sqlalchemy.exc import SQLAlchemyError
+from deadend_agent import Config, DeadEndAgent, init_rag_database, sandbox_setup, ModelRegistry
 from deadend_agent.utils.structures import Task
 from deadend_agent.agents import RequesterOutput
 from deadend_agent.agents.judge import JudgeOutput
@@ -372,8 +372,9 @@ async def chat_interface(
     rag_db = None
     try:
         rag_db = await init_rag_database(config.db_url)
-    except Exception:
-        console_printer.print("[yellow]Vector DB not accessible. Continuing without RAG.[/yellow]")
+    except (SQLAlchemyError, OSError) as exc:
+        console_printer.print(f"[red]Vector DB not accessible ({exc}). Exiting now.[/red]")
+        raise SystemExit(1) from exc
     # Settings up sandbox
     try:
         sandbox_manager = sandbox_setup()
@@ -387,36 +388,50 @@ async def chat_interface(
     chat_interface.console.print(f"Model currently used : {model.model_name}")
     user_prompt = prompt
 
-    workflow_agent = WorkflowRunner(
+    # workflow_agent = WorkflowRunner(
+    #     model=model,
+    #     config=config,
+    #     code_indexer_db=rag_db,
+    #     sandbox=sandbox,
+    #     mode=mode
+    # )
+    # Setup available agents
+    available_agents = {
+        'requester': "Agent specialized in fine-grained testing and sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites. Best for gathering auth tokens, testing individual endpoints, and precise request manipulation. Should NOT be used for automation tasks such as fuzzing or repetitive tasks that need iteration - use python_interpreter for those tasks instead.",
+        'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly. Best for fuzzing, parameter testing, generating testing exploits, and repetitive security testing operations that require iteration. Use this agent for tasks that need automation, loops, or multiple iterations.",
+        'shell': "Agent that gives access to a terminal bash shell. Run linux commands here.",
+        'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
+    }
+    session_id = uuid4()
+    deadend_agent = DeadEndAgent(
+        session_id=session_id,
         model=model,
-        config=config,
-        code_indexer_db=rag_db,
-        sandbox=sandbox,
-        mode=mode
+        available_agents=available_agents,
+        max_depth=3
     )
 
     # Set up approval callback to use Prompt Toolkit
     async def approval_callback():
         return await chat_interface.ask_for_approval_panel("Tool Execution Approval Required")
 
-    workflow_agent.set_approval_callback(approval_callback)
-    # Setup available agents
-    available_agents = {
-        'webapp_recon': "Expert cybersecurity agent that enumerates a web \
-            target to understand the architecture and understand the endpoints\
-            and where an attack vector could be tested.",
-        'recon_shell': "Expert system reconnaissance agent that performs \
-            infrastructure-level security assessment using specialized \
-            command-line tools. Focuses on network scanning, system enumeration,\
-            and infrastructure analysis. Should NOT be used for simple request \
-            injections or basic web testing - use specialized web tools instead.",
-        # 'planner_agent': 'Expert cybersecurity agent that plans what is the next step to do',
-        'router_agent': 'Router agent, expert that routes to the specific \
-            agent needed to achieve the next step of the plan.',
-        'python_interpreter_agent': 'Generate code and runs it in a python \
-            interpreter depending on the goal given.'
-    }
-    workflow_agent.register_agents(available_agents)
+    deadend_agent.set_approval_callback(approval_callback)
+
+    # {
+    #     'webapp_recon': "Expert cybersecurity agent that enumerates a web \
+    #         target to understand the architecture and understand the endpoints\
+    #         and where an attack vector could be tested.",
+    #     'recon_shell': "Expert system reconnaissance agent that performs \
+    #         infrastructure-level security assessment using specialized \
+    #         command-line tools. Focuses on network scanning, system enumeration,\
+    #         and infrastructure analysis. Should NOT be used for simple request \
+    #         injections or basic web testing - use specialized web tools instead.",
+    #     # 'planner_agent': 'Expert cybersecurity agent that plans what is the next step to do',
+    #     'router_agent': 'Router agent, expert that routes to the specific \
+    #         agent needed to achieve the next step of the plan.',
+    #     'python_interpreter_agent': 'Generate code and runs it in a python \
+    #         interpreter depending on the goal given.'
+    # }
+    # workflow_agent.register_agents(available_agents)
     # Check if the provided target is reachable before proceeding
     alive = False
     while not alive:
@@ -451,14 +466,17 @@ Please provide a target URL.[/yellow]")
                 sys.exit(1)
 
     # Indexing webtarget
-    workflow_agent.init_webtarget_indexer(target=target)
+    deadend_agent.init_webtarget_indexer(target=target)
     web_ressource_crawl = await chat_interface.wait_response(
-        func=workflow_agent.crawl_target,
+        func=deadend_agent.crawl_target,
         status="Gathering webpage resources..."
     )
     code_chunks = await chat_interface.wait_response(
-        func=workflow_agent.embed_target,
-        status="Indexing the different webpage resources..."
+        func=deadend_agent.embed_target,
+        status="Indexing the different webpage resources...",
+        api_key=config.openai_api_key,
+        embedding_model=config.embedding_model
+
     )
 
     # Inserting in database
@@ -469,23 +487,32 @@ Please provide a target URL.[/yellow]")
             code_chunks_data=code_chunks
         )
 
+    # Preparing deadend Dependencies
+    deadend_agent.prepare_dependencies(
+        openai_api_key=config.openai_api_key,
+        rag_connector=rag_db,
+        sandbox=sandbox,
+        target=target
+    )
+
     # Setup the knowledge base in the database if necessary
-    if knowledge_base:
-        if os.path.exists(knowledge_base) and os.path.isdir(knowledge_base):
-            workflow_agent.knowledge_base_init(folder_path=knowledge_base)
-            kb_chunks = await chat_interface.wait_response(
-                func=workflow_agent.knowledge_base_index,
-                status="Indexing the knowledge base...",
-            )
-            # insert to db
-            insert_kn = await chat_interface.wait_response(
-                func=rag_db.batch_insert_kb_chunks,
-                status="Syncing DB",
-                knowledge_chunks_data=kb_chunks
-            )
-        else:
-            console_printer.print(f"[yellow]Warning: Knowledge base folder '{knowledge_base}' \
-does not exist or is not a directory. Skipping knowledge base initialization.[/yellow]")
+    ## TODO: adding the knowledge base handler
+#     if knowledge_base:
+#         if os.path.exists(knowledge_base) and os.path.isdir(knowledge_base):
+#             workflow_agent.knowledge_base_init(folder_path=knowledge_base)
+#             kb_chunks = await chat_interface.wait_response(
+#                 func=workflow_agent.knowledge_base_index,
+#                 status="Indexing the knowledge base...",
+#             )
+#             # insert to db
+#             insert_kn = await chat_interface.wait_response(
+#                 func=rag_db.batch_insert_kb_chunks,
+#                 status="Syncing DB",
+#                 knowledge_chunks_data=kb_chunks
+#             )
+#         else:
+#             console_printer.print(f"[yellow]Warning: Knowledge base folder '{knowledge_base}' \
+# does not exist or is not a directory. Skipping knowledge base initialization.[/yellow]")
 
 
     # Agent interruption flag
@@ -494,7 +521,7 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
     def interrupt_agent():
         nonlocal agent_interrupted
         agent_interrupted = True
-        workflow_agent.interrupt_workflow()
+        deadend_agent.interrupt_workflow()
         console_printer.print("\n[yellow]Agent interrupted by user (Ctrl+I)[/yellow]")
 
     try:
@@ -526,14 +553,16 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
                         target = new_target
                         console_printer.print(f"[green]Target changed to: {target}[/green]")
                         # Re-initialize with new target
-                        workflow_agent.init_webtarget_indexer(target=target)
+                        deadend_agent.init_webtarget_indexer(target=target)
                         web_ressource_crawl = await chat_interface.wait_response(
-                            func=workflow_agent.crawl_target,
+                            func=deadend_agent.crawl_target,
                             status="Gathering webpage resources for new target..."
                         )
                         code_chunks = await chat_interface.wait_response(
-                            func=workflow_agent.embed_target,
-                            status="Indexing the different webpage resources for new target..."
+                            func=deadend_agent.embed_target,
+                            status="Indexing the different webpage resources for new target...",
+                            api_key=config.openai_api_key,
+                            embedding_model=config.embedding_model
                         )
                         if rag_db is not None and config.openai_api_key and config.embedding_model:
                             insert = await chat_interface.wait_response(
@@ -572,20 +601,97 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
 
             # Reset interruption flag and workflow state for new execution
             agent_interrupted = False
-            workflow_agent.reset_workflow_state()
+            deadend_agent.reset_workflow_state()
 
             judge_output = None
+
+            threat_model = ""
             try:
-                async for item in workflow_agent.start_workflow(
-                    prompt=user_prompt,
-                    target=target,
-                    validation_type=None,
-                    validation_format=None
+                async for item in deadend_agent.threat_model_stream(
+                    task=user_prompt
                 ):
                     # Skip printing DeferredToolRequests objects
                     if hasattr(item, 'output') and isinstance(item.output, DeferredToolRequests):
                         continue
+                    if isinstance(item, ThreatModelOutput):
+                        console_printer.print(f"[bold yellow]Target extracted information:[/bold yellow] {item.website_general_information}")
+                        console_printer.print(f"[bold yellow]The tech stack is :[/bold yellow] {item.technology_stack}")
+                        console_printer.print(f"[bold yellow]Discovered endpoints:[/bold yellow] {item.endpoints}")
+                        threat_model += str(item.model_dump())
+                    if isinstance(item, ReporterOutput):
+                        console_printer.print(f"The threat model analyzed is : \n{item.summarized_context}")
+                        threat_model += str(item.model_dump())
+                    # Special handling for RequesterOutput - print just the reasoning
+                    if hasattr(item, 'output') and isinstance(item.output, RequesterOutput):
+                        console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.output.reasoning}")
+                        console_printer.print(f"[bold green]Raw response:[/bold green] {item.output.raw_response}")
+                        continue
 
+                    # Check if this is the final result (JudgeOutput)
+                    if isinstance(item, JudgeOutput):
+                        judge_output = item
+
+                    # Check if this is a Pydantic BaseModel object
+                    if isinstance(item, BaseModel):
+                        threat_model += str(item.model_dump())
+                        # Special handling for RouterOutput - print as simple text
+                        if type(item).__name__ == "RouterOutput":
+                            console_printer.print(f"[cyan]Router:[/cyan] \
+{item.next_agent_name}")
+                            console_printer.print(f"[cyan]Reasoning:[/cyan] {item.reasoning}")
+                        else:
+                            # Determine the type of model for better title
+                            model_type = type(item).__name__
+                            print_pydantic_model(item, f"{model_type} Output")
+
+                    elif isinstance(item, list) and len(item) > 0 and hasattr(item[0], 'goal'):
+                        tasks_text = ""
+                        for i, task in enumerate(item, 1):
+                            tasks_text += f"[cyan]Step {i}:[/cyan]"
+                            tasks_text += f"[white]{task.goal}[/white]\n"
+                            tasks_text += f"[grey39]{task.output}[/grey39]\n"
+
+                        style = RichStyle(italic=True)
+
+                        task_panel = Panel(
+                            tasks_text.strip(),
+                            style=style,
+                            title="Planned tasks",
+                            border_style="grey39",
+                            box=box.ROUNDED
+                        )
+                        console_printer.print(task_panel)
+                    else:
+                        # Print regular string messages
+                        console_printer.print(f"[bold red]No output format : [/bold red]{item}")
+                        threat_model += str(item)
+
+                    # Check for interruption
+                    if agent_interrupted or deadend_agent.interrupted:
+                        break
+                    # Small delay to allow for interruption
+                    await asyncio.sleep(0.1)
+            except InterruptedError as e:
+                console_printer.print(f"[yellow]Workflow interrupted: {e}[/yellow]")
+                judge_output = None
+            except Exception as e:
+                console_printer.print(f"[red]Workflow error: {e}[/red]")
+                judge_output = None
+
+            try:
+                async for item in deadend_agent.start_testing_stream(
+                    task=user_prompt,
+                    threat_model=threat_model
+                ):
+                    # Skip printing DeferredToolRequests objects
+                    if hasattr(item, 'output') and isinstance(item.output, DeferredToolRequests):
+                        continue
+                    if isinstance(item, ThreatModelOutput):
+                        console_printer.print(f"[bold yellow]Target extracted information:[/bold yellow] {item.website_general_information}")
+                        console_printer.print(f"[bold yellow]The tech stack is :[/bold yellow] {item.technology_stack}")
+                        console_printer.print(f"[bold yellow]Discovered endpoints:[/bold yellow] {item.endpoints}")
+                    if isinstance(item, ReporterOutput):
+                        console_printer.print(f"The threat model analyzed is : \n{item.summarized_context}")
                     # Special handling for RequesterOutput - print just the reasoning
                     if hasattr(item, 'output') and isinstance(item.output, RequesterOutput):
                         console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.output.reasoning}")
@@ -630,7 +736,7 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
                         console_printer.print(item)
 
                     # Check for interruption
-                    if agent_interrupted or workflow_agent.interrupted:
+                    if agent_interrupted or deadend_agent.interrupted:
                         break
 
                     # Small delay to allow for interruption
@@ -642,11 +748,12 @@ does not exist or is not a directory. Skipping knowledge base initialization.[/y
                 console_printer.print(f"[red]Workflow error: {e}[/red]")
                 judge_output = None
 
+                
             # Check if agent was interrupted
-            if agent_interrupted or workflow_agent.interrupted:
+            if agent_interrupted or deadend_agent.interrupted:
                 console_printer.print("[yellow]Agent execution was interrupted[/yellow]")
                 # Reset the workflow interruption flag for next execution
-                workflow_agent.interrupted = False
+                deadend_agent.interrupted = False
                 user_prompt = None
                 continue
 
