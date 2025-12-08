@@ -37,7 +37,8 @@ class ResultEvent(BaseModel):
     context: dict[str, Any]
 
 
-def yield_formatted_response(message) -> RouterOutput | ExploitOutput | ThreatModelOutput
+def yield_formatted_response(message) -> RouterOutput | ExploitOutput | ThreatModelOutput:
+    pass
 
 
 # Union type for all possible executor events

@@ -669,7 +669,6 @@ Please provide a target URL.[/yellow]")
                     # Check for interruption
                     if agent_interrupted or deadend_agent.interrupted:
                         break
-
                     # Small delay to allow for interruption
                     await asyncio.sleep(0.1)
             except InterruptedError as e:

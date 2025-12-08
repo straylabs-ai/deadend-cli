@@ -6,7 +6,7 @@
 
 Defines commands to run interactive chat and evaluation agents.
 """
-
+import importlib.metadata
 import asyncio
 from typing import List
 import typer
@@ -14,8 +14,6 @@ import docker
 from docker.errors import DockerException
 from rich.console import Console
 import logfire
-
-import importlib.metadata
 
 from deadend_agent import config_setup
 from deadend_agent.core import start_python_sandbox
