@@ -11,16 +11,16 @@ for security research and vulnerability identification.
 
 import os
 import re
-from typing import List
-from openai import AsyncOpenAI
 import uuid
 from uuid import uuid4
 from pathlib import Path
-
+from typing import List
+from openai import AsyncOpenAI
 from deadend_agent.rag.database import CodeSection
 from deadend_agent.tools.web_resource_extractor import WebResourceExtractor
 from deadend_agent.code_indexer.code_splitter import Chunker
 from deadend_agent.embedders.embedders import batch_embed_chunks
+from deadend_agent.models.registry import EmbedderClient
 
 class SourceCodeIndexer:
     """
@@ -99,7 +99,7 @@ class SourceCodeIndexer:
         self.chunk_path = self.source_code_path.joinpath(self.chunk_folder)
         self.chunk_path.mkdir(parents=True, exist_ok=True)
 
-    async def serialized_embedded_code(self, openai_api_key: str | None, embedding_model: str | None):
+    async def serialized_embedded_code(self, embedder_client: EmbedderClient):
         """
         Generate serialized embedded code chunks for database storage.
         
@@ -115,9 +115,8 @@ class SourceCodeIndexer:
             List[dict]: List of code chunk dictionaries ready for database storage
         """
         code_sections = await self.embed_webpage(
-            openai_api_key=openai_api_key,
-            embedding_model=embedding_model
-            )
+            embedder_client=embedder_client
+        )
         code_chunks = []
         for code_section in code_sections:
             chunk = {
@@ -129,7 +128,7 @@ class SourceCodeIndexer:
                 }
             code_chunks.append(chunk)
         return code_chunks
-    async def embed_webpage(self, openai_api_key: str | None, embedding_model: str | None) -> List[CodeSection]:
+    async def embed_webpage(self, embedder_client: EmbedderClient) -> List[CodeSection]:
         """
         Process and embed all JavaScript and HTML files from the crawled webpage.
         
@@ -144,7 +143,6 @@ class SourceCodeIndexer:
         Returns:
             List[CodeSection]: List of embedded code sections ready for RAG queries
         """
-        openai = AsyncOpenAI(api_key=openai_api_key)
         files_ignored = []
         code_sections = []
 
@@ -162,8 +160,7 @@ class SourceCodeIndexer:
                         url_path = subdir.replace(str(self.source_code_path), "")
                         if file_chunks is not None:
                             new_cs = await self._embed_chunks(
-                                openai=openai,
-                                embedding_model=embedding_model,
+                                embedding_client=embedder_client,
                                 url_path=url_path,
                                 title=file,
                                 chunks=file_chunks
@@ -181,8 +178,7 @@ class SourceCodeIndexer:
                         url_path = subdir.replace(str(self.source_code_path), "")
                         if file_chunks is not None:
                             new_cs = await self._embed_chunks(
-                                openai=openai,
-                                embedding_model=embedding_model,
+                                embedding_client=embedder_client,
                                 url_path=url_path,
                                 title=file,
                                 chunks=file_chunks
@@ -192,7 +188,13 @@ class SourceCodeIndexer:
                         files_ignored.append(file)
         return code_sections
 
-    async def _embed_chunks(self, openai: AsyncOpenAI, embedding_model: str, url_path: str, title: str, chunks: List[str]) -> List[CodeSection]:
+    async def _embed_chunks(
+        self,
+        embedding_client: EmbedderClient,
+        url_path: str,
+        title: str,
+        chunks: List[str]
+    ) -> List[CodeSection]:
         """
         Generate embeddings for a list of code chunks using the generic batch embedding function.
         
@@ -226,8 +228,7 @@ class SourceCodeIndexer:
 
         # Use the generic batch embedding function
         return await batch_embed_chunks(
-            openai=openai,
-            embedding_model=embedding_model,
+            embedder_client=embedding_client,
             embeddable_objects=code_sections,
             batch_name=f"{title} chunks"
         )

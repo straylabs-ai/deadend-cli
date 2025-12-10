@@ -17,17 +17,16 @@ async def knowledge_rag(
         search_query: str
         ) -> str:
     res = ""
-    embedding = await context.deps.openai.embeddings.create(
+    embedding = await context.deps.embedder_client.batch_embed(
         input=search_query,
-        model='text-embedding-3-small'
     ) 
-    assert len(embedding.data) == 1, (
-        f'Expected 1 embedding, got {len(embedding.data)}, doc query: {search_query!r}'
+    assert len(embedding) == 1, (
+        f'Expected 1 embedding, got {len(embedding)}, doc query: {search_query!r}'
     )
-    embedding = embedding.data[0].embedding
+    embedding = embedding[0]['embedding']
 
     results = await context.deps.rag.similarity_search_knowledge_base(
-        query_embedding=embedding, 
+        query_embedding=embedding,
         limit=10
     )
     for chunk, similarity in results:

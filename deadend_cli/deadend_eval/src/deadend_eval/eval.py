@@ -9,6 +9,7 @@ security research capabilities, and workflow effectiveness using various
 evaluation metrics and testing scenarios.
 """
 
+from deadend_agent.models.registry import EmbedderClient
 import docker
 from datetime import datetime
 from pathlib import Path
@@ -76,6 +77,7 @@ class EvalMetadata(BaseModel):
 
 async def eval_deadend_agent(
         model: AIModel,
+        embedder_client: EmbedderClient,
         # evaluators: list[Evaluator],
         config: Config,
         code_indexer_db: RetrievalDatabaseConnector,
@@ -169,19 +171,19 @@ async def eval_deadend_agent(
         available_agents=generic_agents,
         max_depth=2
     )
+
     if with_code_indexing:
         deadend_agent.init_webtarget_indexer(target_host)
         web_resources_crawler = await deadend_agent.crawl_target()
         code_chunks = await deadend_agent.embed_target(
-            api_key=config.openai_api_key,
-            embedding_model=config.embedding_model
+            embedder_client=embedder_client
         )
 
         insert = await code_indexer_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
         # console_printer.print("Sync completed.", end="\r")
 
     deadend_agent.prepare_dependencies(
-        openai_api_key=config.openai_api_key,
+        embedder_client=embedder_client,
         rag_connector=code_indexer_db,
         sandbox=sandbox,
         target=target_host

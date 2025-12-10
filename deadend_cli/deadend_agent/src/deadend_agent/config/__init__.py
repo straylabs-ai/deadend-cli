@@ -11,4 +11,4 @@ variables, TOML files, and runtime configuration options.
 
 from .settings import Config
 
-__all__ = [ Config ]
+__all__ = [ "Config" ]

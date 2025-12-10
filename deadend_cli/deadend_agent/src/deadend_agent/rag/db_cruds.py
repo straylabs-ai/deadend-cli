@@ -354,7 +354,7 @@ class RetrievalDatabaseConnector:
 
     async def bulk_similarity_search(
             self,
-            query_embeddings: List[List[float]], 
+            query_embeddings: List[List[float]],
             session_id: uuid.UUID,
             limit: int = 10
         ) -> List[List[tuple]]:

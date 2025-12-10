@@ -13,10 +13,11 @@ import uuid
 from typing import Dict
 from enum import Enum
 from dataclasses import dataclass
-from openai import AsyncOpenAI
+# from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox
+from deadend_agent.models.registry import EmbedderClient
 
 class CmdLog(BaseModel):
     """
@@ -124,13 +125,13 @@ class RequesterDeps:
     connectors, target information, and execution environment.
     
     Attributes:
-        openai: AsyncOpenAI client for AI model interactions
+        embedder_client: Embedder Client handler
         rag: RetrievalDatabaseConnector for knowledge base operations
         target: Target web application URL or identifier
         shell_runner: ShellRunner for executing reconnaissance commands
         session_id: Unique session identifier for tracking operations
     """
-    openai: AsyncOpenAI
+    embedder_client: EmbedderClient
     rag: RetrievalDatabaseConnector
     target: str
     session_id: uuid.UUID
@@ -145,13 +146,13 @@ class WebappreconDeps:
     connectors, target information, and execution environment.
     
     Attributes:
-        openai: AsyncOpenAI client for AI model interactions
+        embedder_client: Embedder Client handler
         rag: RetrievalDatabaseConnector for knowledge base operations
         target: Target web application URL or identifier
         shell_runner: ShellRunner for executing reconnaissance commands
         session_id: Unique session identifier for tracking operations
     """
-    openai: AsyncOpenAI
+    embedder_client: EmbedderClient
     rag: RetrievalDatabaseConnector
     target: str
     shell_runner: ShellRunner
@@ -166,12 +167,12 @@ class RagDeps:
     including AI models, database connectors, and session tracking.
     
     Attributes:
-        openai: AsyncOpenAI client for AI model interactions
+        embedder_client: Embedder Client handler
         rag: RetrievalDatabaseConnector for knowledge base operations
         target: Target identifier for RAG operations
         session_id: Unique session identifier for tracking operations
     """
-    openai: AsyncOpenAI
+    embedder_client: EmbedderClient
     rag: RetrievalDatabaseConnector
     target: str
     session_id: uuid.UUID
@@ -238,12 +239,12 @@ class TargetDeps:
         openapi_spec: OpenAPI specification data for the target
         path_crawl_data: Crawled path data from the target
         authentication_data: Authentication information for the target
-        openai: AsyncOpenAI client for AI model interactions
+        embedder_client: Embedder Client handler
         rag: RetrievalDatabaseConnector for knowledge base operations
     """
     target: str
     openapi_spec: Dict
     path_crawl_data: str
     authentication_data: str
-    openai: AsyncOpenAI
+    embedder_client: EmbedderClient
     rag: RetrievalDatabaseConnector

@@ -69,7 +69,6 @@ class DeadendMetricEval:
 # Global accumulator used by default.
 global_metrics = DeadendMetricEval()
 
-
 F = TypeVar("F", bound=Callable[..., Awaitable[Any]])
 
 

@@ -11,6 +11,7 @@ testing tasks based on the target's characteristics and requirements.
 
 import uuid
 from typing import List, Any
+from deadend_agent.rag.database import EmbedderClient
 from pydantic import BaseModel
 from pydantic_ai import Tool
 from pydantic_ai.usage import RunUsage, UsageLimits
@@ -151,7 +152,7 @@ class Planner:
             message_history: str,
             usage: RunUsage,
             usage_limits: UsageLimits,
-            openai: AsyncOpenAI,
+            embedder_client: EmbedderClient,
             rag: RetrievalDatabaseConnector,
             session_id: uuid.UUID
         ):
@@ -171,7 +172,7 @@ class Planner:
         """
 
         rag_deps = RagDeps(
-            openai=openai,
+            embedder_client=embedder_client,
             rag=rag,
             target=self.target,
             session_id=session_id
