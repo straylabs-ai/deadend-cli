@@ -195,7 +195,7 @@ echo "[+] Benchmark ready at $target_host"
 echo "[+] Launching eval agent with uv run"
 (
     cd "$REPO_ROOT/deadend_cli/src/deadend_cli" && \
-    uv run main.py eval-agent --eval-metadata-file "$META_FILE"
+    uv run main.py eval-agent --eval-metadata-file "$META_FILE" --llm-providers openrouter
 )
 
 echo "[+] Stopping benchmark services with make stop"

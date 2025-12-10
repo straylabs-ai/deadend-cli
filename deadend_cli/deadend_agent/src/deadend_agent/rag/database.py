@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from contextlib import asynccontextmanager
 import asyncio
 import asyncpg
+from deadend_agent.models.registry import EmbedderClient
 from openai import AsyncOpenAI, BadRequestError
 from rich.pretty import pprint
 from sqlalchemy import Float
@@ -100,7 +101,11 @@ class CodeSection:
             (f'url_path: {self.url_path}', f'title: {self.title}', str(self.content))
         )
 
-    async def embed_content(self, openai: AsyncOpenAI, embedding_model: str):
+    async def embed_content(
+        self,
+        embedder_client: EmbedderClient,
+        # embedding_model: str
+    ):
         """Generate embeddings for the code section content.
         
         Args:
@@ -112,16 +117,17 @@ class CodeSection:
             The method handles BadRequestError exceptions gracefully.
         """
         try:
-            response = await openai.embeddings.create(
-                input=str(self.content),
-                model=embedding_model
-            )
-            assert len(response.data) == 1, (
-                f'Expected 1 embedding, got {len(response.data)}, file : {self.title}'
-            )
-            self.embeddings = response.data[0].embedding
+            # response = await openai.embeddings.create(
+            #     input=str(self.content),
+            #     model=embedding_model
+            # )
+            # assert len(response.data) == 1, (
+            #     f'Expected 1 embedding, got {len(response.data)}, file : {self.title}'
+            # )
+            # self.embeddings = response.data[0].embedding
+            self.embeddings = embedder_client.batch_embed(input=str(self.content))
         except BadRequestError as e:
-            # pprint(f"File {self.title} with content : {self.content} not embedded: {e}")
+            pprint(f"File {self.title} with content : {self.content} not embedded: {e}")
             self.embeddings = None
 
 DB_SCHEMA = """
@@ -153,9 +159,9 @@ async def create_db():
 # TODO : The embedding model is now fixed to OpenAI, should change that
 # in the future.
 async def insert_code_section(
-    sem: asyncio.Semaphore, 
-    openai: AsyncOpenAI, 
-    pool: asyncpg.Pool, 
+    sem: asyncio.Semaphore,
+    openai: AsyncOpenAI,
+    pool: asyncpg.Pool,
     code_section: CodeSection
 ):
     """Insert a code section into the database.

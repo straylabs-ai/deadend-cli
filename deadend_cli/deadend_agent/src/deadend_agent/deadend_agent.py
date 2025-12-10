@@ -3,7 +3,7 @@ from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
 from openai import AsyncOpenAI
 from pydantic_ai import RunUsage, UsageLimits
-from deadend_agent.models.registry import AIModel
+from deadend_agent.models.registry import AIModel, EmbedderClient
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
@@ -34,6 +34,7 @@ class DeadEndAgent:
 
     session_id: UUID
     model: AIModel
+    embedder_model: EmbedderClient | None = None
     available_agents: Dict[str, str]
     context: ContextEngine
     goal_achieved: bool = False
@@ -63,18 +64,7 @@ class DeadEndAgent:
         self.max_depth = max_depth
         self.model = model
         self.available_agents = available_agents
-
-
-        # Pass router, model, and available_agents to executor so
-        # it can route and execute with specialized agents
-        # self.executor = AgentExecutor(
-        #     model=self.model,
-        #     context=self.context,
-        #     available_agents=available_agents
-        # )
-
         self.validator = Validator(model=model)
-
         self.context = ContextEngine(model=self.model, session_id=session_id)
 
 
@@ -129,7 +119,10 @@ class DeadEndAgent:
         """
         self.target = target
         self.context.set_target(target)
-        self.code_indexer = SourceCodeIndexer(target=self.target, session_id=self.session_id)
+        self.code_indexer = SourceCodeIndexer(
+            target=self.target,
+            session_id=self.session_id
+        )
 
 
     async def crawl_target(self):
@@ -149,15 +142,14 @@ class DeadEndAgent:
         """
         return await self.code_indexer.crawl_target()
 
-    async def embed_target(self, api_key, embedding_model):
+    async def embed_target(self, embedder_client: EmbedderClient):
         """Generate embeddings for the crawled target content.
         
         Returns:
             Serialized embedded code sections
         """
         return await self.code_indexer.serialized_embedded_code(
-            openai_api_key=api_key,
-            embedding_model=embedding_model
+            embedder_client=embedder_client
         )
 
 ##################################################################################
@@ -177,7 +169,7 @@ class DeadEndAgent:
     def prepare_dependencies(
         self,
         *,
-        openai_api_key: str,
+        embedder_client: EmbedderClient,
         rag_connector: RetrievalDatabaseConnector | Any,
         sandbox: Sandbox | None,
         target: str | None = None,
@@ -190,18 +182,18 @@ class DeadEndAgent:
         if target_host is None:
             raise ValueError("target must be provided before initializing dependencies.")
 
-        openai_client = AsyncOpenAI(api_key=openai_api_key)
+        
         shell_runner = ShellRunner(session=str(self.session_id), sandbox=sandbox)
 
         self.shell_deps = ShellDeps(shell_runner=shell_runner)
         self.requester_deps = RequesterDeps(
-            openai=openai_client,
+            embedder_client=embedder_client,
             rag=rag_connector,
             target=target_host,
             session_id=self.session_id
         )
         self.webapprecon_deps = WebappreconDeps(
-            openai=openai_client,
+            embedder_client=embedder_client,
             rag=rag_connector,
             target=target_host,
             shell_runner=shell_runner,

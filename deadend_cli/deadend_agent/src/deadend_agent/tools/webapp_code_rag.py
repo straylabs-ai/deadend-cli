@@ -30,18 +30,17 @@ async def webapp_code_rag(
     if len(context.deps.target) > 1:
         search_query += '\n The target supplied is: ' + context.deps.target
 
-    embedding = await context.deps.openai.embeddings.create(
+    embedding = await context.deps.embedder_client.batch_embed(
         input=search_query,
-        model='text-embedding-3-small'
     ) 
 
-    assert len(embedding.data) == 1, (
-        f'Expected 1 embedding, got {len(embedding.data)}, doc query: {search_query!r}'
+    assert len(embedding) == 1, (
+        f'Expected 1 embedding, got {len(embedding)}, doc query: {search_query!r}'
     )
-    embedding = embedding.data[0].embedding
+    embedding = embedding[0]['embedding']
 
     results = await context.deps.rag.similarity_search_code_chunk(
-        query_embedding=embedding, 
+        query_embedding=embedding,
         session_id=context.deps.session_id,
         limit=5
     )

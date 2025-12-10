@@ -49,6 +49,7 @@ class ModelSettings(BaseSettings):
     openai: ModelConfig | None = None
     anthropic: ModelConfig | None = None
     gemini: ModelConfig | None = None
+    openrouter: ModelConfig | None = None
     # Default model to use
     default_provider: str = "openai"
 
@@ -65,7 +66,8 @@ class Config:
     anthropic_model_name : str | None = _cfg("ANTHROPIC_MODEL")
     gemini_api_key: str | None = _cfg("GEMINI_API_KEY")
     gemini_model_name : str | None = _cfg("GEMINI_MODEL", "gemini-2.5-pro")
-
+    open_router_key: str | None = _cfg("OPEN_ROUTER_API_KEY")
+    open_router_model: str | None = _cfg("OPEN_ROUTER_MODEL", "anthropic/claude-4.5-opus")
     # Embedding model
     embedding_model: str | None  = _cfg("EMBEDDING_MODEL")
 
@@ -117,4 +119,10 @@ class Config:
                 api_key=cls.gemini_api_key,
                 model_name=cls.gemini_model_name if cls.gemini_model_name else "gemini-2.5-flash",
             )
+        if cls.open_router_key:
+            model_settings.openrouter = ModelConfig(
+                api_key=cls.open_router_key,
+                model_name=cls.open_router_model
+            )
+
         return model_settings

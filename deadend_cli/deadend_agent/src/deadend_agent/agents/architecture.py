@@ -1032,7 +1032,6 @@ Update the confidence_score for what have been done. Reason step by step to retr
             )
             planner_subtasks.append(planner_subtask)
         # TODO: handling the termination
-        end_loop = False
         self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
         # print(f"task context is \n {self.context.get_tasks(0)}")
         for subtask in subtasks:

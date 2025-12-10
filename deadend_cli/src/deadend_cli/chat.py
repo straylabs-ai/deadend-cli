@@ -367,6 +367,7 @@ async def chat_interface(
             initialize the required Model configuration for {llm_provider}")
 
     model = model_registry.get_model(provider=llm_provider)
+    embedder_client = model_registry.get_embedder_model()
 
     # Try to initialize optional dependencies without exiting the app
     rag_db = None
@@ -388,13 +389,6 @@ async def chat_interface(
     chat_interface.console.print(f"Model currently used : {model.model_name}")
     user_prompt = prompt
 
-    # workflow_agent = WorkflowRunner(
-    #     model=model,
-    #     config=config,
-    #     code_indexer_db=rag_db,
-    #     sandbox=sandbox,
-    #     mode=mode
-    # )
     # Setup available agents
     available_agents = {
         'requester': "Agent specialized in fine-grained testing and sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites. Best for gathering auth tokens, testing individual endpoints, and precise request manipulation. Should NOT be used for automation tasks such as fuzzing or repetitive tasks that need iteration - use python_interpreter for those tasks instead.",
@@ -474,8 +468,7 @@ Please provide a target URL.[/yellow]")
     code_chunks = await chat_interface.wait_response(
         func=deadend_agent.embed_target,
         status="Indexing the different webpage resources...",
-        api_key=config.openai_api_key,
-        embedding_model=config.embedding_model
+        embedder_client=embedder_client
 
     )
 
@@ -489,7 +482,7 @@ Please provide a target URL.[/yellow]")
 
     # Preparing deadend Dependencies
     deadend_agent.prepare_dependencies(
-        openai_api_key=config.openai_api_key,
+        embedder_client=embedder_client,
         rag_connector=rag_db,
         sandbox=sandbox,
         target=target
@@ -561,8 +554,7 @@ Please provide a target URL.[/yellow]")
                         code_chunks = await chat_interface.wait_response(
                             func=deadend_agent.embed_target,
                             status="Indexing the different webpage resources for new target...",
-                            api_key=config.openai_api_key,
-                            embedding_model=config.embedding_model
+                            embedder_client=embedder_client
                         )
                         if rag_db is not None and config.openai_api_key and config.embedding_model:
                             insert = await chat_interface.wait_response(

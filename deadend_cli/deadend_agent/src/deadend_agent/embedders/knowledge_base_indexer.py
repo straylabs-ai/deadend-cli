@@ -11,10 +11,11 @@ documentation, and best practices for AI agent assistance.
 
 import os
 from typing import List
-from openai import AsyncOpenAI, BadRequestError
 from dataclasses import dataclass
+from openai import AsyncOpenAI, BadRequestError
 
 from deadend_agent.code_indexer.code_splitter import Chunker
+from deadend_agent.models.registry import EmbedderClient
 from deadend_agent.embedders.embedders import batch_embed_chunks
 
 @dataclass
@@ -49,8 +50,8 @@ class DocumentSection:
 
     async def embed_content(
             self,
-            openai: AsyncOpenAI,
-            embedding_model: str
+            embedder_client: EmbedderClient,
+            # embedding_model: str
     ):
         """Generate embeddings for the document content using OpenAI API.
         
@@ -62,15 +63,17 @@ class DocumentSection:
             BadRequestError: If the API request fails
         """
         try:
-            response = await openai.embeddings.create(
-                input=self.get_embedding_content(),
-                model=embedding_model
-            )
-            assert len(response.data) == 1, (
-                f'Expected 1 embedding, got {len(response.data)}, file : {self.title}'
-            )
-            self.embeddings = response.data[0].embedding
+            # response = await openai.embeddings.create(
+            #     input=self.get_embedding_content(),
+            #     model=embedding_model
+            # )
+            self.embeddings = embedder_client(input=self.get_embedding_content())
+            # assert len(response.data) == 1, (
+            #     f'Expected 1 embedding, got {len(response.data)}, file : {self.title}'
+            # )
+            # self.embeddings = response.data[0].embedding
         except BadRequestError as e:
+            print(f"Bad request while embedding {e}")
             self.embeddings = None
 
 class KnowledgeBaseIndexer:
@@ -96,8 +99,7 @@ class KnowledgeBaseIndexer:
 
     async def serialized_embedded_documents(
         self,
-        openai_api_key: str | None,
-        embedding_model: str | None
+        embedder_client: EmbedderClient
     ):
         """Generate serialized document sections with embeddings for database storage.
         
@@ -110,8 +112,7 @@ class KnowledgeBaseIndexer:
         """
         db_doc_sections = []
         documents_sections = await self.embed_documents(
-            openai_api_key=openai_api_key,
-            embedding_model=embedding_model
+            embedder_client=embedder_client
         )
         for doc_section in documents_sections:
             serialized_doc = {
@@ -125,8 +126,7 @@ class KnowledgeBaseIndexer:
 
     async def embed_documents(
         self,
-        openai_api_key: str | None, 
-        embedding_model: str | None
+        embedder_client: EmbedderClient
     ) -> List[DocumentSection]:
         """Process and embed all markdown documents in the knowledge base.
         
@@ -137,7 +137,6 @@ class KnowledgeBaseIndexer:
         Returns:
             List of DocumentSection objects with embeddings
         """
-        openai =AsyncOpenAI(api_key=openai_api_key)
         documents_sections = []
 
         for subdir, dirs, files in os.walk(self.documents_path):
@@ -147,8 +146,7 @@ class KnowledgeBaseIndexer:
                     doc_chunks = doc_chunker.chunk_file(2000)
                     if doc_chunks is not None:
                         doc_section = await self._embed_chunks(
-                            openai=openai,
-                            embedding_model=embedding_model,
+                            embedder_client=embedder_client,
                             document_path=self.documents_path,
                             document_title=file,
                             chunks=doc_chunks
@@ -159,8 +157,7 @@ class KnowledgeBaseIndexer:
 
     async def _embed_chunks(
             self,
-            openai: AsyncOpenAI,
-            embedding_model: str | None,
+            embedder_client: EmbedderClient,
             document_path: str,
             document_title: str,
             chunks: List[str]
@@ -192,13 +189,10 @@ class KnowledgeBaseIndexer:
                 embeddings=None
             )
             doc_sections.append(doc_section)
-        # TODO: Better handling needed here
-        if embedding_model is None:
-            return []
+
         # Use the generic batch embedding function
         return await batch_embed_chunks(
-            openai=openai,
-            embedding_model=embedding_model,
+            embedder_client=embedder_client,
             embeddable_objects=doc_sections,
             batch_name=f"{document_title} chunks"
         )

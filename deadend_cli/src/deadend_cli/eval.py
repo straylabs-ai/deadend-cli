@@ -57,9 +57,10 @@ async def eval_interface(
     # adding automatic build and ask prompt
     sandbox_id = sandbox_manager.create_sandbox(image="kali_deadend", volume_path=eval_metadata.assets_path)
     sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)
-
+    embedder_client = model_registry.get_embedder_model()
     await eval_deadend_agent(
         model=model_registry.get_model(provider=providers[0]),
+        embedder_client=embedder_client,
         # evaluators=[CtfEvaluator],
         config=config,
         code_indexer_db=rag_db,
