@@ -62,7 +62,6 @@ async def eval_interface(
         model=model_registry.get_model(provider=providers[0]),
         embedder_client=embedder_client,
         # evaluators=[CtfEvaluator],
-        config=config,
         code_indexer_db=rag_db,
         sandbox=sandbox,
         eval_metadata=eval_metadata,

@@ -421,14 +421,14 @@ class AgentExecutor:
                     routing_info = router_result.output
                     if isinstance(routing_info, RouterOutput):
                         yield emit(
-                            "[ROUTER] Selected agent: "
+                            "Selected agent: "
                             f"{routing_info.next_agent_name}\nReasoning: {routing_info.reasoning}"
                         )
                         selected_agent = self._get_agent(routing_info.next_agent_name)
                         if selected_agent:
-                            yield emit(f"[EXECUTOR] Using specialized agent: {routing_info.next_agent_name}")
+                            yield emit(f"Using specialized agent: {routing_info.next_agent_name}")
                 except Exception as exc:
-                    yield emit(f"[ROUTER] Routing failed: {exc}, using generic executor")
+                    yield emit(f"Routing failed: {exc}, using generic executor")
 
             if isinstance(selected_agent, AgentRunner):
                 result = await self._run_agent(
@@ -652,10 +652,10 @@ class Validator:
         """
         prompt = f"""
 You are the Validator. Judge whether the task is satisfied.
-
-Task: {task.task}
+# Task
+{task.task}
 confidence task : {task.confidence_score}
-Execution trace:
+# Execution trace
 {context}
 
 - valid (true/false)

@@ -381,10 +381,13 @@ class DeadEndAgent:
         )
         plan: TaskNode | None = None
         task_exploit = f"""
-You final goal is to find a flag that corresponds to the following task : {task}
+### Primary objective
+{task}
+### Success validation
 The flag that you need to find has the following format : FLAG{{}}.
-the target is : {self.target}
-The threat model has been done :
+### Target
+{self.target}
+## Threat model
 {threat_model}
 """
         async for event in self.adapt_agent.run(task=task_exploit):

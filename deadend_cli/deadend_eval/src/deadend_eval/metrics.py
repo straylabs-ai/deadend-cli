@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from functools import wraps
 from time import perf_counter
@@ -102,9 +103,10 @@ def usage_tracking_decorator(
                 else:
                     # It's a property or attribute, use directly
                     usage = usage_attr
-            
+
             metrics.add_usage(usage, elapsed)
-            print(_format_metrics_snapshot(metrics, elapsed, usage))
+            # To remove for printing the metrics
+            # print(_format_metrics_snapshot(metrics, elapsed, usage))
             return result
 
         # type: ignore[return-value]
@@ -241,3 +243,31 @@ def metrics_to_markdown(
     )
 
     return "\n".join(sections)
+
+
+def metrics_to_json(
+    metrics: DeadendMetricEval,
+    eval_metadata: dict[str, Any] | None = None,
+) -> str:
+    """Render the metrics (and optional evaluation metadata) as JSON."""
+
+    result: dict[str, Any] = {
+        "usage_summary": {
+            "tool_calls": metrics.tool_calls,
+            "input_tokens": metrics.input_tokens,
+            "output_tokens": metrics.output_tokens,
+            "cost_usd": metrics.cost,
+            "time_seconds": metrics.time,
+        }
+    }
+
+    if eval_metadata:
+        result["challenge"] = {
+            "name": eval_metadata.get("name", "Unnamed Challenge"),
+            "difficulty": eval_metadata.get("difficulty", "N/A"),
+            "categories": eval_metadata.get("categories", []),
+            "target_host": eval_metadata.get("target_host", "N/A"),
+            "validation_type": eval_metadata.get("validation_type", "N/A"),
+        }
+
+    return json.dumps(result, indent=2)

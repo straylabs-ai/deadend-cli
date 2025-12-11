@@ -25,7 +25,7 @@ from deadend_agent import (
     Sandbox,
     DeadEndAgent
 )
-from deadend_eval.metrics import instrument_agent_runner, global_metrics, metrics_to_markdown
+from deadend_eval.metrics import instrument_agent_runner, global_metrics, metrics_to_markdown, metrics_to_json
 
 class Subtask(BaseModel):
     """Represents a single subtask in a guided evaluation workflow.
@@ -79,7 +79,6 @@ async def eval_deadend_agent(
         model: AIModel,
         embedder_client: EmbedderClient,
         # evaluators: list[Evaluator],
-        config: Config,
         code_indexer_db: RetrievalDatabaseConnector,
         sandbox: Sandbox,
         eval_metadata: EvalMetadata,
@@ -198,10 +197,22 @@ async def eval_deadend_agent(
 
     # Render and persist metrics for the end user.
     metrics_md = metrics_to_markdown(global_metrics, eval_metadata.model_dump())
+    metrics_json = metrics_to_json(global_metrics, eval_metadata.model_dump())
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    metrics_path = Path.cwd() / f"deadend_metrics_{timestamp}.md"
-    metrics_path.write_text(metrics_md, encoding="utf-8")
-    print(f"Deadend metrics summary written to {metrics_path}")
+    
+    # Create .cache/deadend/eval_metrics directory if it doesn't exist
+    metrics_dir = Path.home() / ".cache" / "deadend" / "eval_metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Write both markdown and JSON files
+    metrics_md_path = metrics_dir / f"deadend_metrics_{timestamp}.md"
+    metrics_json_path = metrics_dir / f"deadend_metrics_{timestamp}.json"
+    
+    metrics_md_path.write_text(metrics_md, encoding="utf-8")
+    metrics_json_path.write_text(metrics_json, encoding="utf-8")
+    
+    print(f"Deadend metrics summary written to {metrics_md_path}")
+    print(f"Deadend metrics JSON written to {metrics_json_path}")
     print(metrics_md)
 
 

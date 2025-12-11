@@ -120,9 +120,9 @@ class PythonInterpreterAgent(AgentRunner):
             AgentRunResult containing the PythonInterpreterOutput with execution results.
         """
         auth_info = await read_auth_storage(ctx=session_key)
-        prompt_with_auth = f"""Auth info :
+        prompt_with_auth = f"""# Authentication, cookies and other information retrieved from previous tasks
 {str(auth_info)}
-You task is :
+# Objective and context
 {prompt}
 """
         print(f"deps are : {deps}")

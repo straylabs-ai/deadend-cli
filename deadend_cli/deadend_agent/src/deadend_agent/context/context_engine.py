@@ -113,22 +113,87 @@ class ContextEngine:
         any available child depths. This string is later injected into prompts,
         so it favors short, high-signal lines.
         """
-        header = "[planner tasks]"
-        depth_line = f"Depth: {depth}"
-
-        goal_line = f"Final goal: {self.final_goal}" if self.final_goal else "Final goal: No goal recorded."
-        tasks_context = f"""{header} {depth_line}
+        goal_line = f"## Primary objective\n {self.final_goal}" if self.final_goal else "Web Security assessment and threat model"
+        tasks_context = f"""
 {goal_line}
 """
         if not self.tasks:
             return tasks_context
+
+        # Separate tasks by status for better clarity
+        pending_tasks = []
+        completed_tasks = []
+        failed_tasks = []
+
+        for task_planner, children in self.tasks.items():
+            task_info = {
+                'planner': task_planner,
+                'children': children
+            }
+            if task_planner.status == 'pending':
+                pending_tasks.append(task_info)
+            elif task_planner.status in ['completed', 'success', 'validated']:
+                completed_tasks.append(task_info)
+            elif task_planner.status in ['failed', 'failed-validation']:
+                failed_tasks.append(task_info)
+            else:
+                pending_tasks.append(task_info)  # Default to pending for unknown statuses
+
         tasks_lines = ""
-        for task, children in enumerate(self.tasks.items()):
-            task_line = f"""{task} :\n
-        {children}
-"""
-            tasks_lines += "\n" + task_line
-        tasks_context += "\n" + tasks_lines
+
+        # Format: Show completed tasks first (what's been done), then pending (what needs to be done)
+        if completed_tasks:
+            tasks_lines += "\n## Completed Tasks:\n"
+            for idx, task_info in enumerate(completed_tasks, 1):
+                tp = task_info['planner']
+                children = task_info['children']
+                task_desc = tp.task.strip()
+                # Truncate very long descriptions
+                if len(task_desc) > 200:
+                    task_desc = task_desc[:197] + "..."
+
+                tasks_lines += f"{idx}. {task_desc}\n"
+                tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n"
+
+                # Show subtask count if nested
+                if children:
+                    if isinstance(children, dict) and children:
+                        tasks_lines += f"   Subtasks: {len(children)} nested\n"
+                    elif isinstance(children, list) and children:
+                        tasks_lines += f"   Subtasks: {len(children)} nested\n"
+                tasks_lines += "\n"
+
+        if pending_tasks:
+            tasks_lines += "\n## Pending Tasks (To Do):\n"
+            for idx, task_info in enumerate(pending_tasks, 1):
+                tp = task_info['planner']
+                children = task_info['children']
+                task_desc = tp.task.strip()
+                if len(task_desc) > 200:
+                    task_desc = task_desc[:197] + "..."
+                
+                tasks_lines += f"{idx}. {task_desc}\n"
+                tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n"
+                
+                if children:
+                    if isinstance(children, dict) and children:
+                        tasks_lines += f"   Subtasks: {len(children)} nested\n"
+                    elif isinstance(children, list) and children:
+                        tasks_lines += f"   Subtasks: {len(children)} nested\n"
+                tasks_lines += "\n"
+        
+        if failed_tasks:
+            tasks_lines += "\n## Failed Tasks:\n"
+            for idx, task_info in enumerate(failed_tasks, 1):
+                tp = task_info['planner']
+                task_desc = tp.task.strip()
+                if len(task_desc) > 200:
+                    task_desc = task_desc[:197] + "..."
+                
+                tasks_lines += f"{idx}. {task_desc}\n"
+                tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n\n"
+        
+        tasks_context += tasks_lines
         return tasks_context
 
 
@@ -158,7 +223,7 @@ class ContextEngine:
         and stores it in the target attribute. Also saves to text file.
         """
         self.workflow_context += f"""\n
-[target]
+## Target
 {target}
 """
         self.target = target
@@ -376,7 +441,7 @@ class ContextEngine:
         
         Appends the tool response to the context file with proper formatting.
         """
-        self.workflow_context += f"""\\n\n[Tool response{tool_name}]\\n\n{response}\n"""
+        self.workflow_context += f"""\n[Tool response {tool_name}]\n{response}\n"""
         self._append_to_context_file(f"[Tool use: {tool_name}]", response)
 
     def set_new_workflow(self, new_context: str) -> None:
