@@ -4,7 +4,10 @@ layout: home
 
 hero:
   name: "Deadend"
-  text: "Agentic security testing framework"
+  text: "Agentic security testing framework for web applications"
+  image:
+    src: logo.png
+    alt: Straylabs
   tagline: Find vulns fast 🏎️💨 like a seasoned hacker
   actions:
     - theme: brand
@@ -15,11 +18,11 @@ hero:
       link: /evaluation/benchmarks
 
 features:
-  - title: Find sinks and sources 
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: For devs and security researchers
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: Add you tools and MCP servers
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
+  - title: Plan you security assessment or run full target exploitation
+    details: Plan you security assessment, or choose from the pre-configured (OWASP top 10, IDORs...)
+  - title: Use any model you want
+    details: You can use any model you want or use your own, locally.
+  - title: Everything stays in your laptop and securely
+    details: Every tool runs sandboxed. And every embedding stays locally saved.
 ---
 

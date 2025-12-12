@@ -4,6 +4,19 @@
  */
 
 /**
+ * Fonts
+ * -------------------------------------------------------------------------- */
+
+/* Import Google Fonts (example: Inter font family) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* You can also use other fonts like:
+ * @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+ * @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300;400;600;700&display=swap');
+ * @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+ */
+
+/**
  * Colors
  *
  * Each colors have exact same color scale system with 3 levels of solid
@@ -44,6 +57,10 @@
  * -------------------------------------------------------------------------- */
 
 :root {
+  /* Font families */
+  --vp-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Courier New', monospace;
+
   --vp-c-default-1: var(--vp-c-gray-1);
   --vp-c-default-2: var(--vp-c-gray-2);
   --vp-c-default-3: var(--vp-c-gray-3);
@@ -91,18 +108,10 @@
  * -------------------------------------------------------------------------- */
 
 :root {
-  --vp-home-hero-name-color: transparent;
-  --vp-home-hero-name-background: -webkit-linear-gradient(
-    120deg,
-    #bd34fe 30%,
-    #41d1ff
-  );
+  --vp-home-hero-name-color: var(--vp-c-brand-1);
+  --vp-home-hero-name-background: transparent;
 
-  --vp-home-hero-image-background-image: linear-gradient(
-    -45deg,
-    #bd34fe 50%,
-    #47caff 50%
-  );
+  --vp-home-hero-image-background-image: none;
   --vp-home-hero-image-filter: blur(44px);
 }
 
@@ -135,5 +144,28 @@
 
 .DocSearch {
   --docsearch-primary-color: var(--vp-c-brand-1) !important;
+}
+
+/**
+ * Apply fonts globally
+ * -------------------------------------------------------------------------- */
+
+body {
+  font-family: var(--vp-font-family-base);
+}
+
+code, kbd, samp, pre {
+  font-family: var(--vp-font-family-mono);
+}
+
+/**
+ * Dark mode - Full black background
+ * -------------------------------------------------------------------------- */
+
+.dark {
+  --vp-c-bg: #000000;
+  --vp-c-bg-alt: #000000;
+  --vp-c-bg-soft: #0a0a0a;
+  --vp-c-bg-mute: #1a1a1a;
 }
 

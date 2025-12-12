@@ -46,8 +46,9 @@ export default defineConfig({
         text: 'Architecture',
         collapsed: true,
         items: [
+          { text: 'CLI Architecture', link: '/architecture/cli_architecture' },
           { text: 'Agentic architecture', link: '/architecture/agentic_architecture' },
-          { text: 'Web application testing implementation', link: '/architecture/webapp_testing'}, 
+          { text: 'Web application testing implementation', link: '/architecture/webapp_testing'},
           { text: 'Web resource extractor', link: '/architecture/web_extractor' },
           { text: 'Runtime API Examples', link: '/api-examples' }
         ]
