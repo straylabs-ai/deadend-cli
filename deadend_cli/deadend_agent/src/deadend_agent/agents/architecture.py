@@ -163,15 +163,17 @@ Break down this task into a maximum of 5 subtasks: {parent_task.task}. The conte
                 nested_tasks.append(new_task)
 
         if isinstance(result.output, ThreatModelOutput):
-            website_data_gathered.website_general_information = result.output.website_general_information
+            website_data_gathered.website_general_information = \
+                result.output.website_general_information
             website_data_gathered.endpoints = result.output.endpoints
             website_data_gathered.technology_stack = result.output.technology_stack
-        
+
         # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
         if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
             exploit_info.reasoning = result.output.reasoning
-            exploit_info.highly_possible_vulnerabilities = result.output.highly_possible_vulnerabilities
-        
+            exploit_info.highly_possible_vulnerabilities = \
+                result.output.highly_possible_vulnerabilities
+
         return nested_tasks, website_data_gathered, exploit_info
 
     async def update_plan(
@@ -212,26 +214,23 @@ Break down this task into a maximum of 5 subtasks: {parent_task.task}. The conte
             # Get all siblings (children of the same parent)
             existing_tasks = parent_task.children.copy() if parent_task.children else []
             task_depth = parent_task.depth + 1
-        
+
         # Format existing tasks for the prompt
         existing_tasks_summary = "\n".join([
             f"- {task.task} [Status: {task.status}, Confidence: {task.confidence_score:.2f}]"
             for task in existing_tasks
         ])
-        
+
         # Prompt for updating the plan based on context
-        parent_task_description = parent_task.task if parent_task else f"Root level (task: {task.task})"
+        parent_task_description = parent_task.task \
+            if parent_task else f"Root level (task: {task.task})"
         planner_prompt = f"""
 You need to update and refine an existing plan based on new context information.
-
 Parent task: {parent_task_description}
-
 Current subtasks (all tasks that share the same parent):
 {existing_tasks_summary if existing_tasks_summary else "No existing subtasks"}
-
 New context information:
 {str(context)}
-
 Analyze the new context and determine how the plan should be updated:
 1. Review what has been accomplished (check task statuses)
 2. Identify what still needs to be done
@@ -249,15 +248,15 @@ Provide an updated list of subtasks that reflects the current state and remainin
             usage=usage,
             usage_limits=usage_limits
         )
-        
+
         # website info
         website_data_gathered = GeneralInfoOutput()
         exploit_info = ExploitInfo()
-        
+
         # Populating updated task nodes
         updated_tasks = []
         # print(result.output)
-        
+
         # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
         if isinstance(result.output, ExploitOutput):
             # Extract tasks from PlannerOutput
@@ -286,7 +285,7 @@ Provide an updated list of subtasks that reflects the current state and remainin
                     children=[]
                 )
                 updated_tasks.append(new_task)
-        
+
         if isinstance(result.output, ThreatModelOutput):
             website_data_gathered.website_general_information = result.output.website_general_information
             website_data_gathered.endpoints = result.output.endpoints
@@ -324,7 +323,8 @@ class AgentExecutor:
             model: Optional AI model for creating specialized agents
             available_agents: Optional dictionary mapping agent names to descriptions
             agent_factory: Optional callback function(agent_name: str, context: dict) -> AgentRunner
-            for custom agent creation. If provided, this takes precedence over built-in agent creation.
+            for custom agent creation. If provided, this takes precedence over 
+                built-in agent creation.
         """
         self.model = model
         self.available_agents = available_agents or {}
@@ -775,7 +775,8 @@ class ADaPTAgent:
         if depth > self.max_depth:
             node.status = "aborted:max_depth"
             node.confidence_score = 0.5
-            yield emit(f"[ADAPT] Aborted task '{node.task}' at depth {depth} (max_depth={self.max_depth})")
+            yield emit(f"[ADAPT] Aborted task '{node.task}' \
+                at depth {depth} (max_depth={self.max_depth})")
             return
         # Starts executing the agent
         agent_context = self.context.get_tasks(depth=0) + await self.context.get_all_context()
@@ -787,7 +788,8 @@ class ADaPTAgent:
             if isinstance(event, ResultEvent):
                 confidence_score = event.confidence_score
                 new_context = event.context
-                formatted_context = f"Confidence Score for the following task: {event.confidence_score}\n"
+                formatted_context = f"Confidence Score for the following task:\
+                    {event.confidence_score}\n"
                 formatted_context += _format_dict_for_context(event.context)
                 self.context.add_agent_response(formatted_context)
                 break

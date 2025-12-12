@@ -203,7 +203,7 @@ class ModelRegistry:
                 ),
             )
             self.embedder_model = EmbedderClient(
-                model_name="openai/text-embedding-3-small",
+                model_name=config.embedding_model,
                 api_key=config.open_router_key,
                 base_url="https://openrouter.ai/api/v1/embeddings"
             )

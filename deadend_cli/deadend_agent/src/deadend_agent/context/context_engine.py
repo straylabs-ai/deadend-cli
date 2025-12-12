@@ -8,8 +8,6 @@ This module provides context management functionality for security research
 workflows, including task tracking, workflow state management, and agent
 routing based on current context and progress.
 """
-
-from heapq import heappush
 import json
 import uuid
 from pathlib import Path
@@ -92,10 +90,32 @@ class ContextEngine:
         # Initialize context file with empty structure
         self._initialize_context_file()
 
-    def set_root_task(self, root: str):
+    def set_root_task(self, root: str) -> None:
+        """Set the root task or final goal for the workflow.
+        
+        Args:
+            root: The root task description or final goal string that represents
+                 the primary objective of the workflow.
+        
+        Sets the final_goal attribute which is used to display the primary
+        objective in task summaries and context.
+        """
         self.final_goal = root
 
-    def add_tasks(self, parent_task: TaskPlanner | None,  tasks: List[TaskPlanner]):
+    def add_tasks(self, parent_task: TaskPlanner | None,  tasks: List[TaskPlanner]) -> None:
+        """Add tasks to the context engine, either as root tasks or nested subtasks.
+        
+        Args:
+            parent_task: Optional parent TaskPlanner. If None, tasks are added
+                        as root-level tasks. If provided, tasks are added as
+                        nested subtasks under the parent.
+            tasks: List of TaskPlanner objects to add to the context engine.
+        
+        If parent_task is None, each task is added as a root-level task with
+        an empty list of children. If parent_task is provided, all tasks are
+        added as nested subtasks under the parent, organized in a nested
+        dictionary structure.
+        """
         if parent_task is None:
             for task in tasks:
                 self.tasks[task] = []
@@ -105,7 +125,7 @@ class ContextEngine:
             for task in tasks:
                 nested_tasks[task] = {}
             self.tasks[parent_task] = nested_tasks
-    
+
     def get_tasks(self, depth: int = 0) -> str:
         """Return a concise textual summary of planner tasks for the given depth.
 
@@ -141,7 +161,8 @@ class ContextEngine:
 
         tasks_lines = ""
 
-        # Format: Show completed tasks first (what's been done), then pending (what needs to be done)
+        # Format: Show completed tasks first (what's been done),
+        # then pending (what needs to be done)
         if completed_tasks:
             tasks_lines += "\n## Completed Tasks:\n"
             for idx, task_info in enumerate(completed_tasks, 1):
@@ -155,12 +176,22 @@ class ContextEngine:
                 tasks_lines += f"{idx}. {task_desc}\n"
                 tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n"
 
-                # Show subtask count if nested
+                # Show subtasks if nested
                 if children:
                     if isinstance(children, dict) and children:
-                        tasks_lines += f"   Subtasks: {len(children)} nested\n"
+                        tasks_lines += f"   Subtasks ({len(children)}):\n"
+                        for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
+                            child_desc = child_planner.task.strip()
+                            if len(child_desc) > 150:
+                                child_desc = child_desc[:147] + "..."
+                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
                     elif isinstance(children, list) and children:
-                        tasks_lines += f"   Subtasks: {len(children)} nested\n"
+                        tasks_lines += f"   Subtasks ({len(children)}):\n"
+                        for sub_idx, child_planner in enumerate(children, 1):
+                            child_desc = child_planner.task.strip()
+                            if len(child_desc) > 150:
+                                child_desc = child_desc[:147] + "..."
+                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
                 tasks_lines += "\n"
 
         if pending_tasks:
@@ -171,28 +202,58 @@ class ContextEngine:
                 task_desc = tp.task.strip()
                 if len(task_desc) > 200:
                     task_desc = task_desc[:197] + "..."
-                
+
                 tasks_lines += f"{idx}. {task_desc}\n"
                 tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n"
-                
+
+                # Show subtasks if nested
                 if children:
                     if isinstance(children, dict) and children:
-                        tasks_lines += f"   Subtasks: {len(children)} nested\n"
+                        tasks_lines += f"   Subtasks ({len(children)}):\n"
+                        for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
+                            child_desc = child_planner.task.strip()
+                            if len(child_desc) > 150:
+                                child_desc = child_desc[:147] + "..."
+                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
                     elif isinstance(children, list) and children:
-                        tasks_lines += f"   Subtasks: {len(children)} nested\n"
+                        tasks_lines += f"   Subtasks ({len(children)}):\n"
+                        for sub_idx, child_planner in enumerate(children, 1):
+                            child_desc = child_planner.task.strip()
+                            if len(child_desc) > 150:
+                                child_desc = child_desc[:147] + "..."
+                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
                 tasks_lines += "\n"
-        
+
         if failed_tasks:
             tasks_lines += "\n## Failed Tasks:\n"
             for idx, task_info in enumerate(failed_tasks, 1):
                 tp = task_info['planner']
+                children = task_info['children']
                 task_desc = tp.task.strip()
                 if len(task_desc) > 200:
                     task_desc = task_desc[:197] + "..."
-                
+
                 tasks_lines += f"{idx}. {task_desc}\n"
-                tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n\n"
-        
+                tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n"
+
+                # Show subtasks if nested
+                if children:
+                    if isinstance(children, dict) and children:
+                        tasks_lines += f"   Subtasks ({len(children)}):\n"
+                        for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
+                            child_desc = child_planner.task.strip()
+                            if len(child_desc) > 150:
+                                child_desc = child_desc[:147] + "..."
+                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
+                    elif isinstance(children, list) and children:
+                        tasks_lines += f"   Subtasks ({len(children)}):\n"
+                        for sub_idx, child_planner in enumerate(children, 1):
+                            child_desc = child_planner.task.strip()
+                            if len(child_desc) > 150:
+                                child_desc = child_desc[:147] + "..."
+                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
+                tasks_lines += "\n"
+
         tasks_context += tasks_lines
         return tasks_context
 
@@ -248,15 +309,16 @@ class ContextEngine:
     ) -> int:
         """Summarize workflow context with the reporter agent if token count is high.
 
-        This helper estimates the token count of ``workflow_context`` using a simple
-        whitespace split. When the count exceeds ``token_threshold``, it uses the
-        provided reporter agent to summarize and overwrite the current context.
+        This helper estimates the token count of ``workflow_context`` using tiktoken
+        with the specified encoding. When the count exceeds ``token_threshold``, it
+        creates a ReporterAgent instance and uses it to summarize and overwrite the
+        current context.
 
         Args:
-            reporter_agent: An initialized ``ReporterAgent`` instance that will be
-                used to summarize the context.
             token_threshold: Maximum allowed token count before summarization is
                 triggered. Defaults to 200,000.
+            encoding_name: The tiktoken encoding name to use for token counting.
+                          Defaults to "o200k_base".
 
         Returns:
             int: The estimated token count before any summarization took place.
@@ -316,8 +378,9 @@ class ContextEngine:
         """Add an agent response to the workflow context.
         
         Args:
-            response (str): The response from an agent to be added to
-                           the workflow context.
+            response: The response from an agent to be added to the workflow context.
+            agent_name: Optional name of the agent that generated the response.
+                       Defaults to empty string if not provided.
         
         Appends the agent response to the workflow context with
         appropriate formatting. Also saves to text file.
@@ -555,7 +618,7 @@ class ContextEngine:
                             print(e)
                     current_entry = []
                     brace_count = 0
-            
+
             # Handle any remaining entry (incomplete at end of file)
             if current_entry and brace_count == 0:
                 try:
@@ -564,10 +627,10 @@ class ContextEngine:
                     parsed_entries.append(parsed)
                 except json.JSONDecodeError:
                     pass
-            
+
             # Return the last N entries (or all if we have fewer)
             return parsed_entries[-num_lines:] if len(parsed_entries) > num_lines else parsed_entries
-            
+
         except Exception as e:
             print(f"Warning: Could not read JSONL file {file_path}: {e}")
             return []

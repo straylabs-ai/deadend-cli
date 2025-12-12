@@ -438,93 +438,93 @@ class AsyncCodeSearchService:
         return [(chunk, score) for chunk, score, _ in sorted_results[:limit]]
 
 # Example usage
-async def async_example_usage():
-    """
-    Example of how to use the RetrievalDatabaseConnector.
-    """
-    # Initialize repository
-    DATABASE_URL = "postgresql://username:password@localhost/database"
-    repo = RetrievalDatabaseConnector(DATABASE_URL)
+# async def async_example_usage():
+#     """
+#     Example of how to use the RetrievalDatabaseConnector.
+#     """
+#     # Initialize repository
+#     DATABASE_URL = "postgresql://username:password@localhost/database"
+#     repo = RetrievalDatabaseConnector(DATABASE_URL)
 
-    # Initialize database
-    await repo.initialize_database()
+#     # Initialize database
+#     await repo.initialize_database()
 
-    # Example: Insert a code chunk
-    sample_code = """
-    def calculate_similarity(vec1, vec2):
-        '''Calculate cosine similarity between two vectors.'''
-        import numpy as np
-        return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
-    """
-    # Generate a dummy embedding (in real use, use OpenAI, Sentence Transformers, etc.)
-    dummy_embedding = np.random.rand(1536).tolist()
+#     # Example: Insert a code chunk
+#     sample_code = """
+#     def calculate_similarity(vec1, vec2):
+#         '''Calculate cosine similarity between two vectors.'''
+#         import numpy as np
+#         return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
+#     """
+#     # Generate a dummy embedding (in real use, use OpenAI, Sentence Transformers, etc.)
+#     dummy_embedding = np.random.rand(1536).tolist()
 
-    # Insert code chunk
-    chunk = await repo.insert_code_chunk(
-        session_id=uuid.uuid4(),
-        file_path="utils/similarity.py",
-        code_content=sample_code,
-        embedding=dummy_embedding,
-        language="python",
-        # function_name="calculate_similarity",
-        # start_line=10,
-        # end_line=15
-    )
+#     # Insert code chunk
+#     chunk = await repo.insert_code_chunk(
+#         session_id=uuid.uuid4(),
+#         file_path="utils/similarity.py",
+#         code_content=sample_code,
+#         embedding=dummy_embedding,
+#         language="python",
+#         # function_name="calculate_similarity",
+#         # start_line=10,
+#         # end_line=15
+#     )
 
-    print(f"Inserted chunk: {chunk.id}")
+#     print(f"Inserted chunk: {chunk.id}")
 
-    # Search for similar code
-    query_embedding = np.random.rand(1536).tolist()
-    results = await repo.similarity_search_code_chunk(
-        query_embedding=query_embedding,
-        session_id=chunk.session_id,
-        limit=5,
-        language="python"
-    )
+#     # Search for similar code
+#     query_embedding = np.random.rand(1536).tolist()
+#     results = await repo.similarity_search_code_chunk(
+#         query_embedding=query_embedding,
+#         session_id=chunk.session_id,
+#         limit=5,
+#         language="python"
+#     )
 
-    print(f"Found {len(results)} similar chunks:")
-    for chunk, similarity in results:
-        print(f"  - {chunk.file_path} (similarity: {similarity:.3f})")
+#     print(f"Found {len(results)} similar chunks:")
+#     for chunk, similarity in results:
+#         print(f"  - {chunk.file_path} (similarity: {similarity:.3f})")
 
-    # Batch processing example
-    example_session_id = uuid.uuid4()
-    code_files = [
-        {
-            "session_id": example_session_id,
-            "file_path": f"example_{i}.py",
-            "code_content": f"def function_{i}(): pass",
-            "embedding": np.random.rand(1536).tolist(),
-            "language": "python",
-            # "function_name": f"function_{i}"
-        }
-        for i in range(100)
-    ]
+#     # Batch processing example
+#     example_session_id = uuid.uuid4()
+#     code_files = [
+#         {
+#             "session_id": example_session_id,
+#             "file_path": f"example_{i}.py",
+#             "code_content": f"def function_{i}(): pass",
+#             "embedding": np.random.rand(1536).tolist(),
+#             "language": "python",
+#             # "function_name": f"function_{i}"
+#         }
+#         for i in range(100)
+#     ]
 
-    # Batch insert
-    chunks = await repo.batch_insert_code_chunks(code_files)
-    print(f"Batch inserted {len(chunks)} chunks")
+#     # Batch insert
+#     chunks = await repo.batch_insert_code_chunks(code_files)
+#     print(f"Batch inserted {len(chunks)} chunks")
 
-    # Stream processing example
-    async for batch in repo.stream_all_chunks(batch_size=50):
-        print(f"Processing batch of {len(batch)} chunks")
-        # Process each batch
-        break  # Just show first batch
+#     # Stream processing example
+#     async for batch in repo.stream_all_chunks(batch_size=50):
+#         print(f"Processing batch of {len(batch)} chunks")
+#         # Process each batch
+#         break  # Just show first batch
 
-    # High-level service usage
-    service = AsyncCodeSearchService(repo)
+#     # High-level service usage
+#     service = AsyncCodeSearchService(repo)
 
-    # Hybrid search
-    hybrid_results = await service.hybrid_search(
-        query_embedding=query_embedding,
-        session_id=example_session_id,
-        limit=10
-    )
+#     # Hybrid search
+#     hybrid_results = await service.hybrid_search(
+#         query_embedding=query_embedding,
+#         session_id=example_session_id,
+#         limit=10
+#     )
 
-    print(f"Hybrid search found {len(hybrid_results)} results")
+#     print(f"Hybrid search found {len(hybrid_results)} results")
 
-    # Get statistics
-    # stats = await repo.get_statistics()
-    # print(f"Database stats: {stats}")
+#     # Get statistics
+#     # stats = await repo.get_statistics()
+#     # print(f"Database stats: {stats}")
 
-    # Close repository
-    await repo.close()
+#     # Close repository
+#     await repo.close()

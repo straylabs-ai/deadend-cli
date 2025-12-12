@@ -182,7 +182,7 @@ class DeadEndAgent:
         if target_host is None:
             raise ValueError("target must be provided before initializing dependencies.")
 
-        
+
         shell_runner = ShellRunner(session=str(self.session_id), sandbox=sandbox)
 
         self.shell_deps = ShellDeps(shell_runner=shell_runner)
@@ -368,7 +368,7 @@ class DeadEndAgent:
         )
         # We reset the context to make space and less confusion
         self.context.reset()
-        
+
         # Pass session_key as deps for the exploit agent
         self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
         self.adapt_agent = ADaPTAgent(
