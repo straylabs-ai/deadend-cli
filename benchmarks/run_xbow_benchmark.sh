@@ -149,17 +149,13 @@ fi
 
 target_host="$host:$host_port"
 
-env_file="$BENCH_DIR/.env"
-if [[ ! -f "$env_file" ]]; then
-    echo "Expected to find $env_file after starting the benchmark." >&2
-    exit 1
-fi
-
-solution="$(grep -E '^FLAG=' "$env_file" | tail -n 1 | cut -d'=' -f2-)"
-if [[ -z "$solution" ]]; then
-    echo "FLAG entry not found inside $env_file" >&2
-    exit 1
-fi
+# Generate flag the same way as common.mk:
+# 1. Convert benchmark name to uppercase
+# 2. Compute SHA256 hash
+# 3. Format as FLAG{hash}
+benchmark_upper="$(echo "$BENCH_SLUG" | tr '[:lower:]' '[:upper:]')"
+flag_hash="$(echo -n "$benchmark_upper" | openssl sha256 -r | cut -d' ' -f1)"
+solution="FLAG{$flag_hash}"
 
 metadata="$(jq -n \
     --arg name "${name:-$BENCH_SLUG}" \

@@ -404,7 +404,7 @@ class AgentExecutor:
             return LogEvent(message=message)
 
         try:
-            yield emit(f"[EXECUTOR] Starting task: {task_node.task}\n")
+            yield emit(f"Current task: {task_node.task}\n")
 
             routing_info = None
             selected_agent: AgentRunner | None = None
