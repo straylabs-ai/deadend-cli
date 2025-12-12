@@ -1,7 +1,7 @@
 """Main DeadEnd agent orchestration module."""
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
-from openai import AsyncOpenAI
+
 from pydantic_ai import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel, EmbedderClient
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer

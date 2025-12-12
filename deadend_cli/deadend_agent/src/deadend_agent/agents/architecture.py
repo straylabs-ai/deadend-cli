@@ -650,16 +650,17 @@ class Validator:
             - confidence_score: Float (0.0-1.0) indicating validation confidence
             - critique: String explanation of the validation decision
         """
-        prompt = f"""
-You are the Validator. Judge whether the task is satisfied.
-# Task
+        prompt = f"""\
+# Objective
+You are the Validator. Judge whether the task the following task is satisfied depending on the execution trace.
 {task.task}
-confidence task : {task.confidence_score}
+
 # Execution trace
 {context}
 
+# Output results
 - valid (true/false)
-- confidence (float 0-1)
+- confidence (float 0.00-1.00) - like a percentage
 - critique (string)
 """
         result = await self.agent.run(

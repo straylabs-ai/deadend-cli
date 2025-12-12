@@ -11,7 +11,6 @@ injection containers, and task management structures.
 
 import uuid
 from typing import Dict
-from enum import Enum
 from dataclasses import dataclass
 # from openai import AsyncOpenAI
 from pydantic import BaseModel, Field

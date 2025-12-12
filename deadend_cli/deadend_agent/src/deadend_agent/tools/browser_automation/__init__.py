@@ -1,5 +1,7 @@
 import json
 from anyio import Path
+from deadend_agent.utils.structures import RequesterDeps
+from pydantic_ai import RunContext
 from rich.pretty import pprint
 
 from .http_parser import is_valid_request_detailed, extract_host_port
@@ -12,6 +14,7 @@ from deadend_agent.context import MemoryHandler
 __all__ = ["is_valid_request_detailed"]
 
 async def pw_send_payload(
+    ctx: RunContext[RequesterDeps],
     target_host: str,
     raw_request: str,
     proxy: bool = False,
@@ -33,13 +36,13 @@ async def pw_send_payload(
     Returns:
         Union[str, bytes]: HTTP response or error message
     """
-    host, port = extract_host_port(target_host=target_host)
+    host, port = extract_host_port(target_host=ctx.deps.target)
     # Anonymisation process
     # the function detects the dummy credentials given and replaces them with the right one
     # So that the LLM will never see the true credentials
     raw_request_anon = replace_credential_placeholders(raw_request)
     print(raw_request_anon)
-    is_tls = port == 443 or target_host.startswith('https://')
+    is_tls = port == 443 or ctx.deps.target.startswith('https://')
     session_key = f"{host}_{port}"
     proxy_url = "http://localhost:8080" if proxy else None
 
@@ -54,7 +57,7 @@ async def pw_send_payload(
         async for response in pw_session.send_raw_data(
             host=host,
             port=port,
-            target_host=target_host,
+            target_host=ctx.deps.target,
             request_data=raw_request_anon,
             is_tls=is_tls,
             via_proxy=proxy

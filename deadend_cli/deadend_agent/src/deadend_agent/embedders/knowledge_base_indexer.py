@@ -12,7 +12,7 @@ documentation, and best practices for AI agent assistance.
 import os
 from typing import List
 from dataclasses import dataclass
-from openai import AsyncOpenAI, BadRequestError
+from openai import BadRequestError
 
 from deadend_agent.code_indexer.code_splitter import Chunker
 from deadend_agent.models.registry import EmbedderClient
@@ -56,8 +56,7 @@ class DocumentSection:
         """Generate embeddings for the document content using OpenAI API.
         
         Args:
-            openai: AsyncOpenAI client instance
-            embedding_model: Name of the embedding model to use
+            embedder_client: Embedder client instance
             
         Raises:
             BadRequestError: If the API request fails
@@ -166,8 +165,7 @@ class KnowledgeBaseIndexer:
         the generic batch embedding function.
 
         Args:
-            openai: AsyncOpenAI client instance
-            embedding_model: Name of the embedding model to use
+            embedder_client: embedder client instance
             document_path: Path to the source document
             document_title: Title of the document
             chunks: List of text chunks to embed
