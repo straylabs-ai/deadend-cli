@@ -12,7 +12,6 @@ injection containers, and task management structures.
 import uuid
 from typing import Dict
 from dataclasses import dataclass
-# from openai import AsyncOpenAI
 from pydantic import BaseModel, Field
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox

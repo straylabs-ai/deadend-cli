@@ -16,7 +16,6 @@ import asyncpg
 from deadend_agent.models.registry import EmbedderClient
 from openai import AsyncOpenAI, BadRequestError
 from rich.pretty import pprint
-from sqlalchemy import Float
 from typing_extensions import AsyncGenerator
 
 
@@ -155,40 +154,3 @@ async def create_db():
         async with pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(DB_SCHEMA)
-        
-# TODO : The embedding model is now fixed to OpenAI, should change that
-# in the future.
-async def insert_code_section(
-    sem: asyncio.Semaphore,
-    openai: AsyncOpenAI,
-    pool: asyncpg.Pool,
-    code_section: CodeSection
-):
-    """Insert a code section into the database.
-    
-    Args:
-        sem: Semaphore to limit concurrent database operations.
-        openai: OpenAI client for embedding generation.
-        pool: Database connection pool.
-        code_section: Code section to insert.
-        
-    Note:
-        This function is currently incomplete and needs implementation.
-    """
-    async with sem: 
-        # Checking if the code section exists
-        exists = await pool.fetchval("SELECT content from ")
-
-async def insert_file_chunks():
-    """Insert file chunks into the database.
-    
-    Note:
-        This function is a placeholder and needs implementation.
-    """
-
-async def search():
-    """Search for code sections using semantic similarity.
-    
-    Note:
-        This function is a placeholder and needs implementation.
-    """

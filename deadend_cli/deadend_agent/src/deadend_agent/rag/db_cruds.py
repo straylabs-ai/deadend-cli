@@ -14,7 +14,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any, AsyncGenerator
 from contextlib import asynccontextmanager
-import numpy as np
+# import numpy as np
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text, select
 

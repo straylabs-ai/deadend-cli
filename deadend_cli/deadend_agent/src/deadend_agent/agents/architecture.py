@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field
 from pydantic_ai import DeferredToolResults
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.usage import RunUsage, UsageLimits
-from deadend_agent.context.memory import MemoryHandler
 from deadend_agent.models.registry import AIModel
 from deadend_agent.utils.structures import PlannerOutput, TaskPlanner
 from deadend_agent.agents import (
@@ -88,7 +87,8 @@ class Planner:
         
         Args:
             planner_agent: The AgentRunner instance to use for task decomposition
-            deps: Dependencies for the planner agent (can be RequesterDeps, session_key string, or other types)
+            deps: Dependencies for the planner agent 
+            (can be RequesterDeps, session_key string, or other types)
         """
         self.agent = planner_agent
         self.deps = deps
@@ -132,7 +132,7 @@ Break down this task into a maximum of 5 subtasks: {parent_task.task}. The conte
         # Populating task nodes
         nested_tasks = []
         # print(result.output)
-        
+
         # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
         if isinstance(result.output, ExploitOutput):
             # Extract tasks from PlannerOutput
@@ -148,7 +148,8 @@ Break down this task into a maximum of 5 subtasks: {parent_task.task}. The conte
                 nested_tasks.append(new_task)
             # Extract exploit information
             exploit_info.reasoning = result.output.reasoning
-            exploit_info.highly_possible_vulnerabilities = result.output.highly_possible_vulnerabilities
+            exploit_info.highly_possible_vulnerabilities = \
+                result.output.highly_possible_vulnerabilities
         elif isinstance(result.output, PlannerOutput):
             # Handle regular PlannerOutput (tasks only)
             for task_plan in result.output.tasks:
@@ -287,14 +288,16 @@ Provide an updated list of subtasks that reflects the current state and remainin
                 updated_tasks.append(new_task)
 
         if isinstance(result.output, ThreatModelOutput):
-            website_data_gathered.website_general_information = result.output.website_general_information
+            website_data_gathered.website_general_information = \
+                result.output.website_general_information
             website_data_gathered.endpoints = result.output.endpoints
             website_data_gathered.technology_stack = result.output.technology_stack
 
         # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
         if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
             exploit_info.reasoning = result.output.reasoning
-            exploit_info.highly_possible_vulnerabilities = result.output.highly_possible_vulnerabilities
+            exploit_info.highly_possible_vulnerabilities = \
+                result.output.highly_possible_vulnerabilities
 
         return updated_tasks, website_data_gathered, exploit_info
 
@@ -530,23 +533,22 @@ class AgentExecutor:
     # Adding a try/ except block is the deps are not formally
     # built or if anything is missing
         results = None
-        requester_deps = self.requester_deps
-        shell_deps = self.shell_deps
         webapprecon_deps = self.webapprecon_deps
-        prompt = f"If you think the result is found, always return confidence score of 1. Execute the following : {prompt}"
+        prompt = f"If you think the result is found, \
+            always return confidence score of 1. Execute the following : {prompt}"
         print(prompt)
         if isinstance(agent, RequesterAgent):
             # TODO: add interruptions
             # if self.interrupted:
             #     raise InterruptedError("Workflow interrupted before webapp recon execution")
-            if requester_deps is None:
+            if self.requester_deps is None:
                 raise RuntimeError("RequesterAgent dependencies are not configured.")
             results = await agent.run(
                 prompt=prompt,
                 message_history=message_history,
                 usage=usage,
                 usage_limits=usage_limits,
-                deps=requester_deps,
+                deps=self.requester_deps,
                 deferred_tool_results=deferred_tool_results
             )
         elif isinstance(agent, PythonInterpreterAgent):
@@ -569,7 +571,7 @@ class AgentExecutor:
                 deferred_tool_results=deferred_tool_results
             )
         elif isinstance(agent, ShellAgent):
-            shell_agent_deps = shell_deps
+            shell_agent_deps = self.shell_deps
             if shell_agent_deps is None:
                 raise RuntimeError("ShellAgent dependencies are not configured.")
             results = await agent.run(
@@ -716,7 +718,6 @@ class ADaPTAgent:
     session_id: UUID
     task_node: TaskNode
     max_depth: int
-    memory: MemoryHandler
     context: ContextEngine
 
     FAIL_THRESHOLD = 0.20
@@ -931,8 +932,9 @@ Update the confidence_score for what have been done. Reason step by step to retr
             else:
                 self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
 
-            yield emit(f"[PLANNER] Updated plan for tasks with parent '{parent_task.task if parent_task else 'root'}'")
-            
+            yield emit(f"[PLANNER] Updated plan for tasks \
+                 with parent '{parent_task.task if parent_task else 'root'}'")
+
             async for chunk in self._solve(node=node, depth=depth):
                 yield chunk
 
