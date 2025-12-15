@@ -149,7 +149,7 @@ class PlaywrightRequester:
         path_storage = await Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_id
         await path_storage.mkdir(parents=True, exist_ok=True)
         storage_file = path_storage / "storage.json"
-        print(f"the storage file is : {storage_file}")
+        # print(f"the storage file is : {storage_file}")
         return str(storage_file)
 
     async def _get_persistent_page(self, domain: str | None = None):

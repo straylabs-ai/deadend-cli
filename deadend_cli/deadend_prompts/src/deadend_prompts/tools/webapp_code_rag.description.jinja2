@@ -1,66 +1,41 @@
 This tool performs semantic search over pre-downloaded web application content that has been indexed and embedded for fast retrieval. It allows you to query the target's webpage content without making new HTTP requests to the target.
 
-### WHAT THIS TOOL PROVIDES:
-- **Pre-indexed webpage content**: HTML, JavaScript, CSS, and other client-side resources that were previously downloaded from the target
-- **Semantic search capabilities**: Find relevant content using natural language queries rather than exact text matching
-- **Fast retrieval**: No network latency since content is already stored locally
-- **Comprehensive coverage**: All discovered pages and resources from the target web application
+#### WHAT THIS TOOL PROVIDES:
+- **Endpoints only**: URLs and API endpoints exposed in the client-side code (e.g., fetch/axios calls, form actions, XHR requests, route definitions)
+- **Architecture logic only**: High-level client-side structure such as routing, main components/pages, and how the frontend talks to the backend (no deep analysis, just structural facts)
+- **Forms inputs and types only**: Form locations, input names, parameter keys, and their basic types/constraints as expressed in the client (e.g., `type`, `name`, simple validation patterns)
 
-### WHEN TO USE THIS TOOL:
+#### WHEN TO USE THIS TOOL:
 - **Reconnaissance and enumeration**: Search for forms, input fields, endpoints, and API calls in the downloaded content
 - **Technology identification**: Find references to frameworks, libraries, versions, and technologies used by the application
-- **Architecture analysis**: Understand application structure, routing patterns, and client-side logic
-- **Attack surface mapping**: Identify potential entry points, parameters, and client-side vulnerabilities
 - **Context gathering**: Retrieve specific code snippets or content for analysis before crafting payloads
+- **Extracting endpoints**: To list or confirm API endpoints, routes, and URLs visible in the client-side code
+- **Understanding architecture logic**: To get a light, structural view of how pages/components and client-side routing are organized, and how they call backend endpoints
+- **Enumerating form inputs and types**: To identify forms, their fields, parameter names, and basic types/constraints
 
-### EXAMPLE QUERIES:
+#### CRITICAL USAGE GUARDRAILS:
+- Use this tool **only** to extract: (1) endpoints, (2) architecture logic, and (3) forms inputs and types. **Nothing else.**
+- Keep queries **simple and focused** on those three categories (one concise query at a time). Do **not** ask for broader analysis or attack guidance.
+- Once you have the specific endpoints/architecture details/form fields you need, **stop and return**; do not keep running this tool.
+- Do **not** attempt exploitation, vulnerability assessment, or full task resolution here—this tool is only for factual extraction of endpoints, architecture structure, and form parameters.
 
-Structure queries by describing the target content, context, and specific information needed.
+#### EXAMPLE QUERIES (keep them short, one at a time):
+- "API endpoints: XMLHttpRequest, ajax, fetch, axios"
+- "Forms: form, input, button, submit"
+- "Auth storage: localStorage.setItem, sessionStorage.setItem, document.cookie"
+- "File uploads: input type file, FileReader, FormData"
+- "Validation: regex, sanitize, validate, test"
+- "Events: addEventListener, onclick, onsubmit"
+- "Navigation: window.location.href, window.location.replace, location.assign"
+- "Security headers: Content-Security-Policy, X-Frame-Options, meta http-equiv"
+- "External scripts: script src, link href, CDN"
 
-**Form/Input Discovery (DOM search):**
-- "HTML form elements with input fields and submit buttons"
+If the same information is returned for every query it means that it is the only information available.
 
-**API Endpoints (Network patterns):**
-- "fetch POST request API endpoint URLs and request payloads"
-- "XMLHttpRequest open send method ajax calls"
-
-**Framework/Library ID (Tech stack):**
-- "React version number and createElement useState hooks"
-- "jQuery library version and $ function usage"
-
-**Authentication (Security features):**
-- "login authentication token storage in localStorage or sessionStorage"
-- "session cookie management and document.cookie operations"
-
-**File Upload (Feature discovery):**
-- "FileReader API usage for file upload and file input elements"
-
-**Input Validation (Security controls):**
-- "input validation regex patterns and sanitization functions"
-
-**Event Handlers (Behavior analysis):**
-- "addEventListener click submit button event handlers"
-
-**Navigation/Routing (Architecture):**
-- "window.location href redirect and routing logic"
-
-**Data Storage (Storage patterns):**
-- "localStorage setItem getItem data persistence operations"
-
-**CSS/Styling (Presentation layer):**
-- "CSS classes for hidden elements or display none styles"
-- "inline styles and dynamic style attribute modifications"
-
-**Security Headers (Security analysis):**
-- "Content-Security-Policy meta tags and security headers"
-
-**Third-Party (Dependencies):**
-- "external script sources and third-party API integrations"
-
-### WHEN NOT TO USE THIS TOOL:
+#### WHEN NOT TO USE THIS TOOL:
 - **DO NOT** use for vulnerability exploitation guidance or attack techniques
 - **DO NOT** use to search for server-side source code (this tool only contains downloaded webpage content)
 - **DO NOT** use when you need real-time information from the target (use send_payload instead)
-- **DO NOT** use for general security knowledge (use knowledge_base tool instead)
+- **DO NOT** use for general security knowledge
 
 This tool is most effective when you need to analyze the target's client-side code and structure to inform your testing strategy, but remember that it only contains content that was previously discovered and downloaded from the target. 

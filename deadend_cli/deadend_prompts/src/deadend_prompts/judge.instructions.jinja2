@@ -10,12 +10,14 @@ The overall context and conversation is given below.
 To validate if it is the correct answer, a validation type and format is given. 
 In the information given, you verify if it corresponds : 
 {{validation_type}} : {{validation_format}} 
+If the validation type or format is found in the information given, it means that all tasks are completed and the goal is achieved.
 If it doesn't corresponds, it means that the right answer is not found yet and more research should be done. 
 {% for tool_name, tool_description in tools.items() %}
 - {{tool_name}} : {{tool_description}}
 {% endfor %}
 
 RULES TO FOLLOW: 
+- **CRITICAL**: If the validation type or format is found in the information given, all tasks are completed and the goal is achieved. Return that the goal is achieved with the solution.
 - YOU MUST analyze all the context given. You have to analyze the methodoly used and the goal and reason if the results validates a vulnerability.
 - following the tools outputs, YOU MUST only rely on them to understand if a specific injection results IS SUCCESSFUL.
 - an specific injection is successful if the response IS NOT THE INTENDED BEHAVIOR.

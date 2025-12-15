@@ -8,7 +8,7 @@ from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox
-from deadend_agent.agents.reporter import ReporterAgent, ReporterOutput
+from deadend_agent.agents.reporter import ReporterAgent
 from deadend_agent.agents.architecture import (
     ADaPTAgent,
     AgentExecutor,
@@ -25,6 +25,7 @@ from deadend_agent.utils.structures import (
 from deadend_agent.tools.browser_automation.http_parser import extract_host_port
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
 from .agents.exploit_web_agent import PlannerExploitAgent
+from deadend_eval.metrics import save_traces
 
 ApprovalCallback = Callable[..., Awaitable[str]]
 
@@ -51,6 +52,7 @@ class DeadEndAgent:
     shell_deps: ShellDeps | None = None
     requester_deps: RequesterDeps | None = None
     webapprecon_deps: WebappreconDeps | None = None
+    challenge_name: str | None = None
 
 
     def __init__(
@@ -253,7 +255,11 @@ class DeadEndAgent:
             max_depth=1
         )
         plan: TaskNode | None = None
-        async for event in self.adapt_agent.run(task=task):
+        traces: list[str | dict[str, Any]] = []
+        async for event in self.adapt_agent.run(task=task, exit_strategy=""):
+            # Collect all events for trace saving
+            traces.append(event)
+            
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")
@@ -263,6 +269,17 @@ class DeadEndAgent:
                     print(event.get("message", str(event)))
             else:
                 print(str(event))
+        
+        # Save traces to file
+        try:
+            trace_file = save_traces(
+                traces=traces,
+                challenge_name=self.challenge_name,
+            )
+            print(f"Traces saved to: {trace_file}")
+        except Exception as e:
+            print(f"Warning: Failed to save traces: {e}")
+        
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
 
@@ -321,7 +338,7 @@ class DeadEndAgent:
             max_depth=1
         )
         plan: TaskNode | None = None
-        async for event in self.adapt_agent.run(task=task):
+        async for event in self.adapt_agent.run(task=task, exit_strategy=""):
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")
@@ -390,7 +407,11 @@ The flag that you need to find has the following format : FLAG{{}}.
 ## Threat model
 {threat_model}
 """
-        async for event in self.adapt_agent.run(task=task_exploit):
+        traces: list[str | dict[str, Any]] = []
+        async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
+            # Collect all events for trace saving
+            traces.append(event)
+            
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")
@@ -400,6 +421,16 @@ The flag that you need to find has the following format : FLAG{{}}.
                     print(event.get("message", str(event)))
             else:
                 print(str(event))
+        
+        # Save traces to file
+        try:
+            trace_file = save_traces(
+                traces=traces,
+                challenge_name=self.challenge_name,
+            )
+            print(f"Traces saved to: {trace_file}")
+        except Exception as e:
+            print(f"Warning: Failed to save traces: {e}")
 
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
@@ -438,7 +469,7 @@ The flag that you need to find has the following format : FLAG{{}}.
 The threat model has been done :
 {threat_model}
 """
-        async for event in self.adapt_agent.run(task=task_exploit):
+        async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")

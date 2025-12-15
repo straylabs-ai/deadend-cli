@@ -9,10 +9,7 @@ from deadend_prompts import render_agent_instructions, render_tool_description
 from .factory import AgentRunner
 
 class GeneralInfoOutput(BaseModel):
-    website_general_information: str = ""
-    technology_stack: list[str] = []
-    endpoints: list[str] = []
-    security_controls: list[str] = []
+    information_gathering: str = ""
 
 class ThreatModelOutput(PlannerOutput, GeneralInfoOutput):
     pass

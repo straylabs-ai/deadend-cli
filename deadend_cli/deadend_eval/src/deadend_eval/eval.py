@@ -133,7 +133,7 @@ async def eval_deadend_agent(
     generic_agents = {
         'requester': "Agent specialized in fine-grained testing and sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites. Best for gathering auth tokens, testing individual endpoints, and precise request manipulation. Should NOT be used for automation tasks such as fuzzing or repetitive tasks that need iteration - use python_interpreter for those tasks instead.",
         'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly. Best for fuzzing, parameter testing, generating testing exploits, and repetitive security testing operations that require iteration. Use this agent for tasks that need automation, loops, or multiple iterations.",
-        'shell': "Agent that gives access to a terminal bash shell. Run linux commands here.",
+        'shell': "Agent that gives access to a terminal bash shell. Run linux commands here. DO NOT have access to target source code.",
         'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
     }
 
@@ -170,6 +170,8 @@ async def eval_deadend_agent(
         available_agents=generic_agents,
         max_depth=2
     )
+    # Set challenge name for trace file naming
+    deadend_agent.challenge_name = eval_metadata.name
 
     if with_code_indexing:
         deadend_agent.init_webtarget_indexer(target_host)

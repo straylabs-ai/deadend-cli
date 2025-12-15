@@ -111,6 +111,4 @@ async def eval_interface(
         output_report="./",
         hard_prompt=False
     )
-    # # Configuring workflow runner
     # for model in models:
-    #     workflow_runner = WorkflowRunner(model=model, config=config, )

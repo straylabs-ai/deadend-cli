@@ -153,6 +153,7 @@ When authentication is required for testing, you can login or sign up to web app
 The credential replacement happens automatically when sending requests, so you can focus on testing security vulnerabilities rather than managing authentication details.
 
 ## RULES TO FOLLOW:
+- **CRITICAL**: If a vulnerability is found during testing, immediately return a success response with high confidence_score (0.8-0.9), regardless of whether it matches the primary objective. Finding any vulnerability is a significant success that should be reported immediately.
 - Your responses must always be concise and short about the next step.
 - Take into account what is already done. By summarizing what has been done and understanding the next step to take.
 - Extract only one important piece of information at a time and send back to the router agent for reporting and for next steps.

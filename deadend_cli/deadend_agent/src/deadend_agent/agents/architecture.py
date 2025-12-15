@@ -164,11 +164,8 @@ Break down this task into a maximum of 5 subtasks: {parent_task.task}. The conte
                 nested_tasks.append(new_task)
 
         if isinstance(result.output, ThreatModelOutput):
-            website_data_gathered.website_general_information = \
-                result.output.website_general_information
-            website_data_gathered.endpoints = result.output.endpoints
-            website_data_gathered.technology_stack = result.output.technology_stack
-
+            website_data_gathered.information_gathering = \
+                result.output.information_gathering
         # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
         if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
             exploit_info.reasoning = result.output.reasoning
@@ -288,11 +285,8 @@ Provide an updated list of subtasks that reflects the current state and remainin
                 updated_tasks.append(new_task)
 
         if isinstance(result.output, ThreatModelOutput):
-            website_data_gathered.website_general_information = \
-                result.output.website_general_information
-            website_data_gathered.endpoints = result.output.endpoints
-            website_data_gathered.technology_stack = result.output.technology_stack
-
+            website_data_gathered.information_gathering = \
+                result.output.information_gathering
         # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
         if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
             exploit_info.reasoning = result.output.reasoning
@@ -451,7 +445,7 @@ class AgentExecutor:
             updated_state = {}
             if isinstance(output, AgentOutput):
                 confidence_score = output.confidence_score
-                notes = output.notes or ""
+                notes = output.notes
                 updated_state = output.updated_state or {}
             else:
                 # Default confidence score when output is not an AgentOutput
@@ -673,7 +667,7 @@ You are the Validator. Judge whether the task the following task is satisfied de
             usage_limits=None,
             deferred_tool_results=None
         )
-        # print(f"validator output : {result.output}")
+
         valid = False
         confidence_score = 0.0
         critique = ""
@@ -750,7 +744,13 @@ class ADaPTAgent:
         self.validator = validator
         self.context = context
 
-    async def _solve(self, node: TaskNode, depth: int) -> AsyncGenerator[str, None]:
+    async def _solve(
+        self,
+        node: TaskNode,
+        depth: int,
+        exit_strategy: str,
+        exit_loop: bool
+    ) -> AsyncGenerator[str | dict[str, Any], None]:
         """Recursively solve a task node using the ADaPT algorithm.
         
         This is the core recursive method that implements the ADaPT algorithm:
@@ -773,170 +773,195 @@ class ADaPTAgent:
             """Record an agent response and surface it to callers."""
             return message
 
+
         if depth > self.max_depth:
             node.status = "aborted:max_depth"
             node.confidence_score = 0.5
             yield emit(f"[ADAPT] Aborted task '{node.task}' \
                 at depth {depth} (max_depth={self.max_depth})")
             return
-        # Starts executing the agent
-        agent_context = self.context.get_tasks(depth=0) + await self.context.get_all_context()
-        executor_stream = self.executor.execute(task_node=node, agent_context=agent_context)
+        # Use a local variable to track exit_loop since the parameter can't be modified
+        should_exit = exit_loop
+        while not should_exit: 
+            # Starts executing the agent
+            agent_context = self.context.get_tasks(depth=0) + await self.context.get_all_context()
+            executor_stream = self.executor.execute(task_node=node, agent_context=agent_context)
 
-        confidence_score: float | None = None
-        new_context: dict[str, Any] | None = None
-        async for event in executor_stream:
-            if isinstance(event, ResultEvent):
-                confidence_score = event.confidence_score
-                new_context = event.context
-                formatted_context = f"Confidence Score for the following task:\
-                    {event.confidence_score}\n"
-                formatted_context += _format_dict_for_context(event.context)
-                self.context.add_agent_response(formatted_context)
-                break
-            elif isinstance(event, LogEvent):
-                self.context.add_agent_response(event.message)
-                yield emit(event.message)
+            confidence_score: float | None = None
+            new_context: dict[str, Any] | None = None
+            async for event in executor_stream:
+                if isinstance(event, ResultEvent):
+                    confidence_score = event.confidence_score
+                    new_context = event.context
+                    formatted_context = f"Confidence Score for the following task:\
+                        {event.confidence_score}\n"
+                    formatted_context += _format_dict_for_context(event.context)
+                    self.context.add_agent_response(formatted_context)
+                    break
+                elif isinstance(event, LogEvent):
+                    self.context.add_agent_response(event.message)
+                    yield emit(event.message)
 
-        if confidence_score is None or new_context is None:
-            raise RuntimeError("AgentExecutor did not produce a result.")
+            if confidence_score is None or new_context is None:
+                raise RuntimeError("AgentExecutor did not produce a result.")
 
-        formatted_new_context = _format_dict_for_context(new_context)
-        yield emit(formatted_new_context)
+            formatted_new_context = _format_dict_for_context(new_context)
+            yield emit(formatted_new_context)
 
-        decision = self._policy(confidence_score)
-        print(f"task : {node.task} decision: {decision}, confidence_score : {confidence_score}")
-        # If decision fails <20%
-        if decision == "fail":
-            node.status = "failed"
-            yield emit(f"[POLICY] Task '{node.task}' failed with confidence_score \
-                {confidence_score:.2f}")
-            return
-        # If the decision is validate >80%
-        elif decision == "validate":
-            node.status = await self._validate(node)
-            yield emit(f"[POLICY] Validation completed for '{node.task}' with status \
-                {node.status}")
-            return
-        # If between 20%-60%
-        elif decision == "expand":
-            planner_context = f"""
-The precedent plan is:
-{self.context.get_tasks()}
-The previous context is :
-{await self.context.get_all_context()}
-Understand the Plan and what have been achieved to expand the plan with only what still need to be done.
-Change the confidence_score with have been done. Reason step by step to retrieve the most logical plan.
-"""
-            subtasks, website_info, exploit_info = await self.planner.expand(
-                node,
-                context=planner_context,
-                usage=RunUsage(),
-                usage_limits=UsageLimits(request_limit=None)
-            )
-            formatted_website_info = _format_dict_for_context(website_info.model_dump())
-            self.context.add_tool_response("website_info", formatted_website_info)
-            if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
-                formatted_exploit_info = _format_dict_for_context(exploit_info.model_dump())
-                self.context.add_tool_response("exploit_info", formatted_exploit_info)
-            planner_subtasks = []
-
-            # Because it's not hashable
-            for subtask in subtasks:
-                planner_subtask = TaskPlanner(
-                    task=subtask.task,
-                    confidence_score=subtask.confidence_score,
-                    status=subtask.status
-                )
-                planner_subtasks.append(planner_subtask)
-            parent_planner = TaskPlanner(
-                task=node.task,
-                confidence_score=node.confidence_score,
-                status=node.status
-            )
-            self.context.add_tasks(parent_task=parent_planner, tasks=planner_subtasks)
-            if not subtasks:
-                node.status = "refine"
-                yield emit(f"[PLANNER] No subtasks generated for '{node.task}', requesting \
-                    refinement")
-                if node.parent:
-                    async for chunk in self._solve(node.parent, depth=node.depth):
-                        yield chunk
+            decision = self._policy(confidence_score)
+            print(f"task : {node.task} decision: {decision}, confidence_score : {confidence_score}")
+            # If decision fails <20%
+            if decision == "fail":
+                node.status = "failed"
+                yield emit(f"[POLICY] Task '{node.task}' failed with confidence_score \
+                    {confidence_score:.2f}")
                 return
-
-            node.children = subtasks
-            yield emit(f"[PLANNER] Generated {len(subtasks)} subtasks for '{node.task}'")
-            for subtask in subtasks:
-                async for chunk in self._solve(subtask, depth + 1):
-                    yield chunk
-        # If refine
-        else:
-            planner_context = f"""
-The precedent plan is:
-{self.context.get_tasks()}
-The previous context is:
-{await self.context.get_all_context()}
-Understand the Plan and what have been achieved to update the plan with only what still needs to be done.
-Update the confidence_score for what have been done. Reason step by step to retrieve the most logical updated plan.
-"""
-            updated_tasks, website_info, exploit_info = await self.planner.update_plan(
-                node,
-                context=planner_context,
-                usage=RunUsage(),
-                usage_limits=UsageLimits(request_limit=None)
-            )
-            formatted_website_info = _format_dict_for_context(website_info.model_dump())
-            self.context.add_tool_response("website_info", formatted_website_info)
-            if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
-                formatted_exploit_info = _format_dict_for_context(exploit_info.model_dump())
-                self.context.add_tool_response("exploit_info", formatted_exploit_info)
-
-            # Store parent reference before updating node
-            parent_task = node.parent
-
-            # Update the parent's children with the updated tasks
-            if parent_task:
-                parent_task.children = updated_tasks
-                # Update the current node to the updated version
-                # Try to find the updated version by matching the task description first
-                # If not found, use the first updated task (assuming it's the same task refined)
-                updated_node = None
-                for updated_task in updated_tasks:
-                    if updated_task.task == node.task:
-                        updated_node = updated_task
-                        break
-                # If exact match not found, use first task (task might have been refined/renamed)
-                node = updated_node if updated_node else updated_tasks[0] if updated_tasks else node
-            else:
-                # If no parent, update the node itself
-                if updated_tasks:
-                    node = updated_tasks[0]
-
-            # Update context with updated tasks
-            planner_subtasks = []
-            for subtask in updated_tasks:
-                planner_subtask = TaskPlanner(
-                    task=subtask.task,
-                    confidence_score=subtask.confidence_score,
-                    status=subtask.status
+            # If the decision is validate >80%
+            elif decision == "validate":
+                node.status = await self._validate(node)
+                yield emit(f"[POLICY] Validation completed for '{node.task}' with status \
+                    {node.status}")
+                yield {'exit_loop': True}
+                return
+            # If between 20%-60%
+            elif decision == "expand":
+                planner_context = f"""
+    The precedent plan is:
+    {self.context.get_tasks()}
+    The previous context is :
+    {await self.context.get_all_context()}
+    Understand the Plan and what have been achieved to expand the plan with only what still need to be done.
+    Change the confidence_score according to the analysis. Reason step by step to retrieve the most logical plan.
+    """
+                subtasks, website_info, exploit_info = await self.planner.expand(
+                    node,
+                    context=planner_context,
+                    usage=RunUsage(),
+                    usage_limits=UsageLimits(request_limit=None)
                 )
-                planner_subtasks.append(planner_subtask)
+                formatted_website_info = _format_dict_for_context(website_info.model_dump())
+                self.context.add_tool_response("website_info", formatted_website_info)
+                if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
+                    formatted_exploit_info = _format_dict_for_context(exploit_info.model_dump())
+                    self.context.add_tool_response("exploit_info", formatted_exploit_info)
+                planner_subtasks = []
 
-            if parent_task:
+                # Because it's not hashable
+                for subtask in subtasks:
+                    planner_subtask = TaskPlanner(
+                        task=subtask.task,
+                        confidence_score=subtask.confidence_score,
+                        status=subtask.status
+                    )
+                    planner_subtasks.append(planner_subtask)
                 parent_planner = TaskPlanner(
-                    task=parent_task.task,
-                    confidence_score=parent_task.confidence_score,
-                    status=parent_task.status
+                    task=node.task,
+                    confidence_score=node.confidence_score,
+                    status=node.status
                 )
                 self.context.add_tasks(parent_task=parent_planner, tasks=planner_subtasks)
+                if not subtasks:
+                    node.status = "refine"
+                    yield emit(f"[PLANNER] No subtasks generated for '{node.task}', requesting \
+                        refinement")
+                    if node.parent:
+                        async for chunk in self._solve(node.parent, depth=node.depth, exit_strategy=exit_strategy, exit_loop=exit_loop):
+                            # Check if child call signaled exit_loop
+                            if isinstance(chunk, dict) and chunk.get('exit_loop'):
+                                should_exit = True
+                                yield chunk
+                                break
+                            yield chunk
+                    break
+
+                node.children = subtasks
+                yield emit(f"[PLANNER] Generated {len(subtasks)} subtasks for '{node.task}'")
+                for subtask in subtasks:
+                    async for chunk in self._solve(subtask, depth + 1, exit_strategy=exit_strategy, exit_loop=exit_loop):
+                        # Check if child call signaled exit_loop
+                        if isinstance(chunk, dict) and chunk.get('exit_loop'):
+                            should_exit = True
+                            yield chunk
+                            break
+                        yield chunk
+                    else:
+                        # Continue to next subtask if no exit_loop was signaled
+                        continue
+                    # Break out of subtask loop if exit_loop was signaled
+                    break
+            # If refine
             else:
-                self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
+                planner_context = f"""
+    The precedent plan is:
+    {self.context.get_tasks()}
+    The previous context is:
+    {await self.context.get_all_context()}
+    Understand the Plan and what have been achieved to update the plan with only what still needs to be done.
+    Update the confidence_score for what have been done. Reason step by step to retrieve the most logical updated plan.
+    """
+                updated_tasks, website_info, exploit_info = await self.planner.update_plan(
+                    node,
+                    context=planner_context,
+                    usage=RunUsage(),
+                    usage_limits=UsageLimits(request_limit=None)
+                )
+                formatted_website_info = _format_dict_for_context(website_info.model_dump())
+                self.context.add_tool_response("website_info", formatted_website_info)
+                if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
+                    formatted_exploit_info = _format_dict_for_context(exploit_info.model_dump())
+                    self.context.add_tool_response("exploit_info", formatted_exploit_info)
 
-            yield emit(f"[PLANNER] Updated plan for tasks \
-                 with parent '{parent_task.task if parent_task else 'root'}'")
+                # Store parent reference before updating node
+                parent_task = node.parent
 
-            async for chunk in self._solve(node=node, depth=depth):
-                yield chunk
+                # Update the parent's children with the updated tasks
+                if parent_task:
+                    parent_task.children = updated_tasks
+                    # Update the current node to the updated version
+                    # Try to find the updated version by matching the task description first
+                    # If not found, use the first updated task (assuming it's the same task refined)
+                    updated_node = None
+                    for updated_task in updated_tasks:
+                        if updated_task.task == node.task:
+                            updated_node = updated_task
+                            break
+                    # If exact match not found, use first task (task might have been refined/renamed)
+                    node = updated_node if updated_node else updated_tasks[0] if updated_tasks else node
+                else:
+                    # If no parent, update the node itself
+                    if updated_tasks:
+                        node = updated_tasks[0]
+
+                # Update context with updated tasks
+                planner_subtasks = []
+                for subtask in updated_tasks:
+                    planner_subtask = TaskPlanner(
+                        task=subtask.task,
+                        confidence_score=subtask.confidence_score,
+                        status=subtask.status
+                    )
+                    planner_subtasks.append(planner_subtask)
+
+                if parent_task:
+                    parent_planner = TaskPlanner(
+                        task=parent_task.task,
+                        confidence_score=parent_task.confidence_score,
+                        status=parent_task.status
+                    )
+                    self.context.add_tasks(parent_task=parent_planner, tasks=planner_subtasks)
+                else:
+                    self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
+
+                yield emit(f"[PLANNER] Updated plan for tasks \
+                    with parent '{parent_task.task if parent_task else 'root'}'")
+
+                async for chunk in self._solve(node=node, depth=depth, exit_strategy=exit_strategy, exit_loop=exit_loop):
+                    # Check if child call signaled exit_loop
+                    if isinstance(chunk, dict) and chunk.get('exit_loop'):
+                        should_exit = True
+                        yield chunk
+                        break
+                    yield chunk
 
 
     def _policy(self, confidence_score: float) -> Literal["fail", "expand", "refine", "validate"]:
@@ -989,7 +1014,8 @@ Update the confidence_score for what have been done. Reason step by step to retr
 
     async def run(
         self,
-        task: str
+        task: str,
+        exit_strategy: str
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         """Run the ADaPT agent on a given task.
         
@@ -1039,9 +1065,20 @@ Update the confidence_score for what have been done. Reason step by step to retr
         # TODO: handling the termination
         self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
         # print(f"task context is \n {self.context.get_tasks(0)}")
+        exit_loop_triggered = False
         for subtask in subtasks:
-            async for chunk in self._solve(subtask, depth=1):
+            async for chunk in self._solve(subtask, depth=1, exit_strategy=exit_strategy, exit_loop=False):
+                # Check if exit_loop was signaled
+                if isinstance(chunk, dict) and chunk.get('exit_loop'):
+                    exit_loop_triggered = True
+                    yield chunk
+                    break
                 yield chunk
-
+            if exit_loop_triggered:
+                break
+        
+        # Always yield the final result, even when exit_loop was triggered
+        # Update root children to include all subtasks
+        root.children = subtasks
         yield {"type": "result", "root": root}
         return

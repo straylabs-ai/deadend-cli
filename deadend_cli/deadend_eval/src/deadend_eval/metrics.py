@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from functools import wraps
+from pathlib import Path
 from time import perf_counter
 from typing import Any, Awaitable, Callable, TypeVar, TYPE_CHECKING
 
@@ -271,3 +273,80 @@ def metrics_to_json(
         }
 
     return json.dumps(result, indent=2)
+
+
+def save_traces(
+    traces: list[str | dict[str, Any]],
+    challenge_name: str | None = None,
+    benchmark_dir: str | Path | None = None,
+) -> Path:
+    """Save execution traces to a text file in the benchmark folder.
+    
+    Args:
+        traces: List of trace events (strings or dicts) to save
+        challenge_name: Name of the challenge (used in filename). If None, uses "unknown_challenge"
+        benchmark_dir: Directory where benchmark files are stored. If None, uses "benchmarks" 
+                     relative to project root
+    
+    Returns:
+        Path to the saved trace file
+    
+    The filename format is: {challenge_name}_{date}.txt
+    where date is in format YYYY-MM-DD_HH-MM-SS
+    """
+    # Get current date/time for filename
+    now = datetime.now()
+    date_str = now.strftime("%Y-%m-%d_%H-%M-%S")
+    
+    # Sanitize challenge name for filename
+    if challenge_name is None:
+        challenge_name = "unknown_challenge"
+    
+    # Remove or replace invalid filename characters
+    safe_name = "".join(c if c.isalnum() or c in (' ', '-', '_') else '_' for c in challenge_name)
+    safe_name = safe_name.replace(' ', '_').strip('_')
+    if not safe_name:
+        safe_name = "unknown_challenge"
+    
+    # Determine benchmark directory
+    if benchmark_dir is None:
+        # Try to find benchmarks directory relative to project root
+        # Look for benchmarks directory starting from current file location
+        current_file = Path(__file__)
+        project_root = current_file.parent.parent.parent.parent
+        benchmark_dir = project_root / "benchmarks"
+    else:
+        benchmark_dir = Path(benchmark_dir)
+    
+    # Create benchmark directory if it doesn't exist
+    benchmark_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create filename
+    filename = f"{safe_name}_{date_str}.txt"
+    filepath = benchmark_dir / filename
+    
+    # Write traces to file
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(f"# Execution Traces for: {challenge_name}\n")
+        f.write(f"# Generated: {now.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("# " + ("=" * 70) + "\n\n")
+        
+        for trace in traces:
+            if isinstance(trace, dict):
+                # Format dict traces nicely
+                if trace.get("type") == "result":
+                    f.write("\n[RESULT]\n")
+                    root = trace.get("root")
+                    if root:
+                        f.write(f"Root Task: {getattr(root, 'task', 'N/A')}\n")
+                        f.write(f"Status: {getattr(root, 'status', 'N/A')}\n")
+                        f.write(f"Confidence: {getattr(root, 'confidence_score', 'N/A')}\n")
+                elif trace.get("exit_loop"):
+                    f.write("\n[EXIT_LOOP] Task completed, exiting loop.\n")
+                else:
+                    f.write(f"{json.dumps(trace, indent=2, default=str)}\n")
+            else:
+                # Write string traces directly
+                f.write(f"{trace}\n")
+    
+    return filepath
