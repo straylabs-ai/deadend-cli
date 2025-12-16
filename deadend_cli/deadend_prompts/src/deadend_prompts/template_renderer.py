@@ -10,8 +10,17 @@ templates based on context and configuration.
 """
 
 import os
-from typing import Dict
+from typing import Dict, Tuple, Any
+import frontmatter
 from jinja2 import Environment, FileSystemLoader, PackageLoader
+from yaml import YAMLError
+
+def _parse_template_metadata(template: str) -> Tuple[Dict[str, Any], str]:
+    try:
+        template_parsed = frontmatter.loads(template)
+        return template_parsed.metadata, template_parsed.content
+    except YAMLError:
+        return {}, template
 
 class TemplateAgentRenderer:
     def __init__(self, jinja_env: Environment, agent_name: str, tools: Dict[str, str]):
@@ -20,7 +29,12 @@ class TemplateAgentRenderer:
         self.tools = tools
 
     def get_instructions(self, **kwargs):
-        instructions_template = self.env.get_template(f"{self.agent_name}.instructions.jinja2")
+        template_name = f"{self.agent_name}.instructions.jinja2"
+        instructions, _, _ = self.env.loader.get_source(self.env, template=template_name)
+        # instructions_template = self.env.get_template(f"{self.agent_name}.instructions.jinja2")
+
+        _metadata, instructions = _parse_template_metadata(instructions)
+        instructions_template = self.env.from_string(instructions)
         return instructions_template.render(tools=self.tools, **kwargs)
 
     def get_preprompt(self, **kwargs):
@@ -34,7 +48,7 @@ class TemplateToolRenderer:
     def get_description(self, **kwargs):
         description_template = self.env.get_template(f"{self.tool_name}.description.jinja2")
         return description_template.render(**kwargs)
-    
+
 
 def _get_template_loader():
     """Get the appropriate template loader for the current environment.

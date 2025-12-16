@@ -189,30 +189,39 @@ async def eval_deadend_agent(
         sandbox=sandbox,
         target=target_host
     )
-    plan, threat_model_data = await deadend_agent.threat_model(task=prompt)
+    solved = False
+    plan, threat_model_data, validation_token = await deadend_agent.threat_model(task=prompt)
+    if validation_token and len(validation_token) > 1 and eval_metadata.solution:
+        solved = (validation_token == eval_metadata.solution)
+        print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
+    else:
+        print("Validation check: Continuing to the exploitation phase.")
 
-    # agent_work = await deadend_agent.run_exploitation(threat_model=plan, task=prompt_goal)
     print(f"Plan produced is : {plan}")
-    print(f"Threat model is :\n{threat_model_data}")
-
-    plan = await deadend_agent.run_exploitation(threat_model=threat_model_data.output.summarized_context, task=prompt)
-
+    print(f"Threat model is :\n{threat_model_data.output}")
+    if not solved:
+        plan, validation_token = await deadend_agent.run_exploitation(threat_model=threat_model_data.output.summarized_context, task=prompt)
+        if validation_token and len(validation_token) > 1 and eval_metadata.solution:
+            solved = (validation_token == eval_metadata.solution)
+            print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
+        else:
+            print("Validation check: FLAG NOT FOUND.")
     # Render and persist metrics for the end user.
     metrics_md = metrics_to_markdown(global_metrics, eval_metadata.model_dump())
     metrics_json = metrics_to_json(global_metrics, eval_metadata.model_dump())
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     # Create .cache/deadend/eval_metrics directory if it doesn't exist
     metrics_dir = Path.home() / ".cache" / "deadend" / "eval_metrics"
     metrics_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Write both markdown and JSON files
     metrics_md_path = metrics_dir / f"deadend_metrics_{timestamp}.md"
     metrics_json_path = metrics_dir / f"deadend_metrics_{timestamp}.json"
-    
+
     metrics_md_path.write_text(metrics_md, encoding="utf-8")
     metrics_json_path.write_text(metrics_json, encoding="utf-8")
-    
+
     print(f"Deadend metrics summary written to {metrics_md_path}")
     print(f"Deadend metrics JSON written to {metrics_json_path}")
     print(metrics_md)

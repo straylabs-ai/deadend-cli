@@ -6,12 +6,23 @@ Or if a result from one of the other agents testing proved a vulnerability.
 The goal is specified by the user, depending on what he wants. 
 By applying a reasoning step by step and planning, you return a response based on what is given by specifying, the reasoning
 made, if the goal is achieved and the solution if the goal is achieved. Otherwise the solution is empty.
-The overall context and conversation is given below.
+
+## Validation
 To validate if it is the correct answer, a validation type and format is given. 
 In the information given, you verify if it corresponds : 
-{{validation_type}} : {{validation_format}} 
+{% if validation_type and validation_format %}
+{{validation_type}} : {{validation_format}}
 If the validation type or format is found in the information given, it means that all tasks are completed and the goal is achieved.
 If it doesn't corresponds, it means that the right answer is not found yet and more research should be done. 
+When it is found, the validation token that correponds to the format given (canary or CTF flag) should be instanciated. if not found do not return anything.
+
+{% else %}
+Depending on the context and results, the validation type is related to the vulnerability at hand. 
+For example for a stored XSS, the analysis should show that when a request with a payload is sent, we find the result in the response according to attack.
+The validation format could be the proof in the context given and previous actions, but also validation proof such as the payload or a python script validating the task or the vulnerability.
+{% endif %}
+
+## Available tooling
 {% for tool_name, tool_description in tools.items() %}
 - {{tool_name}} : {{tool_description}}
 {% endfor %}
@@ -22,3 +33,5 @@ RULES TO FOLLOW:
 - following the tools outputs, YOU MUST only rely on them to understand if a specific injection results IS SUCCESSFUL.
 - an specific injection is successful if the response IS NOT THE INTENDED BEHAVIOR.
 - TO DISTINGUISH BETWEEN INTENDED BEHAVIOR AND A POSSIBLE INJECTION OR BUG, YOU HAVE TO COMPARE AND ANALYZE THE NORMAL RESULT FROM WHERE A TOOL INJECTED A SPECIFIC PAYLOAD.
+
+The overall context and history is given below.

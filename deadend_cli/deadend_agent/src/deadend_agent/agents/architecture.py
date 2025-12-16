@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Any, Literal, AsyncGenerator
+from typing import Any, Literal, AsyncGenerator, Tuple
 from uuid import UUID
 from deadend_agent.agents.exploit_web_agent import ExploitInfo, ExploitOutput
 from deadend_agent.agents.recon_threatmodel_agent import GeneralInfoOutput, ThreatModelOutput
@@ -603,6 +603,7 @@ class ValidatorOutput(BaseModel):
     valid: bool
     confidence_score: float
     critique: str
+    validation_token: str | None
 
 class Validator:
     """Validator component that double-checks task execution results.
@@ -612,18 +613,31 @@ class Validator:
     decisions along with confidence scores and critiques.
     """
 
-    def __init__(self, model: AIModel) -> None:
+    def __init__(
+        self,
+        model: AIModel,
+        validation_type: str | None,
+        validation_format: str | None
+    ) -> None:
         """Initialize the Validator.
         
         Args:
             model: The AI model to use for validation/judgment
         """
-        judge_instructions = render_agent_instructions(
-            "judge", 
-            tools={},
-            validation_type="flag",
-            validation_format="flag"
-        )
+        if validation_type and validation_format:
+            judge_instructions = render_agent_instructions(
+                "judge", 
+                tools={},
+                validation_type=validation_type,
+                validation_format=validation_format
+            )
+        else:
+            judge_instructions = render_agent_instructions(
+                "judge", 
+                tools={},
+                validation_type="flag",
+                validation_format="FLAG{{}}"
+            )
         self.agent = AgentRunner(
             name="validator",
             model=model,
@@ -633,7 +647,7 @@ class Validator:
             tools=[]
         )
 
-    async def verify(self, task: TaskNode, context: str) -> tuple[bool, float, str]:
+    async def verify(self, task: TaskNode, context: str) -> tuple[bool, float, str, str]:
         """Verify whether a task execution is valid and successful.
         
         Args:
@@ -658,6 +672,7 @@ You are the Validator. Judge whether the task the following task is satisfied de
 - valid (true/false)
 - confidence (float 0.00-1.00) - like a percentage
 - critique (string)
+- validation_token corresponding to the result if found (only return if found)
 """
         result = await self.agent.run(
             prompt=prompt,
@@ -668,16 +683,20 @@ You are the Validator. Judge whether the task the following task is satisfied de
             deferred_tool_results=None
         )
 
+        # returned variables initialization
         valid = False
         confidence_score = 0.0
         critique = ""
+        validation_token = ""
         if isinstance(result.output, ValidatorOutput):
             valid = result.output.valid
             confidence_score = float(result.output.confidence_score)
             critique = result.output.critique
+            validation_token = result.output.validation_token \
+                if result.output.validation_token else ""
 
         # adding to context
-        return (valid, confidence_score, critique)
+        return (valid, confidence_score, critique, validation_token)
 
 def _format_dict_for_context(data: dict[str, Any]) -> str:
     """Format a dictionary into a readable string for context storage.
@@ -782,7 +801,7 @@ class ADaPTAgent:
             return
         # Use a local variable to track exit_loop since the parameter can't be modified
         should_exit = exit_loop
-        while not should_exit: 
+        while not should_exit:
             # Starts executing the agent
             agent_context = self.context.get_tasks(depth=0) + await self.context.get_all_context()
             executor_stream = self.executor.execute(task_node=node, agent_context=agent_context)
@@ -818,10 +837,12 @@ class ADaPTAgent:
                 return
             # If the decision is validate >80%
             elif decision == "validate":
-                node.status = await self._validate(node)
+                node.status, validation_token = await self._validate(node)
                 yield emit(f"[POLICY] Validation completed for '{node.task}' with status \
                     {node.status}")
-                yield {'exit_loop': True}
+                if len(validation_token) > 1:
+                    yield {'validation_token': validation_token}
+                    yield {'exit_loop': True}
                 return
             # If between 20%-60%
             elif decision == "expand":
@@ -986,7 +1007,7 @@ class ADaPTAgent:
             return "validate"
         return "refine"
 
-    async def _validate(self, node: TaskNode) -> str:
+    async def _validate(self, node: TaskNode) -> Tuple[str, str]:
         """Validate a task node's execution.
         
         Args:
@@ -1003,14 +1024,16 @@ class ADaPTAgent:
             return "completed"
 
         context_text = await self.context.get_all_context()
-        (ok, validation, critique) = await self.validator.verify(task=node, context=context_text)
+        (ok, validation, critique, validation_token) = await self.validator.verify(task=node, context=context_text)
         validation_context = {}
-        validation_context["log"] = f"\nVALIDATOR: {validation} : {critique}"
+        validation_context["log"] = f"## Validator agent: \nAnalysis :  {critique}, with confidence score: {validation} :\n"
+        if len(validation_token) > 1:
+            validation_context["log"] += f"The validation token found is {validation_token}."
         formatted_validation = _format_dict_for_context(validation_context)
         self.context.add_agent_response(formatted_validation)
         node.confidence_score = validation
 
-        return "completed" if ok else "failed-validation"
+        return ("completed", validation_token) if ok else ("failed-validation", validation_token)
 
     async def run(
         self,

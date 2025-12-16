@@ -60,13 +60,19 @@ class DeadEndAgent:
         session_id: UUID,
         model: AIModel,
         available_agents: Dict[str, str],
-        max_depth: int = 3
+        max_depth: int = 3,
+        validation_type: str | None = None,
+        validation_format: str | None = None
     ):
         self.session_id = session_id
         self.max_depth = max_depth
         self.model = model
         self.available_agents = available_agents
-        self.validator = Validator(model=model)
+        self.validator = Validator(
+            model=model,
+            validation_type=validation_type,
+            validation_format=validation_format
+        )
         self.context = ContextEngine(model=self.model, session_id=session_id)
 
 
@@ -255,21 +261,23 @@ class DeadEndAgent:
             max_depth=1
         )
         plan: TaskNode | None = None
+        validation_token : str = ""
         traces: list[str | dict[str, Any]] = []
         async for event in self.adapt_agent.run(task=task, exit_strategy=""):
             # Collect all events for trace saving
             traces.append(event)
-            
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")
                     if isinstance(root_candidate, TaskNode):
                         plan = root_candidate
+                elif event.get("validation_token"):
+                    validation_token = event.get("validation_token")
                 else:
                     print(event.get("message", str(event)))
             else:
                 print(str(event))
-        
+
         # Save traces to file
         try:
             trace_file = save_traces(
@@ -279,7 +287,7 @@ class DeadEndAgent:
             print(f"Traces saved to: {trace_file}")
         except Exception as e:
             print(f"Warning: Failed to save traces: {e}")
-        
+
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
 
@@ -301,7 +309,7 @@ class DeadEndAgent:
             message_history=""
         )
 
-        return plan, threat_model_data
+        return plan, threat_model_data, validation_token
 
     async def threat_model_stream(self, task: str):
         """Execute the threat modeling and orchestration workflow.
@@ -408,6 +416,7 @@ The flag that you need to find has the following format : FLAG{{}}.
 {threat_model}
 """
         traces: list[str | dict[str, Any]] = []
+        validation_token = ""
         async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
             # Collect all events for trace saving
             traces.append(event)
@@ -417,6 +426,8 @@ The flag that you need to find has the following format : FLAG{{}}.
                     root_candidate = event.get("root")
                     if isinstance(root_candidate, TaskNode):
                         plan = root_candidate
+                elif event.get("validation_token"):
+                    validation_token = event.get("validation_token")
                 else:
                     print(event.get("message", str(event)))
             else:
@@ -435,7 +446,7 @@ The flag that you need to find has the following format : FLAG{{}}.
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
 
-        return plan
+        return plan, validation_token
 
     async def start_testing_stream(self, threat_model: str, task: str):
         """Runs the exploitation workflow"""

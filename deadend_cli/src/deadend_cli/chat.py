@@ -39,7 +39,6 @@ from deadend_agent.utils.structures import Task
 from deadend_agent.agents import RequesterOutput
 from deadend_agent.agents.judge import JudgeOutput
 from deadend_agent.utils.network import check_target_alive
-from .workflow_runner import WorkflowRunner
 from .console import console_printer
 
 # Defining Agent modes
