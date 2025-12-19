@@ -11,13 +11,14 @@ initialization, and provider-specific model abstractions.
 
 from typing import Dict
 import aiohttp
-import numpy as np
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.google import GoogleProvider
+from pydantic_ai.models.openrouter import OpenRouterModel
+from pydantic_ai.providers.openrouter import OpenRouterProvider
 
 from deadend_agent.config.settings import Config
 
@@ -195,10 +196,10 @@ class ModelRegistry:
 
         if models_settings.openrouter:
             openrouter_settings = models_settings.openrouter
-            self._models['openrouter'] = OpenAIChatModel(
+            self._models['openrouter'] = OpenRouterModel(
                 model_name=openrouter_settings.model_name,
-                provider=OpenAIProvider(
-                    base_url="https://openrouter.ai/api/v1",
+                provider=OpenRouterProvider(
+                    # base_url="https://openrouter.ai/api/v1",
                     api_key=openrouter_settings.api_key
                 ),
             )

@@ -11,15 +11,10 @@ usage tracking for the security research framework.
 from __future__ import annotations
 from typing import Any
 from pydantic import BaseModel
-from pydantic_ai import Agent, DeferredToolResults
+from pydantic_ai import Agent, capture_run_messages, DeferredToolResults, UnexpectedModelBehavior
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
 
-# from tenacity import (
-#     retry,
-#     stop_after_attempt,
-#     wait_random_exponential,
-# )
 
 class AgentOutput(BaseModel):
     """Standard output format for agent execution results.
@@ -101,11 +96,17 @@ class AgentRunner:
             Future enhancements will include token limit checking, rate-limit handling,
             and interruption support.
         """
-        return await self.agent.run(
-            user_prompt=prompt,
-            deps=deps,
-            message_history=message_history,
-            usage=usage,
-            usage_limits=usage_limits,
-            deferred_tool_results=deferred_tool_results
-        )
+        with capture_run_messages() as messages:
+            try:
+                result = await self.agent.run(
+                    user_prompt=prompt,
+                    deps=deps,
+                    message_history=message_history,
+                    usage=usage,
+                    usage_limits=usage_limits,
+                    deferred_tool_results=deferred_tool_results
+                )
+            except UnexpectedModelBehavior:
+                print("exception UnexpectedModelBehavior raised")
+                result = messages
+        return result

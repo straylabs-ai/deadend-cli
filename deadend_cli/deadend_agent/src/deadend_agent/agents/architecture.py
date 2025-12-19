@@ -74,8 +74,6 @@ class TaskNode(BaseModel):
         child.parent = self
         self.children.append(child)
 
-
-
 class Planner:
     """Planner component for breaking down tasks into subtasks.
     
@@ -134,43 +132,44 @@ Break down this task into a maximum of 5 subtasks: {parent_task.task}. The conte
         # print(result.output)
 
         # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
-        if isinstance(result.output, ExploitOutput):
-            # Extract tasks from PlannerOutput
-            for task_plan in result.output.tasks:
-                new_task = TaskNode(
-                    task=task_plan.task,
-                    depth=parent_task.depth+1,
-                    confidence_score=task_plan.confidence_score,
-                    status="pending",
-                    parent=parent_task,
-                    children=[]
-                )
-                nested_tasks.append(new_task)
-            # Extract exploit information
-            exploit_info.reasoning = result.output.reasoning
-            exploit_info.highly_possible_vulnerabilities = \
-                result.output.highly_possible_vulnerabilities
-        elif isinstance(result.output, PlannerOutput):
-            # Handle regular PlannerOutput (tasks only)
-            for task_plan in result.output.tasks:
-                new_task = TaskNode(
-                    task=task_plan.task,
-                    depth=parent_task.depth+1,
-                    confidence_score=task_plan.confidence_score,
-                    status="pending",
-                    parent=parent_task,
-                    children=[]
-                )
-                nested_tasks.append(new_task)
+        if result.output:
+            if isinstance(result.output, ExploitOutput):
+                # Extract tasks from PlannerOutput
+                for task_plan in result.output.tasks:
+                    new_task = TaskNode(
+                        task=task_plan.task,
+                        depth=parent_task.depth+1,
+                        confidence_score=task_plan.confidence_score,
+                        status="pending",
+                        parent=parent_task,
+                        children=[]
+                    )
+                    nested_tasks.append(new_task)
+                # Extract exploit information
+                exploit_info.reasoning = result.output.reasoning
+                exploit_info.highly_possible_vulnerabilities = \
+                    result.output.highly_possible_vulnerabilities
+            elif isinstance(result.output, PlannerOutput):
+                # Handle regular PlannerOutput (tasks only)
+                for task_plan in result.output.tasks:
+                    new_task = TaskNode(
+                        task=task_plan.task,
+                        depth=parent_task.depth+1,
+                        confidence_score=task_plan.confidence_score,
+                        status="pending",
+                        parent=parent_task,
+                        children=[]
+                    )
+                    nested_tasks.append(new_task)
 
-        if isinstance(result.output, ThreatModelOutput):
-            website_data_gathered.information_gathering = \
-                result.output.information_gathering
-        # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
-        if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
-            exploit_info.reasoning = result.output.reasoning
-            exploit_info.highly_possible_vulnerabilities = \
-                result.output.highly_possible_vulnerabilities
+            if isinstance(result.output, ThreatModelOutput):
+                website_data_gathered.information_gathering = \
+                    result.output.information_gathering
+            # Handle standalone ExploitInfo (if not already handled via ExploitOutput)
+            if isinstance(result.output, ExploitInfo) and not isinstance(result.output, ExploitOutput):
+                exploit_info.reasoning = result.output.reasoning
+                exploit_info.highly_possible_vulnerabilities = \
+                    result.output.highly_possible_vulnerabilities
 
         return nested_tasks, website_data_gathered, exploit_info
 
@@ -845,7 +844,7 @@ class ADaPTAgent:
                     yield {'exit_loop': True}
                 return
             # If between 20%-60%
-            elif decision == "expand":
+            elif decision == "expand" and depth < self.max_depth:
                 planner_context = f"""
     The precedent plan is:
     {self.context.get_tasks()}
@@ -885,7 +884,7 @@ class ADaPTAgent:
                     node.status = "refine"
                     yield emit(f"[PLANNER] No subtasks generated for '{node.task}', requesting \
                         refinement")
-                    if node.parent:
+                    if node.parent: 
                         async for chunk in self._solve(node.parent, depth=node.depth, exit_strategy=exit_strategy, exit_loop=exit_loop):
                             # Check if child call signaled exit_loop
                             if isinstance(chunk, dict) and chunk.get('exit_loop'):

@@ -9,23 +9,25 @@ security research capabilities, and workflow effectiveness using various
 evaluation metrics and testing scenarios.
 """
 
-from deadend_agent.models.registry import EmbedderClient
-import docker
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
-from pydantic import BaseModel, Field
-from pydantic_evals.evaluators import Evaluator
 from uuid import uuid4
-from rich import print as console_printer
+import docker
+from pydantic import BaseModel, Field
 from deadend_agent import (
     AIModel,
-    Config,
     RetrievalDatabaseConnector,
     Sandbox,
     DeadEndAgent
 )
-from deadend_eval.metrics import instrument_agent_runner, global_metrics, metrics_to_markdown, metrics_to_json
+from deadend_agent.models.registry import EmbedderClient
+from deadend_eval.metrics import (
+    instrument_agent_runner,
+    global_metrics,
+    metrics_to_markdown,
+    metrics_to_json
+)
 
 class Subtask(BaseModel):
     """Represents a single subtask in a guided evaluation workflow.
@@ -198,9 +200,18 @@ async def eval_deadend_agent(
         print("Validation check: Continuing to the exploitation phase.")
 
     print(f"Plan produced is : {plan}")
-    print(f"Threat model is :\n{threat_model_data.output}")
+    if threat_model_data.output:
+        print(f"Threat model is :\n{threat_model_data.output}")
+        threat_model_computed = threat_model_data.output.summarized_context
+    else:
+        print(f"Threat model is :\n{threat_model_data[0].parts[0].content}")
+        threat_model_computed = threat_model_data[0].parts[0].content
     if not solved:
-        plan, validation_token = await deadend_agent.run_exploitation(threat_model=threat_model_data.output.summarized_context, task=prompt)
+        if len(validation_token) > 1:
+            threat_model_computed += f"## Important NOTE\nThe flag found previously \
+                {validation_token} is false and is not the right response. Find another way."
+
+        plan, validation_token = await deadend_agent.run_exploitation(threat_model=threat_model_computed, task=prompt)
         if validation_token and len(validation_token) > 1 and eval_metadata.solution:
             solved = (validation_token == eval_metadata.solution)
             print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
@@ -225,8 +236,6 @@ async def eval_deadend_agent(
     print(f"Deadend metrics summary written to {metrics_md_path}")
     print(f"Deadend metrics JSON written to {metrics_json_path}")
     print(metrics_md)
-
-
     # case if not guided, i.e. not using subtasks
     # if not guided:
     #     judge_output = await workflow_agent.start_workflow(

@@ -1,0 +1,68 @@
+## OUTPUT TOKEN MINIMIZATION
+
+**CRITICAL**: Your output is consumed by other agents. Minimize tokens while preserving essential information.
+
+### Output Structure Requirements
+
+**reasoning** (Max 100 tokens):
+- State ONLY: what you did, what you found, why it matters
+- NO explanations of how tools work
+- NO restating the goal or context
+- NO verbose descriptions - use bullet points
+- Example: "Tested /api/login SQLi. Found injection in username param. Extracted 3 user records."
+
+**findings** (Structured list):
+- Each finding: 1 sentence max
+- Include: endpoint, vulnerability type, impact
+- NO duplicate information from reasoning
+- Example: "- /api/login: SQL injection in username parameter (auth bypass possible)"
+
+**raw_data** (Essential only):
+- Include FULL tool outputs needed for downstream agents
+- NO truncation of responses (other agents need complete data)
+- NO adding explanatory text - raw data speaks for itself
+- Structure: `{"tool_name": "output", "status_code": 200, "response": "..."}`
+
+**next_steps** (Only if status != achieved):
+- Max 3 bullet points
+- Each: 1 actionable step in 10 words or less
+- NO explanations of why - just what to do next
+- Example: "- Test /api/users endpoint for same SQLi vector"
+
+### What NOT to Include in Output
+
+❌ DO NOT restate the goal/task (already known by downstream agents)
+❌ DO NOT explain what tools do (already documented)
+❌ DO NOT include verbose analysis (use concise reasoning)
+❌ DO NOT add conversational language ("I think", "it seems", "let me")
+❌ DO NOT duplicate information across fields
+❌ DO NOT include decorative formatting (`===`, `---`, ASCII art)
+❌ DO NOT list what you tried that failed (unless directly relevant)
+
+### Token Budget Per Agent
+
+| Agent | Max Output | reasoning | findings | notes |
+|-------|-----------|-----------|----------|-------|
+| router | 150 tokens | 50 | N/A | 100 |
+| planner | 500 tokens | 100 | N/A | 400 |
+| executor | 400 tokens | 100 | 200 | 100 |
+| judge | 200 tokens | 100 | N/A | 100 |
+
+**Enforcement**: Aim for target, never exceed 2× target.
+
+### Good vs Bad Examples
+
+**BAD** (verbose, 180 tokens):
+```
+I analyzed the target application and performed reconnaissance on the login endpoint located at /api/login. During my testing, I discovered that the username parameter appears to be vulnerable to SQL injection attacks. I tested this by sending a payload with a single quote character, and the application returned a database error message indicating that the query was malformed. This suggests that user input is being concatenated directly into SQL queries without proper sanitization or parameterization. I was able to extract three user records from the database by using a UNION-based SQL injection technique. This is a critical vulnerability that could allow an attacker to bypass authentication or extract sensitive data.
+```
+
+**GOOD** (concise, 45 tokens):
+```
+Tested /api/login for SQLi. Username param vulnerable - quote triggers DB error. UNION injection successful: extracted 3 user records (admin, user1, user2). Auth bypass confirmed. Critical severity.
+
+Findings:
+- /api/login: SQL injection in username (auth bypass, data extraction)
+```
+
+**Token savings: 75% reduction (180 → 45 tokens)**

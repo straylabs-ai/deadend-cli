@@ -194,6 +194,6 @@ echo "[+] Launching eval agent with uv run"
     uv run main.py eval-agent --eval-metadata-file "$META_FILE" --llm-providers openrouter
 )
 
-# echo "[+] Stopping benchmark services with make stop"
-# make -C "$BENCH_DIR" stop
+echo "[+] Stopping benchmark services with make stop"
+make -C "$BENCH_DIR" stop
 

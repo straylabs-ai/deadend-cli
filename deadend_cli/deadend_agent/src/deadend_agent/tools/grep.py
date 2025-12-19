@@ -99,10 +99,18 @@ async def grep_session_logs(
     # Format results
     if not matches:
         return f"No matches found for pattern '{pattern}' in session logs for session_key: {session_key}"
-    
-    result_lines = [f"Found {len(matches)} match(es) for pattern '{pattern}':\n"]
-    
-    for match in matches:
+
+    total_matches = len(matches)
+    # Only keep the last 10 matches to avoid overwhelming output
+    last_matches = matches[-10:]
+
+    header = (
+        f"Found {total_matches} match(es) for pattern '{pattern}'. "
+        f"Showing the last {len(last_matches)} match(es):\n"
+    )
+    result_lines = [header]
+
+    for match in last_matches:
         result_lines.append(
             f"[{match['file']}:{match['line']}] "
             f"Match: '{match['match']}' "
@@ -111,6 +119,6 @@ async def grep_session_logs(
         if match['context']:
             result_lines.append(f"  Context: {match['context']}")
         result_lines.append("")
-    
+
     return "\n".join(result_lines)
 

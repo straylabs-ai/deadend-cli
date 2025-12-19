@@ -1,41 +1,38 @@
-This tool performs semantic search over pre-downloaded web application content that has been indexed and embedded for fast retrieval. It allows you to query the target's webpage content without making new HTTP requests to the target.
+Semantic search over indexed client-side code from target web application.
 
-#### WHAT THIS TOOL PROVIDES:
-- **Endpoints only**: URLs and API endpoints exposed in the client-side code (e.g., fetch/axios calls, form actions, XHR requests, route definitions)
-- **Architecture logic only**: High-level client-side structure such as routing, main components/pages, and how the frontend talks to the backend (no deep analysis, just structural facts)
-- **Forms inputs and types only**: Form locations, input names, parameter keys, and their basic types/constraints as expressed in the client (e.g., `type`, `name`, simple validation patterns)
+## RETURNS
 
-#### WHEN TO USE THIS TOOL:
-- **Reconnaissance and enumeration**: Search for forms, input fields, endpoints, and API calls in the downloaded content
-- **Technology identification**: Find references to frameworks, libraries, versions, and technologies used by the application
-- **Context gathering**: Retrieve specific code snippets or content for analysis before crafting payloads
-- **Extracting endpoints**: To list or confirm API endpoints, routes, and URLs visible in the client-side code
-- **Understanding architecture logic**: To get a light, structural view of how pages/components and client-side routing are organized, and how they call backend endpoints
-- **Enumerating form inputs and types**: To identify forms, their fields, parameter names, and basic types/constraints
+- **Endpoints**: API URLs, routes, fetch/XHR/axios calls, form actions
+- **Architecture**: Page structure, routing logic, component organization
+- **Forms**: Input fields, parameter names, validation rules, types
 
-#### CRITICAL USAGE GUARDRAILS:
-- Use this tool **only** to extract: (1) endpoints, (2) architecture logic, and (3) forms inputs and types. **Nothing else.**
-- Keep queries **simple and focused** on those three categories (one concise query at a time). Do **not** ask for broader analysis or attack guidance.
-- Once you have the specific endpoints/architecture details/form fields you need, **stop and return**; do not keep running this tool.
-- Do **not** attempt exploitation, vulnerability assessment, or full task resolution here—this tool is only for factual extraction of endpoints, architecture structure, and form parameters.
+## WHEN TO USE
 
-#### EXAMPLE QUERIES (keep them short, one at a time):
-- "API endpoints: XMLHttpRequest, ajax, fetch, axios"
-- "Forms: form, input, button, submit"
-- "Auth storage: localStorage.setItem, sessionStorage.setItem, document.cookie"
-- "File uploads: input type file, FileReader, FormData"
-- "Validation: regex, sanitize, validate, test"
-- "Events: addEventListener, onclick, onsubmit"
-- "Navigation: window.location.href, window.location.replace, location.assign"
-- "Security headers: Content-Security-Policy, X-Frame-Options, meta http-equiv"
-- "External scripts: script src, link href, CDN"
+- Find API endpoints/routes in client-side code
+- Identify form inputs and parameter names
+- Understand client-side architecture and routing
+- Discover authentication/storage patterns (localStorage, cookies)
 
-If the same information is returned for every query it means that it is the only information available.
+## USAGE
 
-#### WHEN NOT TO USE THIS TOOL:
-- **DO NOT** use for vulnerability exploitation guidance or attack techniques
-- **DO NOT** use to search for server-side source code (this tool only contains downloaded webpage content)
-- **DO NOT** use when you need real-time information from the target (use send_payload instead)
-- **DO NOT** use for general security knowledge
+One simple query per call. Use keywords relevant to what you're searching for:
 
-This tool is most effective when you need to analyze the target's client-side code and structure to inform your testing strategy, but remember that it only contains content that was previously discovered and downloaded from the target. 
+**Query Patterns**:
+- API/endpoints: `"API endpoints"`, `"fetch axios XMLHttpRequest"`
+- Forms: `"forms input fields"`, `"form validation"`
+- Auth: `"authentication"`, `"localStorage sessionStorage cookie"`
+- File uploads: `"file upload FileReader FormData"`
+- Events: `"event listeners onclick onsubmit"`
+
+## LIMITATIONS
+
+- **Client-side only**: No server-side source code
+- **Pre-indexed**: Previously downloaded content only (not real-time)
+- **Discovery not exploitation**: Returns observed facts, not attack guidance
+
+## NOTES
+
+- Keep queries simple and focused (3-5 keywords)
+- Stop when you have needed information - don't over-query
+- If same results returned repeatedly, that's all available information
+- For real-time testing, use send_payload instead

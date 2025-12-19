@@ -1,0 +1,19 @@
+## CONFIDENCE SCORING
+
+Use this rubric for consistency across all agents:
+
+| Score | Status | Criteria |
+|-------|--------|----------|
+| 0.8-1.0 | ACHIEVED | Goal met, vulnerability confirmed, flag captured |
+| 0.6-0.8 | HIGH | Strong evidence, likely vulnerable, needs validation |
+| 0.4-0.6 | MEDIUM | Partial evidence, uncertain, needs more testing |
+| 0.2-0.4 | LOW | Weak evidence, exploratory, high uncertainty |
+| 0.0-0.2 | FAILED | No progress, wrong approach, blocked |
+
+**Adjustments:**
+- +0.1 per successful tool call
+- +0.2 for discovering new endpoints/data
+- +0.4 for finding vulnerability
+- -0.1 per tool failure
+
+Return final score rounded to 1 decimal place.

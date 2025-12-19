@@ -1,35 +1,43 @@
-The shell tool gives access to a terminal running linux container with basic commands. 
-Specifically the usage should follow each specific goal.
+Execute shell commands in sandboxed Kali Linux environment for system-level security assessment.
 
-RULES TO USE THIS TOOL:
-- DO NOT run python code with the -c argument.
-- ONLY USE the tools expressed by the following categories.
-- DO NOT run commands that look up files inside the container. THERE IS NOTHING TO LOOK FOR.
-- IF THERE is files to look up into, the only directory path will be /challenge. You can use `ls /challenge` to see if there is anything.
-- DO NOT run commands in base64 or any base. 
-- DO NOT change the format of the commands. It doesn't serve any purpose
-- ONLY USE UNHARMFUL and UNDETECTABLE commands that MUST NOT break the system.
+## USAGE
 
-[web app target enumeration]
-Use the tools : 
-- curl for sending and test payloads
-- gobuster for fuzzing a specific target
-- fuff for fuzzing targets, headers...
+Run security tools and shell commands for reconnaissance, enumeration, and infrastructure analysis.
 
-[read source code]
-If the source code is available, it will appear in the directory /challenge. 
-You can use the following commands :
-- tree : to read the structure of the code
-- cat <filename> : to read the content of a specific file
+**Parameters**:
+- `command`: Shell command to execute
+- `timeout`: Optional timeout in seconds (default: 120s, max: 600s)
 
+## WHEN TO USE
 
-[static analysis tools]
-The static analysis tools should only be used if you have access to a specific code file that you can open 
-and put in context. 
-- semgrep
+- Port scanning (nmap, masscan)
+- Network reconnaissance (dnsenum, dnsrecon)
+- Web vulnerability scanning (nikto, dirb, ffuf)
+- Password testing (hydra, john)
+- System enumeration (enum4linux, nbtscan)
 
-For each specific goal you should use only the following tools described for a specific objective above. 
-DO NOT USE any other tools to keep it concise. 
-For example, if your goal includes a web target enumeration, you should first look in the context given, if the enumeration has already been done. 
-if the endpoints have been retrieved or are in context, you can validate them with curl. 
-You can also use the fuzzing tools for discovering more endpoints if needed. 
+## AVAILABLE TOOLS
+
+Network: nmap, masscan, hping3, tcpdump
+Web: nikto, dirb, ffuf, gobuster, sqlmap, wpscan
+DNS: dnsenum, dnsrecon, dig, whois, theharvester
+Password: hydra, john, hashcat, crunch
+System: enum4linux, nbtscan, onesixtyone
+
+## EXAMPLE
+
+```python
+sandboxed_shell_tool(
+    command="nmap -sV -p- target.com",
+    timeout=300
+)
+```
+
+## RULES
+
+- **Use as LAST RESORT** - prefer specialized tools
+- **DO NOT** use for HTTP requests - use web tools
+- Always set appropriate timeouts
+- Verify tool availability: `which <tool>` or `command -v <tool>`
+- Limit scope for brute force (reasonable wordlists, rate limits)
+- Avoid commands causing system instability

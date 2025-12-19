@@ -1,6 +1,9 @@
 """Main DeadEnd agent orchestration module."""
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
+import io
+import sys
+from contextlib import redirect_stdout
 
 from pydantic_ai import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel, EmbedderClient
@@ -26,6 +29,27 @@ from deadend_agent.tools.browser_automation.http_parser import extract_host_port
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
 from .agents.exploit_web_agent import PlannerExploitAgent
 from deadend_eval.metrics import save_traces
+
+
+class _StdoutTee(io.TextIOBase):
+    """Simple tee that writes to multiple text streams.
+
+    Used to capture everything printed to stdout while still echoing it
+    to the original terminal.
+    """
+
+    def __init__(self, *streams: io.TextIOBase) -> None:
+        self._streams = streams
+
+    def write(self, s: str) -> int:  # type: ignore[override]
+        for stream in self._streams:
+            stream.write(s)
+            stream.flush()
+        return len(s)
+
+    def flush(self) -> None:  # type: ignore[override]
+        for stream in self._streams:
+            stream.flush()
 
 ApprovalCallback = Callable[..., Awaitable[str]]
 
@@ -261,22 +285,35 @@ class DeadEndAgent:
             max_depth=1
         )
         plan: TaskNode | None = None
-        validation_token : str = ""
+        validation_token: str = ""
         traces: list[str | dict[str, Any]] = []
-        async for event in self.adapt_agent.run(task=task, exit_strategy=""):
-            # Collect all events for trace saving
-            traces.append(event)
-            if isinstance(event, dict):
-                if event.get("type") == "result":
-                    root_candidate = event.get("root")
-                    if isinstance(root_candidate, TaskNode):
-                        plan = root_candidate
-                elif event.get("validation_token"):
-                    validation_token = event.get("validation_token")
+
+        # Capture everything printed to stdout during the threat-model run
+        # while still echoing it to the original terminal/stdout.
+        stdout_buffer = io.StringIO()
+        tee = _StdoutTee(sys.stdout, stdout_buffer)
+
+        with redirect_stdout(tee):
+            async for event in self.adapt_agent.run(task=task, exit_strategy=""):
+                # Collect all events for trace saving
+                traces.append(event)
+                if isinstance(event, dict):
+                    if event.get("type") == "result":
+                        root_candidate = event.get("root")
+                        if isinstance(root_candidate, TaskNode):
+                            plan = root_candidate
+                    elif event.get("validation_token"):
+                        validation_token = event.get("validation_token")
+                    else:
+                        print(event.get("message", str(event)))
                 else:
-                    print(event.get("message", str(event)))
-            else:
-                print(str(event))
+                    print(str(event))
+
+        # Add complete stdout log as a final trace entry so the trace file
+        # contains everything that was printed, not just structured events.
+        printed_output = stdout_buffer.getvalue()
+        if printed_output:
+            traces.append({"type": "stdout", "output": printed_output})
 
         # Save traces to file
         try:
@@ -417,22 +454,35 @@ The flag that you need to find has the following format : FLAG{{}}.
 """
         traces: list[str | dict[str, Any]] = []
         validation_token = ""
-        async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
-            # Collect all events for trace saving
-            traces.append(event)
-            
-            if isinstance(event, dict):
-                if event.get("type") == "result":
-                    root_candidate = event.get("root")
-                    if isinstance(root_candidate, TaskNode):
-                        plan = root_candidate
-                elif event.get("validation_token"):
-                    validation_token = event.get("validation_token")
+
+        # Capture everything printed to stdout during the run while still
+        # echoing it to the original terminal/stdout.
+        stdout_buffer = io.StringIO()
+        tee = _StdoutTee(sys.stdout, stdout_buffer)
+
+        with redirect_stdout(tee):
+            async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
+                # Collect all events for trace saving
+                traces.append(event)
+
+                if isinstance(event, dict):
+                    if event.get("type") == "result":
+                        root_candidate = event.get("root")
+                        if isinstance(root_candidate, TaskNode):
+                            plan = root_candidate
+                    elif event.get("validation_token"):
+                        validation_token = event.get("validation_token")
+                    else:
+                        print(event.get("message", str(event)))
                 else:
-                    print(event.get("message", str(event)))
-            else:
-                print(str(event))
-        
+                    print(str(event))
+
+        # Add complete stdout log as a final trace entry so the trace file
+        # contains everything that was printed, not just structured events.
+        printed_output = stdout_buffer.getvalue()
+        if printed_output:
+            traces.append({"type": "stdout", "output": printed_output})
+
         # Save traces to file
         try:
             trace_file = save_traces(

@@ -19,7 +19,7 @@ from deadend_agent.utils.structures import WebappreconDeps, CmdLog
 def sandboxed_shell_tool(
     ctx: RunContext[WebappreconDeps],
     command: str,
-    timeout_seconds: int = 30
+    timeout_seconds: int = 300
 ) -> Dict[int, CmdLog]:
     """Execute a shell command in the sandbox environment.
     

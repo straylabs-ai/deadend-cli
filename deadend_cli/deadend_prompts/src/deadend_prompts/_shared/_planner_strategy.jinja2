@@ -1,0 +1,79 @@
+## TASK DECOMPOSITION STRATEGY
+
+Decompose the goal into exactly 4-5 strategic tasks. Quality over quantity.
+
+### Task Selection Principles
+
+**Each task must be:**
+- **Distinct**: Non-overlapping with other tasks
+- **Atomic**: Completable in single agent run (not multi-stage)
+- **Purposeful**: Advances toward goal with clear success criteria
+- **Sequenced**: Logically ordered (each informs the next)
+- **Justified**: Explicitly reduces uncertainty or validates hypothesis
+
+### Decomposition Guidelines
+
+**When to decompose**:
+✅ Goal has multiple distinct phases (recon → analysis → exploit → validate)
+✅ Each subtask benefits from different tools/approaches
+✅ Tasks can be sequenced logically (one informs next)
+
+**When NOT to decompose**:
+❌ Simple, atomic actions (e.g., "send HTTP request" is execution, not planning)
+❌ Micro-tasks that are implementation details
+❌ Need more than 5 tasks (consolidate or prioritize instead)
+❌ Parallel tasks doing same thing differently (choose best approach)
+
+### Standard Task Sequence
+
+**Research/Testing goals:**
+1. Initial reconnaissance (discover attack surface)
+2. Hypothesis testing (test specific vulnerability class)
+3. Analysis (validate findings, understand behavior)
+4. Exploitation (confirm vulnerability, achieve goal)
+5. Validation (verify results, extract proof)
+
+**Planning goals:**
+1. Information gathering (collect essential facts)
+2. Enumeration (discover all relevant items)
+3. Analysis (identify patterns, threats, weaknesses)
+4. Prioritization (rank by impact/likelihood)
+5. Documentation (compile findings into deliverable)
+
+### Task Structure
+
+Each task must include:
+- `task`: What to accomplish (1 sentence, <20 words)
+- `description`: How to approach it (2-3 sentences, reference tools)
+- `status`: Always "pending" (execution happens later)
+- `confidence_score`: 0.0-1.0 based on available evidence
+
+### Confidence Assignment
+
+- **0.7-0.9**: Well-defined, sufficient information, clear success criteria
+- **0.4-0.6**: Reasonable approach, some uncertainty about outcome
+- **0.2-0.4**: Exploratory, high uncertainty, but necessary for progress
+
+Tasks with confidence <0.2 should not be included (too uncertain to be valuable).
+
+### Example: "Find SQL injection in login form"
+
+**Good decomposition** (5 strategic tasks):
+1. "Enumerate login endpoint and identify input parameters" (confidence: 0.8) - Use webapp_code_rag to find form
+2. "Test login endpoint for SQL injection using common payloads" (confidence: 0.6) - Use send_payload for basic tests
+3. "Analyze responses to identify successful injection patterns" (confidence: 0.7) - Compare baseline vs injected responses
+4. "Validate SQL injection by extracting database information" (confidence: 0.5) - Use run_python_file for multi-stage extraction
+5. "Document findings with proof-of-concept exploit" (confidence: 0.8) - Compile results with working exploit
+
+**Bad decomposition** (too granular):
+1. ❌ "Send GET request to /login"
+2. ❌ "Read response body"
+3. ❌ "Parse HTML form"
+4. ❌ "Extract input field names"
+5. ❌ "Try single quote payload"
+
+(These are execution steps, not strategic tasks)
+
+### Task Output Format
+
+Return tasks as structured list with all required fields. Keep descriptions concise (2-3 sentences max per task).
