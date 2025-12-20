@@ -2,6 +2,17 @@
 # Licensed under the GNU Affero General Public License v3
 # See LICENSE file for full license information.
 from .memory import MemoryHandler
-from .context_engine import ContextEngine
+from .context_engine import (
+    ContextEngine,
+    StructuredContext,
+    DiscoveredFact,
+    AttemptRecord,
+)
 
-__all__ = ["MemoryHandler", "ContextEngine"]
+__all__ = [
+    "MemoryHandler",
+    "ContextEngine",
+    "StructuredContext",
+    "DiscoveredFact",
+    "AttemptRecord",
+]

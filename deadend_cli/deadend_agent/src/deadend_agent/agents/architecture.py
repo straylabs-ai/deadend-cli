@@ -719,11 +719,11 @@ def _format_dict_for_context(data: dict[str, Any]) -> str:
 
 class ADaPTAgent:
     """
-    ADaPT Agent is a recursive agent from the paper 
+    ADaPT Agent is a recursive agent from the paper
     ADaPT: As-Needed Decomposition and Planning with Language Models
     (https://arxiv.org/abs/2311.05772)
 
-    This implementation follows the algorithm presented in the paper, 
+    This implementation follows the algorithm presented in the paper,
     by retaking the most relevant information:
     - Usage of 3 components Executors, Planner and Controller.
     """
@@ -737,6 +737,9 @@ class ADaPTAgent:
     EXPLORE_THRESHOLD = 0.60
     VALIDATE_THRESHOLD = 0.80
 
+    # Maximum attempts per task to prevent infinite loops
+    MAX_TASK_ATTEMPTS = 3
+
     def __init__(
         self,
         session_id: UUID,
@@ -747,7 +750,7 @@ class ADaPTAgent:
         max_depth: int = 3
     ):
         """Initialize the ADaPT agent.
-        
+
         Args:
             session_id: Unique identifier for this ADaPT session
             executor: AgentExecutor instance for executing tasks
@@ -762,6 +765,193 @@ class ADaPTAgent:
         self.validator = validator
         self.context = context
 
+        # Track attempted tasks to prevent redundant retries
+        # Key: task hash, Value: dict with attempt count and best confidence
+        self._attempted_tasks: dict[int, dict[str, Any]] = {}
+
+    def _extract_agent_output_to_context(
+        self,
+        last_output: dict[str, Any],
+        confidence_score: float,
+        task: str
+    ) -> None:
+        """Extract structured output from any agent type and add to context.
+
+        Handles all agent output types:
+        - RequesterOutput: payload, request, response, vulnerability_category
+        - ShellOutput: objective, stdin, stdout, stderr
+        - PythonInterpreterOutput: filename, goal, reasoning, script_stdout, script_stderr
+        - WebappReconOutput: reasoning, state, raw_response
+
+        Args:
+            last_output: The agent's output dictionary (from model_dump())
+            confidence_score: The agent's confidence score
+            task: The task description
+        """
+        # === Extract fields from all agent types ===
+
+        # RequesterOutput / RequesterSecOutput fields
+        payload = last_output.get("payload", "")
+        request = last_output.get("request", "")
+        response = last_output.get("response", "")
+        vuln_category = last_output.get("vulnerability_category", "")
+        attempt_desc = last_output.get("attempt", "")
+
+        # ShellOutput fields
+        objective = last_output.get("objective", "")
+        stdin = last_output.get("stdin", "")
+        stdout = last_output.get("stdout", "")
+        stderr = last_output.get("stderr", "")
+
+        # PythonInterpreterOutput fields
+        filename = last_output.get("filename", "")
+        goal = last_output.get("goal", "")
+        script_stdout = last_output.get("script_stdout", "")
+        script_stderr = last_output.get("script_stderr", "")
+
+        # WebappReconOutput / common fields
+        reasoning = last_output.get("reasoning", "")
+        state = last_output.get("state", "")
+        raw_response = last_output.get("raw_response", "")
+        notes = last_output.get("notes", "")
+
+        # === Build comprehensive log for structured context ===
+        output_log_parts = [f"[Agent Result - confidence: {confidence_score:.2f}]"]
+
+        # Requester-type output
+        if payload:
+            output_log_parts.append(f"Payload: {payload[:400]}")
+        if request:
+            output_log_parts.append(f"Request: {request[:600]}")
+        if response:
+            output_log_parts.append(f"Response: {response[:1200]}")
+
+        # Shell-type output
+        if objective:
+            output_log_parts.append(f"Objective: {objective[:200]}")
+        if stdin:
+            output_log_parts.append(f"Command: {stdin[:300]}")
+        if stdout:
+            output_log_parts.append(f"Output: {stdout[:800]}")
+        if stderr:
+            output_log_parts.append(f"Errors: {stderr[:300]}")
+
+        # Python interpreter output
+        if filename:
+            output_log_parts.append(f"Script: {filename}")
+        if goal:
+            output_log_parts.append(f"Goal: {goal[:200]}")
+        if script_stdout:
+            output_log_parts.append(f"Script Output: {script_stdout[:800]}")
+        if script_stderr:
+            output_log_parts.append(f"Script Errors: {script_stderr[:300]}")
+
+        # Webapp recon output
+        if raw_response:
+            output_log_parts.append(f"Raw Response: {raw_response[:800]}")
+        if state:
+            output_log_parts.append(f"State: {state[:200]}")
+
+        # Common fields
+        if reasoning:
+            output_log_parts.append(f"Reasoning: {reasoning[:400]}")
+        if notes:
+            output_log_parts.append(f"Notes: {notes[:300]}")
+        if attempt_desc and isinstance(attempt_desc, str):
+            output_log_parts.append(f"Attempt: {attempt_desc[:200]}")
+
+        # Add to structured context log (only if we have meaningful content)
+        if len(output_log_parts) > 1:
+            full_output_log = "\n".join(output_log_parts)
+            self.context.structured.append_to_log(full_output_log)
+
+        # === Record attempt for deduplication and learning ===
+        # Determine the primary "action" that was taken
+        attempt_action = payload or request or stdin or script_stdout or raw_response or ""
+
+        if attempt_action:
+            # Determine result based on confidence
+            if confidence_score >= self.VALIDATE_THRESHOLD:
+                result = "success"
+            elif confidence_score >= self.EXPLORE_THRESHOLD:
+                result = "partial"
+            else:
+                result = "failed"
+
+            # Build reason with key indicators
+            reason_parts = [f"confidence: {confidence_score:.2f}"]
+
+            if vuln_category:
+                reason_parts.append(f"category: {vuln_category}")
+
+            # Check all output sources for key indicators
+            all_output = f"{response} {stdout} {script_stdout} {raw_response}"
+            if "FLAG{" in all_output or "flag{" in all_output.lower():
+                reason_parts.append("FLAG FOUND")
+                result = "success"  # Override to success if flag found
+            elif "error" in all_output.lower() and "success" not in all_output.lower():
+                reason_parts.append("error in output")
+            elif "fail" in all_output.lower() and "success" not in all_output.lower():
+                reason_parts.append("fail indicator in output")
+            elif "success" in all_output.lower() or "completed" in all_output.lower():
+                reason_parts.append("success indicator in output")
+
+            if stderr or script_stderr:
+                reason_parts.append("stderr present")
+
+            self.context.record_attempt(
+                task=task,
+                payload=str(attempt_action)[:400],
+                result=result,
+                reason="; ".join(reason_parts)
+            )
+
+        # === Add discovered facts from agent output ===
+
+        # Add vulnerability facts
+        if vuln_category and confidence_score >= 0.5:
+            details = {}
+            if payload:
+                details["payload"] = payload[:150]
+            if request:
+                details["request"] = request[:150]
+            if response:
+                details["response_excerpt"] = response[:250]
+            if stdout or script_stdout:
+                details["output_excerpt"] = (stdout or script_stdout)[:250]
+
+            self.context.add_discovered_fact(
+                category="vulnerability",
+                key=vuln_category,
+                value=f"Tested: {payload[:100] or stdin[:100] or 'via agent'}",
+                confidence=confidence_score,
+                details=details,
+                actionable=confidence_score < self.VALIDATE_THRESHOLD
+            )
+
+        # Add endpoint facts from shell discoveries
+        if objective and stdout and confidence_score >= 0.6:
+            # Shell agent often discovers endpoints/services
+            self.context.add_discovered_fact(
+                category="discovery",
+                key=objective[:50],
+                value=stdout[:200],
+                confidence=confidence_score,
+                details={"command": stdin[:100] if stdin else ""},
+                actionable=False
+            )
+
+        # Add technology/state facts from webapp recon
+        if state and confidence_score >= 0.6:
+            self.context.add_discovered_fact(
+                category="state",
+                key="webapp_state",
+                value=state[:200],
+                confidence=confidence_score,
+                details={"reasoning": reasoning[:150] if reasoning else ""},
+                actionable=False
+            )
+
     async def _solve(
         self,
         node: TaskNode,
@@ -770,17 +960,17 @@ class ADaPTAgent:
         exit_loop: bool
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         """Recursively solve a task node using the ADaPT algorithm.
-        
+
         This is the core recursive method that implements the ADaPT algorithm:
         1. Execute the task and get confidence score
         2. Apply policy to determine next action (fail, expand, refine, validate)
         3. If expanding, decompose into subtasks and recursively solve each
         4. If validating, verify task completion
-        
+
         Args:
             node: The TaskNode to solve
             depth: Current depth in the decomposition tree
-            
+
         Note:
             Tasks that exceed max_depth will be marked as "aborted:max_depth".
             The method modifies the node's status and confidence_score in place.
@@ -788,21 +978,51 @@ class ADaPTAgent:
             upstream while still performing recursive execution.
         """
         def emit(message: str) -> str:
-            """Record an agent response and surface it to callers."""
+            """Surface message to callers without adding to context (avoid duplication)."""
             return message
 
-
+        # Check max depth
         if depth > self.max_depth:
             node.status = "aborted:max_depth"
             node.confidence_score = 0.5
-            yield emit(f"[ADAPT] Aborted task '{node.task}' \
-                at depth {depth} (max_depth={self.max_depth})")
+            yield emit(f"[ADAPT] Aborted task '{node.task}' at depth {depth} (max_depth={self.max_depth})")
             return
+
+        # Track attempts for this task to prevent infinite loops
+        task_hash = hash(node.task)
+        if task_hash not in self._attempted_tasks:
+            self._attempted_tasks[task_hash] = {"attempts": 0, "best_confidence": 0.0}
+
+        task_record = self._attempted_tasks[task_hash]
+
+        # Check if task was already completed with high confidence
+        if task_record["best_confidence"] >= self.VALIDATE_THRESHOLD:
+            node.status = "completed"
+            node.confidence_score = task_record["best_confidence"]
+            yield emit(f"[SKIP] Task already completed with {task_record['best_confidence']:.2f} confidence")
+            return
+
+        # Check max attempts
+        if task_record["attempts"] >= self.MAX_TASK_ATTEMPTS:
+            node.status = "failed:max_attempts"
+            node.confidence_score = task_record["best_confidence"]
+            yield emit(f"[FAIL] Task exceeded max attempts ({self.MAX_TASK_ATTEMPTS}): '{node.task[:50]}...'")
+            return
+
+        # Increment attempt counter
+        task_record["attempts"] += 1
+
+        # Clear current task log for fresh context
+        self.context.clear_current_task_log()
+
         # Use a local variable to track exit_loop since the parameter can't be modified
         should_exit = exit_loop
         while not should_exit:
-            # Starts executing the agent
-            agent_context = self.context.get_tasks(depth=0) + await self.context.get_all_context()
+            # Build optimized context for executor
+            tasks_context = self.context.get_tasks(depth=0)
+            execution_context = await self.context.get_all_context(max_tokens=6000)
+            agent_context = f"{tasks_context}\n{execution_context}"
+
             executor_stream = self.executor.execute(task_node=node, agent_context=agent_context)
 
             confidence_score: float | None = None
@@ -811,48 +1031,73 @@ class ADaPTAgent:
                 if isinstance(event, ResultEvent):
                     confidence_score = event.confidence_score
                     new_context = event.context
-                    formatted_context = f"Confidence Score for the following task:\
-                        {event.confidence_score}\n"
-                    formatted_context += _format_dict_for_context(event.context)
-                    self.context.add_agent_response(formatted_context)
+                    # Add result to context (single point of logging)
+                    formatted_context = f"Task: {node.task[:80]}\nConfidence: {event.confidence_score:.2f}"
+                    self.context.add_agent_response(formatted_context, skip_structured=True)
+                    # Update structured context with result summary only
+                    self.context.structured.append_to_log(formatted_context)
                     break
                 elif isinstance(event, LogEvent):
-                    self.context.add_agent_response(event.message)
+                    # Only add to structured log, not full workflow_context (reduces duplication)
+                    self.context.structured.append_to_log(event.message)
                     yield emit(event.message)
 
             if confidence_score is None or new_context is None:
                 raise RuntimeError("AgentExecutor did not produce a result.")
 
-            formatted_new_context = _format_dict_for_context(new_context)
-            yield emit(formatted_new_context)
+            # Update best confidence for this task
+            if confidence_score > task_record["best_confidence"]:
+                task_record["best_confidence"] = confidence_score
+
+            # Extract and store agent's structured output to context
+            last_output = new_context.get("last_output", {})
+            if isinstance(last_output, dict):
+                self._extract_agent_output_to_context(
+                    last_output=last_output,
+                    confidence_score=confidence_score,
+                    task=node.task
+                )
+
+            # Emit summary for streaming output
+            context_summary = new_context.get("log", "")[:200] if new_context.get("log") else ""
+            if context_summary:
+                yield emit(f"[RESULT] {context_summary}")
 
             decision = self._policy(confidence_score)
-            print(f"task : {node.task} decision: {decision}, confidence_score : {confidence_score}")
+            print(f"task: {node.task[:50]}... decision: {decision}, confidence: {confidence_score:.2f}")
+
             # If decision fails <20%
             if decision == "fail":
                 node.status = "failed"
-                yield emit(f"[POLICY] Task '{node.task}' failed with confidence_score \
-                    {confidence_score:.2f}")
+                yield emit(f"[POLICY] Task '{node.task[:50]}...' failed with confidence {confidence_score:.2f}")
                 return
+
             # If the decision is validate >80%
             elif decision == "validate":
                 node.status, validation_token = await self._validate(node)
-                yield emit(f"[POLICY] Validation completed for '{node.task}' with status \
-                    {node.status}")
+                yield emit(f"[POLICY] Validation completed for '{node.task[:50]}...' with status {node.status}")
+                # Mark task as completed in structured context
+                if node.status == "completed":
+                    self.context.mark_task_completed(node.task)
                 if len(validation_token) > 1:
                     yield {'validation_token': validation_token}
                     yield {'exit_loop': True}
                 return
+
             # If between 20%-60%
             elif decision == "expand" and depth < self.max_depth:
+                # Use optimized planning context instead of full context
                 planner_context = f"""
-    The precedent plan is:
-    {self.context.get_tasks()}
-    The previous context is :
-    {await self.context.get_all_context()}
-    Understand the Plan and what have been achieved to expand the plan with only what still need to be done.
-    Change the confidence_score according to the analysis. Reason step by step to retrieve the most logical plan.
-    """
+## Current Plan Status
+{self.context.get_tasks()}
+
+## Context Summary
+{self.context.get_planning_context()}
+
+## Instructions
+Analyze what has been achieved and expand the plan with only what still needs to be done.
+Update confidence_score based on progress. Reason step by step for the most logical plan.
+"""
                 subtasks, website_info, exploit_info = await self.planner.expand(
                     node,
                     context=planner_context,
@@ -911,14 +1156,18 @@ class ADaPTAgent:
                     break
             # If refine
             else:
+                # Use optimized planning context for refinement
                 planner_context = f"""
-    The precedent plan is:
-    {self.context.get_tasks()}
-    The previous context is:
-    {await self.context.get_all_context()}
-    Understand the Plan and what have been achieved to update the plan with only what still needs to be done.
-    Update the confidence_score for what have been done. Reason step by step to retrieve the most logical updated plan.
-    """
+## Current Plan Status
+{self.context.get_tasks()}
+
+## Context Summary
+{self.context.get_planning_context()}
+
+## Instructions
+Analyze what has been achieved and update the plan with only what still needs to be done.
+Update confidence_score for completed items. Reason step by step for the most logical updated plan.
+"""
                 updated_tasks, website_info, exploit_info = await self.planner.update_plan(
                     node,
                     context=planner_context,
@@ -1008,28 +1257,37 @@ class ADaPTAgent:
 
     async def _validate(self, node: TaskNode) -> Tuple[str, str]:
         """Validate a task node's execution.
-        
+
         Args:
             node: The TaskNode to validate
-            
+
         Returns:
             Status string: "completed" if validation passes, "failed-validation" otherwise.
             If no validator is available, returns "completed" by default.
-            
+
         Note:
             Updates the node's confidence_score with the validation confidence score.
         """
         if not self.validator:
-            return "completed"
+            return ("completed", "")
 
-        context_text = await self.context.get_all_context()
-        (ok, validation, critique, validation_token) = await self.validator.verify(task=node, context=context_text)
-        validation_context = {}
-        validation_context["log"] = f"## Validator agent: \nAnalysis :  {critique}, with confidence score: {validation} :\n"
-        if len(validation_token) > 1:
-            validation_context["log"] += f"The validation token found is {validation_token}."
-        formatted_validation = _format_dict_for_context(validation_context)
-        self.context.add_agent_response(formatted_validation)
+        # Use scoped validation context instead of full context (reduces token waste)
+        validation_context_text = self.context.get_validation_context()
+
+        (ok, validation, critique, validation_token) = await self.validator.verify(
+            task=node,
+            context=validation_context_text
+        )
+
+        # Record validation result compactly
+        validation_summary = f"Validation: {critique[:100]}, confidence: {validation:.2f}"
+        if validation_token:
+            validation_summary += f", token: {validation_token}"
+
+        # Add to structured context only (avoid bloating workflow_context)
+        self.context.structured.append_to_log(validation_summary)
+        self.context.add_agent_response(validation_summary, skip_structured=True)
+
         node.confidence_score = validation
 
         return ("completed", validation_token) if ok else ("failed-validation", validation_token)
@@ -1040,20 +1298,20 @@ class ADaPTAgent:
         exit_strategy: str
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         """Run the ADaPT agent on a given task.
-        
+
         Creates a root task node and recursively solves it using the ADaPT algorithm,
         which includes execution, planning, and validation phases.
-        
+
         Args:
             task: The main task description to execute
-            context: Optional initial context dictionary. If not provided, an empty
-                dictionary will be created with an empty "log" entry.
-                
+            exit_strategy: Strategy for determining when to exit
+
         Yields:
             Human-readable log strings describing progress followed by a final
             {"type": "result", "root": TaskNode} event containing the execution tree.
         """
-
+        # Reset attempt tracking for new run
+        self._attempted_tasks.clear()
 
         root = TaskNode(
             task=task,
@@ -1064,18 +1322,47 @@ class ADaPTAgent:
             children=[]
         )
         self.context.set_root_task(root.task)
-        initial_context = await self.context.get_all_context()
+
+        # Use optimized context for initial planning
+        initial_context = await self.context.get_all_context(max_tokens=4000)
         subtasks, website_info, exploit_info = await self.planner.expand(
             root,
             context=initial_context,
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )
-        formatted_website_info = _format_dict_for_context(website_info.model_dump())
-        self.context.add_agent_response(formatted_website_info)
+
+        # Add website info to structured context as facts (not verbose dump)
+        website_dict = website_info.model_dump()
+        if website_dict.get("information_gathering"):
+            info = website_dict["information_gathering"]
+            if isinstance(info, dict):
+                for key, value in info.items():
+                    if value:
+                        self.context.add_discovered_fact(
+                            category="website_info",
+                            key=key,
+                            value=str(value)[:200],
+                            confidence=0.8
+                        )
+            else:
+                self.context.add_discovered_fact(
+                    category="website_info",
+                    key="general",
+                    value=str(info)[:200],
+                    confidence=0.8
+                )
+
+        # Add exploit info if available
         if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
-            formatted_exploit_info = _format_dict_for_context(exploit_info.model_dump())
-            self.context.add_agent_response(formatted_exploit_info)
+            if exploit_info.highly_possible_vulnerabilities:
+                for vuln in exploit_info.highly_possible_vulnerabilities[:5]:  # Limit to 5
+                    self.context.add_discovered_fact(
+                        category="vulnerability",
+                        key=str(vuln)[:50],
+                        value=str(vuln),
+                        confidence=0.6
+                    )
         planner_subtasks = []
         for subtask in subtasks:
             planner_subtask = TaskPlanner(
