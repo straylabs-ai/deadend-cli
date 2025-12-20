@@ -2,78 +2,90 @@
 
 Decompose the goal into exactly 4-5 strategic tasks. Quality over quantity.
 
+### Goal-First Planning
+
+**Before creating tasks, answer:**
+1. What is the specific goal we're trying to achieve?
+2. What information/access is needed to achieve it?
+3. What's the most direct path to that goal?
+4. What could block us, and what are alternatives?
+
 ### Task Selection Principles
 
 **Each task must be:**
+- **Goal-connected**: Explicitly advances toward the goal (state how)
+- **Evidence-based**: Grounded in discovered information (not speculation)
 - **Distinct**: Non-overlapping with other tasks
-- **Atomic**: Completable in single agent run (not multi-stage)
-- **Purposeful**: Advances toward goal with clear success criteria
+- **Atomic**: Completable in single agent run
 - **Sequenced**: Logically ordered (each informs the next)
-- **Justified**: Explicitly reduces uncertainty or validates hypothesis
 
 ### Decomposition Guidelines
 
-**When to decompose**:
-✅ Goal has multiple distinct phases (recon → analysis → exploit → validate)
+**When to decompose:**
+✅ Goal requires multiple distinct phases (discover → validate → exploit)
 ✅ Each subtask benefits from different tools/approaches
-✅ Tasks can be sequenced logically (one informs next)
+✅ Tasks can be sequenced (one provides input for next)
 
-**When NOT to decompose**:
-❌ Simple, atomic actions (e.g., "send HTTP request" is execution, not planning)
-❌ Micro-tasks that are implementation details
-❌ Need more than 5 tasks (consolidate or prioritize instead)
-❌ Parallel tasks doing same thing differently (choose best approach)
+**When NOT to decompose:**
+❌ Simple, atomic actions (execution details, not strategic tasks)
+❌ Micro-tasks that are implementation steps
+❌ More than 5 tasks needed (consolidate or prioritize)
+❌ Parallel tasks doing same thing (choose best approach)
 
-### Standard Task Sequence
+### Goal-Oriented Task Sequence
 
-**Research/Testing goals:**
-1. Initial reconnaissance (discover attack surface)
-2. Hypothesis testing (test specific vulnerability class)
-3. Analysis (validate findings, understand behavior)
-4. Exploitation (confirm vulnerability, achieve goal)
-5. Validation (verify results, extract proof)
+**For exploitation goals:**
+1. **Discover attack surface** relevant to goal
+2. **Identify requirements** (auth, parameters, context)
+3. **Test most promising path** toward goal
+4. **Validate/exploit** the vulnerability
+5. **Confirm goal achievement** with evidence
 
-**Planning goals:**
-1. Information gathering (collect essential facts)
-2. Enumeration (discover all relevant items)
-3. Analysis (identify patterns, threats, weaknesses)
-4. Prioritization (rank by impact/likelihood)
-5. Documentation (compile findings into deliverable)
+**For reconnaissance goals:**
+1. **Map relevant surface** (goal-related endpoints/inputs)
+2. **Enumerate details** (parameters, auth, formats)
+3. **Analyze for weaknesses** (evidence-based)
+4. **Prioritize attack paths** (by goal-relevance)
+5. **Compile exploitation brief** (structured for next phase)
 
 ### Task Structure
 
 Each task must include:
 - `task`: What to accomplish (1 sentence, <20 words)
-- `description`: How to approach it (2-3 sentences, reference tools)
-- `status`: Always "pending" (execution happens later)
+- `description`: How to approach it (2-3 sentences)
+- `goal_connection`: How this advances toward the goal (1 sentence)
+- `status`: Always "pending"
 - `confidence_score`: 0.0-1.0 based on available evidence
 
 ### Confidence Assignment
 
-- **0.7-0.9**: Well-defined, sufficient information, clear success criteria
-- **0.4-0.6**: Reasonable approach, some uncertainty about outcome
-- **0.2-0.4**: Exploratory, high uncertainty, but necessary for progress
+- **0.7-0.9**: Strong evidence, clear path, high likelihood of success
+- **0.4-0.6**: Reasonable approach, some uncertainty, worth testing
+- **0.2-0.4**: Exploratory, limited evidence, but necessary for progress
 
-Tasks with confidence <0.2 should not be included (too uncertain to be valuable).
+Tasks with confidence <0.2 should not be included (too speculative).
 
-### Example: "Find SQL injection in login form"
+### Example: Goal "Extract admin user credentials"
 
-**Good decomposition** (5 strategic tasks):
-1. "Enumerate login endpoint and identify input parameters" (confidence: 0.8) - Use webapp_code_rag to find form
-2. "Test login endpoint for SQL injection using common payloads" (confidence: 0.6) - Use send_payload for basic tests
-3. "Analyze responses to identify successful injection patterns" (confidence: 0.7) - Compare baseline vs injected responses
-4. "Validate SQL injection by extracting database information" (confidence: 0.5) - Use run_python_file for multi-stage extraction
-5. "Document findings with proof-of-concept exploit" (confidence: 0.8) - Compile results with working exploit
+**Good decomposition** (goal-connected):
+1. "Find authentication endpoints and credential storage patterns" (0.8)
+   - Goal connection: Must understand where/how credentials are stored to extract them
+2. "Discover admin user identifiers and access patterns" (0.7)
+   - Goal connection: Need to identify which user is admin to target extraction
+3. "Test authorization on admin-related endpoints" (0.6)
+   - Goal connection: IDOR or auth bypass could expose admin credentials
+4. "Exploit most promising vulnerability to access admin data" (0.5)
+   - Goal connection: Direct path to credential extraction
+5. "Validate extracted credentials achieve admin access" (0.7)
+   - Goal connection: Confirms goal achievement with proof
 
-**Bad decomposition** (too granular):
-1. ❌ "Send GET request to /login"
-2. ❌ "Read response body"
-3. ❌ "Parse HTML form"
-4. ❌ "Extract input field names"
-5. ❌ "Try single quote payload"
+**Bad decomposition** (no goal connection):
+1. ❌ "Enumerate all endpoints" (generic, not goal-focused)
+2. ❌ "Test for SQL injection" (why? how does this help the goal?)
+3. ❌ "Check security headers" (defensive assessment, not exploitation)
+4. ❌ "Review OWASP Top 10 categories" (framework exercise, not goal path)
 
-(These are execution steps, not strategic tasks)
+### Output Format
 
-### Task Output Format
-
-Return tasks as structured list with all required fields. Keep descriptions concise (2-3 sentences max per task).
+Return tasks as structured list. Keep descriptions concise (2-3 sentences max).
+Every task must have explicit `goal_connection` field.

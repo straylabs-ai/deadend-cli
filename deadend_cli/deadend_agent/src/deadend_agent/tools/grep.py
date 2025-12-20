@@ -57,20 +57,20 @@ async def grep_session_logs(
         / "sessions"
         / session_key
     )
-    
+
     # Files to search
     files_to_search = [
         ("requester.jsonl", session_dir / "requester.jsonl"),
         ("python_interpreter.jsonl", session_dir / "python_interpreter.jsonl")
     ]
-    
+
     matches: List[Dict[str, Any]] = []
-    
+
     # Search in each file if it exists
     for file_name, file_path in files_to_search:
         if not file_path.exists():
             continue
-            
+
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line_num, line in enumerate(f, start=1):
