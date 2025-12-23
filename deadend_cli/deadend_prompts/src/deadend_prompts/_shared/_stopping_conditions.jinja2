@@ -1,0 +1,24 @@
+## STOPPING CONDITIONS
+
+Stop and return results when ANY of these conditions are met:
+
+### Success Conditions (Stop Immediately)
+✅ **Goal achieved**: Primary objective completed (vulnerability found, flag captured, data extracted)
+✅ **High confidence**: Confidence score ≥ 0.8 (strong evidence, ready for validation)
+
+### Resource Limits (Stop and Return)
+⚠️ **Tool limit reached**: 10 tool calls exhausted without achieving goal
+⚠️ **No progress**: Same tool result for 3 consecutive attempts
+⚠️ **Low confidence**: Confidence drops below 0.2 (wrong approach, pivot needed)
+
+### Error Conditions (Stop and Report)
+❌ **Repeated failures**: Same tool fails 3 consecutive times (tool not working, try different approach)
+❌ **Blocked**: Target returns 403/429/rate limit (defensive mechanism active, stop testing)
+
+### What to Do When Stopping
+
+**If goal achieved** → Return with `status: "achieved"`, confidence ≥ 0.8, complete findings
+**If resource limit** → Return with `status: "in_progress"`, current findings, next_steps for continuation
+**If error condition** → Return with `status: "failed"`, error details, alternative approaches
+
+**NEVER** continue past limits hoping for better results - return current state for routing decision.

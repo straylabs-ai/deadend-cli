@@ -17,9 +17,20 @@ from .python_interpreter import PythonInterpreter
 
 
 async def read_auth_storage(ctx: str) -> str:
-    """Return the JSON contents of storage.json for the given session."""
+    """Return the JSON contents of storage.json for the given session.
+
+    If the storage file doesn't exist, returns an empty JSON object instead
+    of raising an error, allowing the agent to continue without auth context.
+
+    Args:
+        ctx: Session key/identifier used to locate the storage file.
+
+    Returns:
+        str: JSON string containing stored auth data, or '{}' if no storage exists.
+    """
     if not ctx:
-        raise ValueError("session_id is required to read auth storage.")
+        # Return empty object instead of raising - let agent proceed without auth
+        return '{"note": "No session_id provided, no auth storage available"}'
 
     storage_file = (
         Path.home()
@@ -31,10 +42,16 @@ async def read_auth_storage(ctx: str) -> str:
         / "storage.json"
     )
     print(f"storage file in read_auth_storage {storage_file}")
+
     if not storage_file.exists():
-        raise FileNotFoundError(
-            f"storage.json not found for session {ctx}: {storage_file}"
-        )
+        # Return informative empty response instead of raising error
+        print(f"[INFO] storage.json not found for session {ctx}, proceeding without auth context")
+        return json.dumps({
+            "note": f"No auth storage found for session {ctx}",
+            "cookies": [],
+            "tokens": [],
+            "credentials": []
+        })
 
     try:
         data = storage_file.read_text(encoding="utf-8")
@@ -43,7 +60,14 @@ async def read_auth_storage(ctx: str) -> str:
         json.loads(data)
         return data
     except json.JSONDecodeError as exc:
-        raise ValueError(f"storage.json for {ctx} is not valid JSON") from exc
+        # Return error info instead of raising - let agent handle it
+        print(f"[WARNING] storage.json for {ctx} is not valid JSON: {exc}")
+        return json.dumps({
+            "error": f"Invalid JSON in storage.json: {str(exc)}",
+            "cookies": [],
+            "tokens": [],
+            "credentials": []
+        })
 
 async def run_python_file(
     ctx: RunContext[str],

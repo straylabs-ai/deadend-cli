@@ -5,14 +5,14 @@
 from .planner import Planner, PlannerAgent, PlannerOutput, RagDeps
 from .router import RouterAgent, RouterOutput
 from .judge import JudgeAgent, JudgeOutput
-from .factory import AgentRunner
+from .factory import AgentRunner, AgentOutput, ToolAttempt
 from .generic_agents.webapp_recon_agent import WebappReconAgent, RequesterOutput
 from .generic_agents.shell_agent import ShellAgent, ShellOutput
 from .generic_agents.python_interpreter_agent import PythonInterpreterAgent, PythonInterpreterOutput
 from .generic_agents.request_agent import RequesterAgent, RequesterOutput
 
 __all__ = [
-            "AgentRunner",
+            "AgentRunner", "AgentOutput", "ToolAttempt",
             "Planner", "PlannerAgent", "PlannerOutput", "RagDeps",
             "RouterAgent", "RouterOutput",
             "JudgeOutput", "JudgeAgent",

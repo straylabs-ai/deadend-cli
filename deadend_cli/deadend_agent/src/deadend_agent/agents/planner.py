@@ -15,14 +15,11 @@ from deadend_agent.rag.database import EmbedderClient
 from pydantic import BaseModel
 from pydantic_ai import Tool
 from pydantic_ai.usage import RunUsage, UsageLimits
-from openai import AsyncOpenAI
 
-from deadend_agent.utils.structures import Task
 from deadend_agent.agents.factory import AgentRunner
-# from deadend_agent.context import MemoryHandler
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.models.registry import AIModel
-from deadend_agent.utils.structures import RagDeps
+from deadend_agent.utils.structures import RagDeps, Task
 from deadend_agent.tools import webapp_code_rag
 from deadend_prompts import render_agent_instructions,render_tool_description
 

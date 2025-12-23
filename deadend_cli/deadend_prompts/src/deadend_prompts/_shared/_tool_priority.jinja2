@@ -1,0 +1,77 @@
+## TOOL SELECTION PRIORITY
+
+Choose the most efficient tool for each task type. Prefer specialized tools over generic ones.
+
+### HTTP Request Testing
+
+**Single payload test** (1-5 requests):
+1. `send_payload` - Specialized for single request testing
+2. `requester` - Use if you need raw HTTP control
+
+**Batch testing** (10-1000 requests):
+1. `run_python_file` - Write Python script for deterministic fuzzing
+2. `send_payload` - Only if batch tool unavailable
+
+**High-volume fuzzing** (>1000 requests):
+1. `sandboxed_shell_tool` + specialized fuzzing tools (ffuf, gobuster)
+2. `run_python_file` - For custom fuzzing logic
+
+### Code Analysis
+
+**Semantic search** (finding patterns, endpoints):
+1. `webapp_code_rag` - Semantic search over indexed code
+2. `grep_session_logs` - If searching previous tool outputs
+
+**Pattern matching** (regex, specific strings):
+1. `grep_session_logs` - Search session history
+2. `webapp_code_rag` - If pattern is in indexed code
+
+**File reading** (specific files):
+1. `source_code_browser` - Direct file access
+2. `webapp_code_rag` - If file is indexed
+
+### Reconnaissance
+
+**Web reconnaissance** (forms, endpoints, architecture):
+1. `webapp_code_rag` - Fast, no HTTP requests, pre-indexed
+2. `send_payload` - For real-time verification
+3. `run_python_file` - For complex analysis
+
+**System reconnaissance** (ports, services, infrastructure):
+1. `sandboxed_shell_tool` - Use nmap, masscan, specialized tools
+2. `run_python_file` - Only if shell tools insufficient
+
+### Exploitation
+
+**Simple exploits** (single payload):
+1. `send_payload` - Direct HTTP request
+2. `requester` - If need raw control
+
+**Complex exploits** (multi-stage, timing, logic):
+1. `run_python_file` - Full control, complex logic
+2. `send_payload` - For individual stages
+
+**System exploits** (command execution, file operations):
+1. `sandboxed_shell_tool` - Use appropriate security tools
+2. `run_python_file` - If shell tools insufficient
+
+### Decision Tree
+
+```
+Need to make HTTP request?
+├─ Single test → send_payload
+├─ Batch (10-1000) → run_python_file
+└─ High-volume (>1000) → sandboxed_shell_tool (ffuf/gobuster)
+
+Need to search code?
+├─ Semantic/pattern → webapp_code_rag
+├─ Previous results → grep_session_logs
+└─ Specific file → source_code_browser
+
+Need to exploit?
+├─ Simple (1 payload) → send_payload
+├─ Complex (multi-stage) → run_python_file
+└─ System-level → sandboxed_shell_tool
+```
+
+**Rule**: Start with specialized tool, escalate to generic only if specialized fails.

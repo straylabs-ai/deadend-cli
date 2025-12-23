@@ -10,6 +10,7 @@ network scanning, file system analysis, and other command-line security tools
 for comprehensive security assessments.
 """
 from typing import Any
+from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
@@ -18,11 +19,49 @@ from deadend_agent.tools import sandboxed_shell_tool
 from deadend_prompts import render_agent_instructions, render_tool_description
 
 
+class ExecutedCommand(BaseModel):
+    """Record of a shell command executed with its outcome.
+
+    Attributes:
+        command: The exact command executed
+        target: What was targeted (endpoint, host, port)
+        purpose: Why this command was run (e.g., "port scan", "dir bruteforce")
+        result: What happened (success, failed, timeout, no_results)
+        key_output: Most important part of the output
+        why_failed: Explanation if it didn't work
+    """
+    command: str
+    target: str
+    purpose: str
+    result: str  # success, failed, timeout, no_results
+    key_output: str = ""
+    why_failed: str = ""
+
+
 class ShellOutput(AgentOutput):
+    """Output model for shell agent execution results.
+
+    Captures comprehensive shell command execution details for downstream
+    agents to learn from.
+
+    Attributes:
+        objective: The objective/goal of the shell command
+        stdin: The primary command that was executed
+        stdout: Standard output from the command
+        stderr: Standard error from the command
+        commands_executed: List of all commands run with outcomes
+        key_findings: Most important discovery from this execution
+        next_steps: Suggested next actions based on findings
+        attempts: (inherited) List of all tool calls made during agent run
+        thought_summary: (inherited) Concise summary of agent's key insight
+    """
     objective: str
     stdin: str
     stdout: str
     stderr: str
+    commands_executed: list[ExecutedCommand] = []
+    key_findings: str = ""
+    next_steps: str = ""
 
 class ShellAgent(AgentRunner):
     """

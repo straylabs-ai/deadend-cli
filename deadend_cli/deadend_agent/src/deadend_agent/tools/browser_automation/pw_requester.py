@@ -7,6 +7,28 @@ from playwright.async_api import APIRequestContext, async_playwright
 from playwright._impl._api_structures import OriginState
 from .http_parser import analyze_http_request_text
 
+
+class HTTPRequestParseError(Exception):
+    """Exception raised when HTTP request parsing fails.
+    
+    Attributes:
+        message: Human-readable error message describing the parsing failure.
+        error_type: Type of error that occurred (ValueError, IndexError, AttributeError).
+        raw_request: The raw request string that failed to parse.
+        context: Additional context about where parsing failed.
+    """
+    def __init__(self, message: str, error_type: str, raw_request: str, context: str = ""):
+        self.message = message
+        self.error_type = error_type
+        self.raw_request = raw_request
+        self.context = context
+        super().__init__(self.message)
+    
+    def __str__(self) -> str:
+        context_info = f" ({self.context})" if self.context else ""
+        return f"{self.message}{context_info}"
+
+
 class PlaywrightRequester:
     """
     Enhanced HTTP request handler using Playwright with headless browser.
@@ -127,7 +149,7 @@ class PlaywrightRequester:
         path_storage = await Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_id
         await path_storage.mkdir(parents=True, exist_ok=True)
         storage_file = path_storage / "storage.json"
-        print(f"the storage file is : {storage_file}")
+        # print(f"the storage file is : {storage_file}")
         return str(storage_file)
 
     async def _get_persistent_page(self, domain: str | None = None):
@@ -239,12 +261,21 @@ class PlaywrightRequester:
                 "Invalid HTTP request. The following issues were found:\n"
                 f"{reason}\n\n--- Raw Request ---\n{request_data}"
             )
-            yield error_message
+            # yield error_message
 
         # Parse the raw HTTP request
         parsed_request = self._parse_raw_request(request_data)
-        if parsed_request is None:
-            yield "Failed to parse HTTP request"
+        if 'error' in parsed_request:
+            error_info = parsed_request['error']
+            error_message = (
+                f"HTTP Request Parse Error\n"
+                f"Type: {error_info['type']}\n"
+                f"Message: {error_info['message']}\n"
+                f"Context: {error_info['context']}\n"
+                f"Raw Request:\n{error_info['raw_request']}\n"
+                f"Structured Error (JSON):\n{json.dumps({'error': error_info}, indent=2)}"
+            )
+            yield error_message
             return
 
         yield request_data
@@ -373,22 +404,22 @@ class PlaywrightRequester:
             formatted_initial_response = await self._format_response(initial_response)
             initial_response_bytes = formatted_initial_response.encode('utf-8') \
                 if isinstance(formatted_initial_response, str) else formatted_initial_response
-            
+
             # Add a separator to distinguish between responses
             separator = b"\r\n\r\n=== FOLLOWING REDIRECTS ===\r\n\r\n" if is_redirect else b""
-            
+
             # Then return the final response (with redirects if applicable)
             formatted_final_response = await self._format_response(response)
             final_response_bytes = formatted_final_response.encode('utf-8') \
                 if isinstance(formatted_final_response, str) else formatted_final_response
-            
+
             # Combine both responses
             if is_redirect:
                 combined_response = initial_response_bytes + separator + final_response_bytes
             else:
                 # If no redirect, just return the initial response
                 combined_response = initial_response_bytes
-            
+
             yield combined_response
 
         except Exception as e:
@@ -397,7 +428,7 @@ class PlaywrightRequester:
             yield error_message.encode('utf-8')
 
 
-    def _parse_raw_request(self, raw_request: str) -> Dict[str, Any] | None:
+    def _parse_raw_request(self, raw_request: str) -> Dict[str, Any]:
         """
         Parse raw HTTP request string into components.
         
@@ -405,18 +436,41 @@ class PlaywrightRequester:
             raw_request (str): Raw HTTP request string
             
         Returns:
-            Optional[Dict[str, Any]]: Parsed request components or None if invalid
+            Dict[str, Any]: On success, returns dict with keys: method, path, headers, body.
+                           On error, returns dict with 'error' key containing error details:
+                           {
+                               'error': {
+                                   'type': str,  # Error type (e.g., 'ValueError', 'InvalidRequestLine')
+                                   'message': str,  # Human-readable error message
+                                   'context': str,  # Additional context about where parsing failed
+                                   'raw_request': str  # The original request that failed to parse
+                               }
+                           }
         """
         try:
             lines = raw_request.strip().split('\r\n')
             if not lines:
-                return None
+                return {
+                    'error': {
+                        'type': 'EmptyRequest',
+                        'message': 'Empty request: No lines found in request',
+                        'context': 'Request string is empty or contains only whitespace',
+                        'raw_request': raw_request
+                    }
+                }
 
             # Parse request line
             request_line = lines[0]
             parts = request_line.split(' ', 2)
             if len(parts) < 2:
-                return None
+                return {
+                    'error': {
+                        'type': 'InvalidRequestLine',
+                        'message': f"Invalid request line: Expected 'METHOD PATH [HTTP_VERSION]' format, got '{request_line}'",
+                        'context': 'Request line must contain at least method and path separated by space',
+                        'raw_request': raw_request
+                    }
+                }
 
             method = parts[0]
             path = parts[1]
@@ -430,8 +484,18 @@ class PlaywrightRequester:
                     body_start = i + 1
                     break
                 if ':' in line:
-                    key, value = line.split(':', 1)
-                    headers[key.strip()] = value.strip()
+                    try:
+                        key, value = line.split(':', 1)
+                        headers[key.strip()] = value.strip()
+                    except ValueError:
+                        return {
+                            'error': {
+                                'type': 'InvalidHeader',
+                                'message': f"Invalid header format: '{line}'",
+                                'context': f"Header at line {i+1} is malformed. Expected 'Key: Value' format",
+                                'raw_request': raw_request
+                            }
+                        }
             # Extract body
             body = '\r\n'.join(lines[body_start:]) if body_start < len(lines) else ''
 
@@ -442,8 +506,33 @@ class PlaywrightRequester:
                 'body': body
             }
 
-        except (ValueError, IndexError, AttributeError):
-            return None
+        except ValueError as e:
+            return {
+                'error': {
+                    'type': 'ValueError',
+                    'message': f"Value error during parsing: {str(e)}",
+                    'context': 'Failed to parse a value (e.g., splitting a string, converting a type)',
+                    'raw_request': raw_request
+                }
+            }
+        except IndexError as e:
+            return {
+                'error': {
+                    'type': 'IndexError',
+                    'message': f"Index error during parsing: {str(e)}",
+                    'context': 'Attempted to access an index that doesn\'t exist (e.g., accessing parts[1] when parts has only 1 element)',
+                    'raw_request': raw_request
+                }
+            }
+        except AttributeError as e:
+            return {
+                'error': {
+                    'type': 'AttributeError',
+                    'message': f"Attribute error during parsing: {str(e)}",
+                    'context': 'Attempted to access an attribute that doesn\'t exist on an object',
+                    'raw_request': raw_request
+                }
+            }
 
     async def _send_request(self, method: str, url: str, headers: Dict[str, str],
                           body: str, follow_redirects: bool = True,

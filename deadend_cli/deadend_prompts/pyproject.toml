@@ -1,7 +1,7 @@
 [project]
 name = "deadend-prompts"
 dynamic = ["version"]
-description = "Add your description here"
+description = "Prompts for the agents."
 readme = "README.md"
 authors = [
     { name = "Yassine Bargach", email = "bargach.y@gmail.com" }
@@ -15,6 +15,7 @@ dependencies = [
 include = [
     "./*.jinja2",
     "./tools/*.jinja2",
+    "./_shared/*.jinja2"
 ]
 
 

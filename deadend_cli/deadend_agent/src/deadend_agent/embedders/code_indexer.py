@@ -15,7 +15,7 @@ import uuid
 from uuid import uuid4
 from pathlib import Path
 from typing import List
-from openai import AsyncOpenAI
+
 from deadend_agent.rag.database import CodeSection
 from deadend_agent.tools.web_resource_extractor import WebResourceExtractor
 from deadend_agent.code_indexer.code_splitter import Chunker
@@ -66,7 +66,7 @@ class SourceCodeIndexer:
         """
         self.resources = await self.crawler.extract_all_resources(
             url=self.target,
-            wait_time=3,
+            wait_time=10,
             screenshot=False,
             download_resources=True,
             download_path=str(self.source_code_path)
@@ -165,7 +165,8 @@ class SourceCodeIndexer:
                                 title=file,
                                 chunks=file_chunks
                             )
-                            code_sections.extend(new_cs)
+                            if new_cs is not None:
+                                code_sections.extend(new_cs)
 
                     elif file.endswith("html"):
                         code_chunker = Chunker(
@@ -183,7 +184,8 @@ class SourceCodeIndexer:
                                 title=file,
                                 chunks=file_chunks
                             )
-                            code_sections.extend(new_cs)
+                            if new_cs is not None:
+                                code_sections.extend(new_cs)
                     else:
                         files_ignored.append(file)
         return code_sections
@@ -202,7 +204,7 @@ class SourceCodeIndexer:
         and generates embeddings using the optimized batch embedding utility.
         
         Args:
-            openai (AsyncOpenAI): Configured OpenAI client instance
+            embedding_client : Configured embedder client instance
             embedding_model (str): Name of the embedding model to use
             url_path (str): URL path where the file was found
             title (str): Filename or title for the code section

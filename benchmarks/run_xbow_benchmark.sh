@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks/benchmarks"
+XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks-corrected/benchmarks"
 METADATA_FILENAME="eval_metadata_file.json"
 
 usage() {
@@ -18,6 +18,31 @@ require_cmd() {
         echo "Missing required command: $cmd" >&2
         exit 1
     }
+}
+
+run_with_network_prune() {
+    local max_retries=2
+    local retry_count=0
+    
+    while (( retry_count <= max_retries )); do
+        if output=$("$@" 2>&1); then
+            echo "$output"
+            return 0
+        fi
+        
+        if echo "$output" | grep -q "all predefined address pools have been fully subnetted"; then
+            echo "[!] Docker network pool exhausted, pruning unused networks..." >&2
+            docker network prune -f >/dev/null 2>&1 || true
+            retry_count=$((retry_count + 1))
+            if (( retry_count <= max_retries )); then
+                echo "[+] Retrying after network prune (attempt $retry_count/$max_retries)..." >&2
+                continue
+            fi
+        fi
+        
+        echo "$output" >&2
+        return 1
+    done
 }
 
 if [[ $# -ne 1 ]]; then
@@ -57,11 +82,30 @@ win_condition="$(jq -r '.win_condition // "flag"' "$BENCH_JSON")"
 subtasks_json="$(jq '.subtasks // []' "$BENCH_JSON")"
 
 echo "[+] Building $BENCH_SLUG"
-make -C "$BENCH_DIR" build
-echo "[+] Running $BENCH_SLUG"
-make -C "$BENCH_DIR" run
+if ! make -C "$BENCH_DIR" build 2>&1 | tee /tmp/build_output.log; then
+    if grep -q "all predefined address pools have been fully subnetted" /tmp/build_output.log; then
+        echo "[!] Docker network pool exhausted during build, pruning unused networks..."
+        docker network prune -f
+        echo "[+] Retrying build after network prune..."
+        make -C "$BENCH_DIR" build
+    else
+        exit 1
+    fi
+fi
 
-compose_json="$(cd "$BENCH_DIR" && docker compose ps --format json)"
+echo "[+] Running $BENCH_SLUG"
+if ! make -C "$BENCH_DIR" run 2>&1 | tee /tmp/run_output.log; then
+    if grep -q "all predefined address pools have been fully subnetted" /tmp/run_output.log; then
+        echo "[!] Docker network pool exhausted during run, pruning unused networks..."
+        docker network prune -f
+        echo "[+] Retrying run after network prune..."
+        make -C "$BENCH_DIR" run
+    else
+        exit 1
+    fi
+fi
+
+compose_json="$(cd "$BENCH_DIR" && run_with_network_prune docker compose ps --format json)"
 
 host=""
 host_port=""
@@ -105,7 +149,7 @@ if [[ -z "$host_port" ]]; then
     resolve_port() {
         local service="$1"
         local port="$2"
-        cd "$BENCH_DIR" && docker compose port "$service" "$port" 2>/dev/null | head -n 1 || true
+        cd "$BENCH_DIR" && run_with_network_prune docker compose port "$service" "$port" 2>/dev/null | head -n 1 || true
     }
 
     if [[ -n "$candidate_ports" ]]; then
@@ -121,7 +165,7 @@ if [[ -z "$host_port" ]]; then
     fi
 
     if [[ -z "$host_port" ]]; then
-        compose_services="$(cd "$BENCH_DIR" && docker compose config --services)"
+        compose_services="$(cd "$BENCH_DIR" && run_with_network_prune docker compose config --services)"
         if [[ -z "$compose_services" ]]; then
             echo "Unable to determine docker compose services for port resolution." >&2
             exit 1
@@ -149,17 +193,13 @@ fi
 
 target_host="$host:$host_port"
 
-env_file="$BENCH_DIR/.env"
-if [[ ! -f "$env_file" ]]; then
-    echo "Expected to find $env_file after starting the benchmark." >&2
-    exit 1
-fi
-
-solution="$(grep -E '^FLAG=' "$env_file" | tail -n 1 | cut -d'=' -f2-)"
-if [[ -z "$solution" ]]; then
-    echo "FLAG entry not found inside $env_file" >&2
-    exit 1
-fi
+# Generate flag the same way as common.mk:
+# 1. Convert benchmark name to uppercase
+# 2. Compute SHA256 hash
+# 3. Format as FLAG{hash}
+benchmark_upper="$(echo "$BENCH_SLUG" | tr '[:lower:]' '[:upper:]')"
+flag_hash="$(echo -n "$benchmark_upper" | openssl sha256 -r | cut -d' ' -f1)"
+solution="FLAG{$flag_hash}"
 
 metadata="$(jq -n \
     --arg name "${name:-$BENCH_SLUG}" \
@@ -195,9 +235,11 @@ echo "[+] Benchmark ready at $target_host"
 echo "[+] Launching eval agent with uv run"
 (
     cd "$REPO_ROOT/deadend_cli/src/deadend_cli" && \
-    uv run main.py eval-agent --eval-metadata-file "$META_FILE" --llm-providers openrouter
+    uv run main.py eval-agent --eval-metadata-file "$META_FILE" --llm-providers local
 )
 
 echo "[+] Stopping benchmark services with make stop"
 make -C "$BENCH_DIR" stop
+
+rm -f /tmp/build_output.log /tmp/run_output.log
 

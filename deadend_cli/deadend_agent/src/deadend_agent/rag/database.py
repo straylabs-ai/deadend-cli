@@ -16,7 +16,6 @@ import asyncpg
 from deadend_agent.models.registry import EmbedderClient
 from openai import AsyncOpenAI, BadRequestError
 from rich.pretty import pprint
-from sqlalchemy import Float
 from typing_extensions import AsyncGenerator
 
 
@@ -80,7 +79,7 @@ class CodeSection:
         url_path: URL or file path where the code section is located.
         title: Descriptive title for the code section.
         content: Dictionary containing the actual code content.
-        embeddings: Vector embeddings for semantic search (1536 dimensions).
+        embeddings: Vector embeddings for semantic search (4096 dimensions).
     """
     url_path: str
     title: str
@@ -138,8 +137,8 @@ CREATE TABLE IF NOT EXISTS code_sections (
     url text NOT NULL,
     title text NOT NULL,
     content text NOT NULL,
-    -- text-embedding-3-small returns a vector of 1536 floats
-    embedding vector(1536) NOT NULL
+    --  returns a vector of 4096 floats
+    embedding vector(4096) NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_code_sections_embedding ON code_sections USING hnsw (embedding vector_l2_ops);
 """
@@ -155,40 +154,3 @@ async def create_db():
         async with pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(DB_SCHEMA)
-        
-# TODO : The embedding model is now fixed to OpenAI, should change that
-# in the future.
-async def insert_code_section(
-    sem: asyncio.Semaphore,
-    openai: AsyncOpenAI,
-    pool: asyncpg.Pool,
-    code_section: CodeSection
-):
-    """Insert a code section into the database.
-    
-    Args:
-        sem: Semaphore to limit concurrent database operations.
-        openai: OpenAI client for embedding generation.
-        pool: Database connection pool.
-        code_section: Code section to insert.
-        
-    Note:
-        This function is currently incomplete and needs implementation.
-    """
-    async with sem: 
-        # Checking if the code section exists
-        exists = await pool.fetchval("SELECT content from ")
-
-async def insert_file_chunks():
-    """Insert file chunks into the database.
-    
-    Note:
-        This function is a placeholder and needs implementation.
-    """
-
-async def search():
-    """Search for code sections using semantic similarity.
-    
-    Note:
-        This function is a placeholder and needs implementation.
-    """

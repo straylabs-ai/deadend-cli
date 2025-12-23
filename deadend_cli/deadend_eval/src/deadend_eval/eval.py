@@ -9,23 +9,25 @@ security research capabilities, and workflow effectiveness using various
 evaluation metrics and testing scenarios.
 """
 
-from deadend_agent.models.registry import EmbedderClient
-import docker
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
-from pydantic import BaseModel, Field
-from pydantic_evals.evaluators import Evaluator
 from uuid import uuid4
-from rich import print as console_printer
+import docker
+from pydantic import BaseModel, Field
 from deadend_agent import (
     AIModel,
-    Config,
     RetrievalDatabaseConnector,
     Sandbox,
     DeadEndAgent
 )
-from deadend_eval.metrics import instrument_agent_runner, global_metrics, metrics_to_markdown
+from deadend_agent.models.registry import EmbedderClient
+from deadend_eval.metrics import (
+    instrument_agent_runner,
+    global_metrics,
+    metrics_to_markdown,
+    metrics_to_json
+)
 
 class Subtask(BaseModel):
     """Represents a single subtask in a guided evaluation workflow.
@@ -79,7 +81,6 @@ async def eval_deadend_agent(
         model: AIModel,
         embedder_client: EmbedderClient,
         # evaluators: list[Evaluator],
-        config: Config,
         code_indexer_db: RetrievalDatabaseConnector,
         sandbox: Sandbox,
         eval_metadata: EvalMetadata,
@@ -134,7 +135,7 @@ async def eval_deadend_agent(
     generic_agents = {
         'requester': "Agent specialized in fine-grained testing and sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites. Best for gathering auth tokens, testing individual endpoints, and precise request manipulation. Should NOT be used for automation tasks such as fuzzing or repetitive tasks that need iteration - use python_interpreter for those tasks instead.",
         'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly. Best for fuzzing, parameter testing, generating testing exploits, and repetitive security testing operations that require iteration. Use this agent for tasks that need automation, loops, or multiple iterations.",
-        'shell': "Agent that gives access to a terminal bash shell. Run linux commands here.",
+        'shell': "Agent that gives access to a terminal bash shell. Run linux commands here. DO NOT have access to target source code.",
         'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
     }
 
@@ -171,6 +172,8 @@ async def eval_deadend_agent(
         available_agents=generic_agents,
         max_depth=2
     )
+    # Set challenge name for trace file naming
+    deadend_agent.challenge_name = eval_metadata.name
 
     if with_code_indexing:
         deadend_agent.init_webtarget_indexer(target_host)
@@ -188,23 +191,51 @@ async def eval_deadend_agent(
         sandbox=sandbox,
         target=target_host
     )
-    plan, threat_model_data = await deadend_agent.threat_model(task=prompt)
+    solved = False
+    plan, threat_model_data, validation_token = await deadend_agent.threat_model(task=prompt)
+    if validation_token and len(validation_token) > 1 and eval_metadata.solution:
+        solved = (validation_token == eval_metadata.solution)
+        print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
+    else:
+        print("Validation check: Continuing to the exploitation phase.")
 
-    # agent_work = await deadend_agent.run_exploitation(threat_model=plan, task=prompt_goal)
     print(f"Plan produced is : {plan}")
-    print(f"Threat model is :\n{threat_model_data}")
+    if threat_model_data.output:
+        print(f"Threat model is :\n{threat_model_data.output}")
+        threat_model_computed = threat_model_data.output.summarized_context
+    else:
+        print(f"Threat model is :\n{threat_model_data[0].parts[0].content}")
+        threat_model_computed = threat_model_data[0].parts[0].content
+    if not solved:
+        if len(validation_token) > 1:
+            threat_model_computed += f"## Important NOTE\nThe flag found previously \
+                {validation_token} is false and is not the right response. Find another way."
 
-    plan = await deadend_agent.run_exploitation(threat_model=threat_model_data.output.summarized_context, task=prompt)
-
+        plan, validation_token = await deadend_agent.run_exploitation(threat_model=threat_model_computed, task=prompt)
+        if validation_token and len(validation_token) > 1 and eval_metadata.solution:
+            solved = (validation_token == eval_metadata.solution)
+            print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
+        else:
+            print("Validation check: FLAG NOT FOUND.")
     # Render and persist metrics for the end user.
     metrics_md = metrics_to_markdown(global_metrics, eval_metadata.model_dump())
+    metrics_json = metrics_to_json(global_metrics, eval_metadata.model_dump())
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    metrics_path = Path.cwd() / f"deadend_metrics_{timestamp}.md"
-    metrics_path.write_text(metrics_md, encoding="utf-8")
-    print(f"Deadend metrics summary written to {metrics_path}")
+
+    # Create .cache/deadend/eval_metrics directory if it doesn't exist
+    metrics_dir = Path.home() / ".cache" / "deadend" / "eval_metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write both markdown and JSON files
+    metrics_md_path = metrics_dir / f"deadend_metrics_{timestamp}.md"
+    metrics_json_path = metrics_dir / f"deadend_metrics_{timestamp}.json"
+
+    metrics_md_path.write_text(metrics_md, encoding="utf-8")
+    metrics_json_path.write_text(metrics_json, encoding="utf-8")
+
+    print(f"Deadend metrics summary written to {metrics_md_path}")
+    print(f"Deadend metrics JSON written to {metrics_json_path}")
     print(metrics_md)
-
-
     # case if not guided, i.e. not using subtasks
     # if not guided:
     #     judge_output = await workflow_agent.start_workflow(

@@ -9,6 +9,7 @@ vulnerability assessment, and exploit development, then executes the code in a
 sandboxed WebAssembly-based Python interpreter environment.
 """
 from typing import Any
+from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 # from deadend_agent.context import MemoryHandler
@@ -17,22 +18,44 @@ from deadend_agent.agents.factory import AgentRunner, AgentOutput
 from deadend_agent.tools import run_python_file, read_auth_storage
 from deadend_prompts import render_agent_instructions, render_tool_description
 
+class TestedTechnique(BaseModel):
+    """Record of a technique/payload tested via Python script.
+
+    Attributes:
+        technique: What was tested (e.g., "SSTI via {{7*7}}", "SQLi UNION")
+        endpoint: Target endpoint tested
+        payload: The actual payload used
+        result: What happened (success, blocked, error, no_effect)
+        why_failed: Explanation of why it didn't work (if failed)
+        response_indicator: Key response indicator (status code, output pattern)
+    """
+    technique: str
+    endpoint: str
+    payload: str = ""
+    result: str  # success, blocked, error, no_effect
+    why_failed: str = ""
+    response_indicator: str = ""
+
+
 class PythonInterpreterOutput(AgentOutput):
     """Output model for Python interpreter agent execution results.
-    
-    Captures the results of Python script execution including the script's
-    standard output, standard error, and metadata about the security testing
-    attempt.
-    
+
+    Captures comprehensive results of Python script execution for downstream
+    agents to learn from.
+
     Attributes:
-        filename: Name of the Python script file that was executed.
-        goal: The security testing goal that the script was designed to achieve.
-        reasoning: The agent's reasoning for generating and executing the script.
-        vulnerability_category: Category of vulnerability being tested
-            (e.g., "SQL Injection", "XSS").
-        attempt: Description of the security testing attempt or approach.
-        script_stdout: Standard output from the Python script execution.
-        script_stderr: Standard error output from the Python script execution.
+        filename: Name of the Python script file that was executed
+        goal: The security testing goal the script was designed to achieve
+        reasoning: The agent's reasoning for the approach taken
+        vulnerability_category: Category of vulnerability tested (SQLi, XSS, SSTI, etc.)
+        attempt: Description of the security testing attempt
+        script_stdout: Standard output from Python script execution
+        script_stderr: Standard error output from Python script execution
+        techniques_tested: List of techniques tested with outcomes
+        key_findings: Most important discovery from this execution
+        next_steps: Suggested next actions based on findings
+        attempts: (inherited) List of all tool calls made during agent run
+        thought_summary: (inherited) Concise summary of agent's key insight
     """
     filename: str
     goal: str
@@ -41,6 +64,9 @@ class PythonInterpreterOutput(AgentOutput):
     attempt: str
     script_stdout: str
     script_stderr: str
+    techniques_tested: list[TestedTechnique] = []
+    key_findings: str = ""
+    next_steps: str = ""
 
 
 class PythonInterpreterAgent(AgentRunner):
@@ -120,9 +146,10 @@ class PythonInterpreterAgent(AgentRunner):
             AgentRunResult containing the PythonInterpreterOutput with execution results.
         """
         auth_info = await read_auth_storage(ctx=session_key)
-        prompt_with_auth = f"""Auth info :
+        prompt_with_auth = f"""\
+# Authentication, cookies and other information retrieved from previous tasks
 {str(auth_info)}
-You task is :
+# Objective and context
 {prompt}
 """
         print(f"deps are : {deps}")

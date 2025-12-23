@@ -1,14 +1,17 @@
 """Main DeadEnd agent orchestration module."""
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
-from openai import AsyncOpenAI
+import io
+import sys
+from contextlib import redirect_stdout
+
 from pydantic_ai import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel, EmbedderClient
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox
-from deadend_agent.agents.reporter import ReporterAgent, ReporterOutput
+from deadend_agent.agents.reporter import ReporterAgent
 from deadend_agent.agents.architecture import (
     ADaPTAgent,
     AgentExecutor,
@@ -25,6 +28,28 @@ from deadend_agent.utils.structures import (
 from deadend_agent.tools.browser_automation.http_parser import extract_host_port
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
 from .agents.exploit_web_agent import PlannerExploitAgent
+from deadend_eval.metrics import save_traces
+
+
+class _StdoutTee(io.TextIOBase):
+    """Simple tee that writes to multiple text streams.
+
+    Used to capture everything printed to stdout while still echoing it
+    to the original terminal.
+    """
+
+    def __init__(self, *streams: io.TextIOBase) -> None:
+        self._streams = streams
+
+    def write(self, s: str) -> int:  # type: ignore[override]
+        for stream in self._streams:
+            stream.write(s)
+            stream.flush()
+        return len(s)
+
+    def flush(self) -> None:  # type: ignore[override]
+        for stream in self._streams:
+            stream.flush()
 
 ApprovalCallback = Callable[..., Awaitable[str]]
 
@@ -51,6 +76,7 @@ class DeadEndAgent:
     shell_deps: ShellDeps | None = None
     requester_deps: RequesterDeps | None = None
     webapprecon_deps: WebappreconDeps | None = None
+    challenge_name: str | None = None
 
 
     def __init__(
@@ -58,13 +84,19 @@ class DeadEndAgent:
         session_id: UUID,
         model: AIModel,
         available_agents: Dict[str, str],
-        max_depth: int = 3
+        max_depth: int = 3,
+        validation_type: str | None = None,
+        validation_format: str | None = None
     ):
         self.session_id = session_id
         self.max_depth = max_depth
         self.model = model
         self.available_agents = available_agents
-        self.validator = Validator(model=model)
+        self.validator = Validator(
+            model=model,
+            validation_type=validation_type,
+            validation_format=validation_format
+        )
         self.context = ContextEngine(model=self.model, session_id=session_id)
 
 
@@ -182,7 +214,7 @@ class DeadEndAgent:
         if target_host is None:
             raise ValueError("target must be provided before initializing dependencies.")
 
-        
+
         shell_runner = ShellRunner(session=str(self.session_id), sandbox=sandbox)
 
         self.shell_deps = ShellDeps(shell_runner=shell_runner)
@@ -253,16 +285,46 @@ class DeadEndAgent:
             max_depth=1
         )
         plan: TaskNode | None = None
-        async for event in self.adapt_agent.run(task=task):
-            if isinstance(event, dict):
-                if event.get("type") == "result":
-                    root_candidate = event.get("root")
-                    if isinstance(root_candidate, TaskNode):
-                        plan = root_candidate
+        validation_token: str = ""
+        traces: list[str | dict[str, Any]] = []
+
+        # Capture everything printed to stdout during the threat-model run
+        # while still echoing it to the original terminal/stdout.
+        stdout_buffer = io.StringIO()
+        tee = _StdoutTee(sys.stdout, stdout_buffer)
+
+        with redirect_stdout(tee):
+            async for event in self.adapt_agent.run(task=task, exit_strategy=""):
+                # Collect all events for trace saving
+                traces.append(event)
+                if isinstance(event, dict):
+                    if event.get("type") == "result":
+                        root_candidate = event.get("root")
+                        if isinstance(root_candidate, TaskNode):
+                            plan = root_candidate
+                    elif event.get("validation_token"):
+                        validation_token = event.get("validation_token")
+                    else:
+                        print(event.get("message", str(event)))
                 else:
-                    print(event.get("message", str(event)))
-            else:
-                print(str(event))
+                    print(str(event))
+
+        # Add complete stdout log as a final trace entry so the trace file
+        # contains everything that was printed, not just structured events.
+        printed_output = stdout_buffer.getvalue()
+        if printed_output:
+            traces.append({"type": "stdout", "output": printed_output})
+
+        # Save traces to file
+        try:
+            trace_file = save_traces(
+                traces=traces,
+                challenge_name=self.challenge_name,
+            )
+            print(f"Traces saved to: {trace_file}")
+        except Exception as e:
+            print(f"Warning: Failed to save traces: {e}")
+
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
 
@@ -271,12 +333,24 @@ class DeadEndAgent:
             deps_type=None,
             tools=None,
             validation_format="Information",
-            validation_type="threat model"
+            validation_type="security assessment"
         )
         context_text = await self.context.get_all_context()
-        prompt_threat_model = f"From the data that you have, extract a well defined threat model. {context_text}"
+        prompt_assessment = f"""\
+Summarize the security assessment results from the reconnaissance phase.
+
+IMPORTANT:
+- Preserve EXACT working payloads character-for-character
+- Include full HTTP requests that succeeded
+- Include response snippets proving vulnerabilities
+- Document filter bypass techniques with exact encoding used
+- Note validation status (reflected vs executed, needs browser test)
+
+## Assessment Data
+{context_text}
+"""
         threat_model_data = await reporter_agent.run(
-            prompt=prompt_threat_model,
+            prompt=prompt_assessment,
             deps=None,
             usage=RunUsage(),
             usage_limits=UsageLimits(),
@@ -284,7 +358,7 @@ class DeadEndAgent:
             message_history=""
         )
 
-        return plan, threat_model_data
+        return plan, threat_model_data, validation_token
 
     async def threat_model_stream(self, task: str):
         """Execute the threat modeling and orchestration workflow.
@@ -321,7 +395,7 @@ class DeadEndAgent:
             max_depth=1
         )
         plan: TaskNode | None = None
-        async for event in self.adapt_agent.run(task=task):
+        async for event in self.adapt_agent.run(task=task, exit_strategy=""):
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")
@@ -339,12 +413,24 @@ class DeadEndAgent:
             deps_type=None,
             tools=None,
             validation_format="Information",
-            validation_type="threat model"
+            validation_type="security assessment"
         )
         context_text = await self.context.get_all_context()
-        prompt_threat_model = f"From the data that you have, extract a well defined threat model. {context_text}"
+        prompt_assessment = f"""\
+Summarize the security assessment results from the reconnaissance phase.
+
+IMPORTANT:
+- Preserve EXACT working payloads character-for-character
+- Include full HTTP requests that succeeded
+- Include response snippets proving vulnerabilities
+- Document filter bypass techniques with exact encoding used
+- Note validation status (reflected vs executed, needs browser test)
+
+## Assessment Data
+{context_text}
+"""
         threat_model_data = await reporter_agent.run(
-            prompt=prompt_threat_model,
+            prompt=prompt_assessment,
             deps=None,
             usage=RunUsage(),
             usage_limits=UsageLimits(),
@@ -366,9 +452,15 @@ class DeadEndAgent:
             deps_type=str,  # session_key will be passed as string
             target_information=f"{self.target}"
         )
-        # We reset the context to make space and less confusion
-        self.context.reset()
-        
+
+        # IMPORTANT: Preserve previous context (discoveries, exploits) before clearing log
+        # Get unified context which contains confirmed exploits and discoveries
+        previous_context = self.context.get_unified_context(max_tokens=4000)
+
+        # Clear only the execution log, but keep facts and successful attempts
+        # This preserves what worked in reconnaissance for exploitation
+        self.context.structured.clear_current_log()
+
         # Pass session_key as deps for the exploit agent
         self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
         self.adapt_agent = ADaPTAgent(
@@ -380,28 +472,70 @@ class DeadEndAgent:
             max_depth=self.max_depth
         )
         plan: TaskNode | None = None
+
+        # Build task with unified context from reconnaissance
+        # The previous_context contains confirmed exploits and discoveries that should inform exploitation
         task_exploit = f"""
-You final goal is to find a flag that corresponds to the following task : {task}
+### Primary objective
+{task}
+
+### Success validation
 The flag that you need to find has the following format : FLAG{{}}.
-the target is : {self.target}
-The threat model has been done :
+
+### Target
+{self.target}
+
+## Previous Reconnaissance Results
+{previous_context}
+
+## Recon/ Threat model assessment Summary
 {threat_model}
 """
-        async for event in self.adapt_agent.run(task=task_exploit):
-            if isinstance(event, dict):
-                if event.get("type") == "result":
-                    root_candidate = event.get("root")
-                    if isinstance(root_candidate, TaskNode):
-                        plan = root_candidate
+        traces: list[str | dict[str, Any]] = []
+        validation_token = ""
+
+        # Capture everything printed to stdout during the run while still
+        # echoing it to the original terminal/stdout.
+        stdout_buffer = io.StringIO()
+        tee = _StdoutTee(sys.stdout, stdout_buffer)
+
+        with redirect_stdout(tee):
+            async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
+                # Collect all events for trace saving
+                traces.append(event)
+
+                if isinstance(event, dict):
+                    if event.get("type") == "result":
+                        root_candidate = event.get("root")
+                        if isinstance(root_candidate, TaskNode):
+                            plan = root_candidate
+                    elif event.get("validation_token"):
+                        validation_token = event.get("validation_token")
+                    else:
+                        print(event.get("message", str(event)))
                 else:
-                    print(event.get("message", str(event)))
-            else:
-                print(str(event))
+                    print(str(event))
+
+        # Add complete stdout log as a final trace entry so the trace file
+        # contains everything that was printed, not just structured events.
+        printed_output = stdout_buffer.getvalue()
+        if printed_output:
+            traces.append({"type": "stdout", "output": printed_output})
+
+        # Save traces to file
+        try:
+            trace_file = save_traces(
+                traces=traces,
+                challenge_name=self.challenge_name,
+            )
+            print(f"Traces saved to: {trace_file}")
+        except Exception as e:
+            print(f"Warning: Failed to save traces: {e}")
 
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
 
-        return plan
+        return plan, validation_token
 
     async def start_testing_stream(self, threat_model: str, task: str):
         """Runs the exploitation workflow"""
@@ -435,7 +569,7 @@ The flag that you need to find has the following format : FLAG{{}}.
 The threat model has been done :
 {threat_model}
 """
-        async for event in self.adapt_agent.run(task=task_exploit):
+        async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")

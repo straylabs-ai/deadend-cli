@@ -23,6 +23,41 @@ async def eval_interface(
         providers: list[str],
         guided: bool,
     ):
+    """Run evaluation interface for testing AI agent performance.
+
+    This function orchestrates the complete evaluation workflow by:
+    1. Loading and parsing evaluation metadata from a JSON file
+    2. Initializing the model registry and verifying model availability
+    3. Setting up the RAG (Retrieval-Augmented Generation) database for code indexing
+    4. Creating and configuring a sandbox environment for isolated execution
+    5. Configuring monitoring and instrumentation
+    6. Executing the evaluation agent with all required components
+
+    Args:
+        config: Configuration object containing database URLs, model settings,
+            and other runtime configuration.
+        eval_metadata_file: Path to the JSON file containing evaluation metadata,
+            including evaluation steps, target information, and asset paths.
+        providers: List of model provider names to use for evaluation.
+            The first provider in the list will be used for the evaluation.
+        guided: Whether to run the evaluation in guided mode, which may provide
+            additional prompts or step-by-step guidance during execution.
+
+    Raises:
+        RuntimeError: If no language model is configured in the model registry.
+            Suggests running `deadend init` to configure models.
+        SystemExit: If the vector database cannot be accessed (SQLAlchemyError
+            or OSError) or if the sandbox manager cannot be started (RuntimeError
+            or OSError).
+
+    Note:
+        The function automatically:
+        - Enables code indexing and knowledge base features
+        - Configures context engine for enhanced agent capabilities
+        - Disables human intervention for automated evaluation
+        - Outputs evaluation reports to the current directory
+        - Uses a Kali Linux-based sandbox image for execution
+    """
     # Process the evaluation metadata
     # We do so by taking the `eval_metadata_file` and processing it
     # to extract the relevant information about the evaluation and
@@ -55,14 +90,16 @@ async def eval_interface(
     logfire.instrument_pydantic_ai()
 
     # adding automatic build and ask prompt
-    sandbox_id = sandbox_manager.create_sandbox(image="kali_deadend", volume_path=eval_metadata.assets_path)
+    sandbox_id = sandbox_manager.create_sandbox(
+        image="kali_deadend",
+        volume_path=eval_metadata.assets_path
+    )
     sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)
     embedder_client = model_registry.get_embedder_model()
     await eval_deadend_agent(
         model=model_registry.get_model(provider=providers[0]),
         embedder_client=embedder_client,
         # evaluators=[CtfEvaluator],
-        config=config,
         code_indexer_db=rag_db,
         sandbox=sandbox,
         eval_metadata=eval_metadata,
@@ -74,6 +111,4 @@ async def eval_interface(
         output_report="./",
         hard_prompt=False
     )
-    # # Configuring workflow runner
     # for model in models:
-    #     workflow_runner = WorkflowRunner(model=model, config=config, )

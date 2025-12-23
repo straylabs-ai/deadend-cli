@@ -50,6 +50,7 @@ class ModelSettings(BaseSettings):
     anthropic: ModelConfig | None = None
     gemini: ModelConfig | None = None
     openrouter: ModelConfig | None = None
+    local: ModelConfig | None = None
     # Default model to use
     default_provider: str = "openai"
 
@@ -68,6 +69,9 @@ class Config:
     gemini_model_name : str | None = _cfg("GEMINI_MODEL", "gemini-2.5-pro")
     open_router_key: str | None = _cfg("OPEN_ROUTER_API_KEY")
     open_router_model: str | None = _cfg("OPEN_ROUTER_MODEL", "anthropic/claude-4.5-opus")
+    local_model: str | None = _cfg("LOCAL_MODEL", "Kimi-K2-Thinking")
+    local_api_key: str | None = _cfg("LOCAL_API_KEY")
+    local_base_url: str | None = _cfg("LOCAL_BASE_URL")
     # Embedding model
     embedding_model: str | None  = _cfg("EMBEDDING_MODEL")
 
@@ -125,4 +129,10 @@ class Config:
                 model_name=cls.open_router_model
             )
 
+        if cls.local_api_key:
+            model_settings.local = ModelConfig(
+                api_key=cls.local_api_key,
+                model_name=cls.local_model,
+                base_url=cls.local_base_url
+            )
         return model_settings

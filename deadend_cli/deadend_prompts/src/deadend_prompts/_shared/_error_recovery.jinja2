@@ -1,0 +1,73 @@
+## ERROR RECOVERY
+
+When a tool call fails, apply the appropriate recovery pattern based on error type.
+
+### HTTP Status Code Recovery
+
+**400 Bad Request**:
+- Issue: Malformed request syntax
+- Recovery: Validate HTTP format, check headers, verify Content-Type matches body
+- Max retries: 2 (if still fails, payload likely invalid)
+
+**403 Forbidden**:
+- Issue: Endpoint exists but access denied
+- Recovery: Check authentication (use `read_auth_storage`), try different credentials, test auth bypass
+- If still 403: Note as protected endpoint, try alternative approach
+
+**404 Not Found**:
+- Issue: Endpoint doesn't exist
+- Recovery: Do NOT retry same endpoint - it doesn't exist
+- Action: Mark as non-existent, try related endpoints (e.g., /api/users → /api/user)
+
+**429 Rate Limited**:
+- Issue: Too many requests, rate limiting active
+- Recovery: Stop immediately, wait 60s, reduce request rate
+- If persistent: Note as rate-limited, stop testing this endpoint
+
+**500 Server Error**:
+- Issue: Server-side error (possible vulnerability indicator)
+- Recovery: Retry once (may be transient), analyze error message for info disclosure
+- If persistent: Possible injection point - investigate further
+
+**Timeout**:
+- Issue: Request took too long (possible DoS vector or slow endpoint)
+- Recovery: Increase timeout, reduce payload size, try simpler payload
+- Max retries: 2 (if still times out, mark as timeout-prone)
+
+### Tool Execution Errors
+
+**Import Error** (Python):
+- Issue: Missing package in `packages` parameter
+- Recovery: Add missing package to packages list, retry
+- Example: `ImportError: No module named 'requests'` → Add `"requests"` to packages
+
+**Syntax Error** (Code):
+- Issue: Invalid code syntax
+- Recovery: Fix syntax error, retry
+- Max retries: 2 (if still fails, rethink approach)
+
+**Connection Error** (Network):
+- Issue: Cannot reach target
+- Recovery: Verify target URL, check network connectivity, retry once
+- If persistent: Report as unreachable, stop testing
+
+**Permission Error** (File/System):
+- Issue: Insufficient permissions
+- Recovery: Use alternative approach (e.g., read via tool instead of direct access)
+- Do NOT retry same operation
+
+### Recovery Strategy
+
+1. **Identify error type** (status code, exception, message)
+2. **Apply recovery pattern** (from above)
+3. **Track retry count** (max 3 retries per tool/endpoint)
+4. **Stop if unrecoverable** (after max retries, report and move on)
+
+### When to Stop Trying
+
+- Same error 3 consecutive times → Stop, try different tool/approach
+- 404 errors → Stop immediately (endpoint doesn't exist)
+- 403 + valid auth → Stop (endpoint properly protected)
+- Persistent 429 → Stop (rate limited, wait or abort)
+
+**Rule**: Recover smartly, but know when to pivot. Don't waste tool calls on unrecoverable errors.

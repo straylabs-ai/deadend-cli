@@ -24,7 +24,6 @@ class RouterAgent(AgentRunner):
     that we need to use. 
     """
     def __init__(self, model, deps_type, tools, available_agents: Dict[str, str]):
-        # if len(tools) == 0:
         router_instructions = render_agent_instructions(
             "router", 
             tools={},
