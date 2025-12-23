@@ -66,7 +66,7 @@ class SourceCodeIndexer:
         """
         self.resources = await self.crawler.extract_all_resources(
             url=self.target,
-            wait_time=3,
+            wait_time=10,
             screenshot=False,
             download_resources=True,
             download_path=str(self.source_code_path)

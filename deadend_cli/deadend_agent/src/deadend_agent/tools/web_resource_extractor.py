@@ -69,7 +69,7 @@ class WebResourceExtractor:
     async def extract_all_resources(
             self,
             url: str,
-            wait_time: int = 3,
+            wait_time: int = 10,
             screenshot: bool = False,
             download_resources: bool = False,
             download_path: str = "./"

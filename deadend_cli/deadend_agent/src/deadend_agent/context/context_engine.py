@@ -75,28 +75,112 @@ class AttemptRecord:
         return f"{hash(self.payload)}:{hash(self.task[:50])}"
 
 
+@dataclass
+class ExecutionRecord:
+    """Structured record of an agent execution with clear semantics.
+
+    Captures what was done in a way that's easy for subsequent agents to understand.
+
+    Attributes:
+        action: What action was taken (e.g., "HTTP Request", "Script Execution")
+        target_endpoint: The specific endpoint/resource targeted
+        technique: The technique/approach used (e.g., "XSS injection", "SQLi UNION")
+        parameters: Key parameters used in the attempt
+        result_status: Clear status (success, failed, blocked, partial, error)
+        key_finding: The most important finding from this execution
+        response_summary: Brief summary of the response received
+        agent_name: Which agent performed this action
+        timestamp: When this was executed
+    """
+    action: str
+    target_endpoint: str
+    technique: str
+    parameters: Dict[str, Any] = field(default_factory=dict)
+    result_status: str = "unknown"
+    key_finding: str = ""
+    response_summary: str = ""
+    agent_name: str = ""
+    timestamp: float = field(default_factory=time.time)
+
+    def get_hash(self) -> str:
+        """Generate hash for deduplication."""
+        return f"{hash(self.action)}:{hash(self.target_endpoint)}:{hash(self.technique)}"
+
+    def format_for_context(self) -> str:
+        """Format this record for inclusion in agent context."""
+        lines = [f"• {self.action} → {self.target_endpoint}"]
+        if self.technique:
+            lines.append(f"  Technique: {self.technique}")
+        if self.parameters:
+            param_str = ", ".join(f"{k}={v}" for k, v in list(self.parameters.items())[:3])
+            lines.append(f"  Parameters: {param_str}")
+        lines.append(f"  Result: {self.result_status}")
+        if self.key_finding:
+            lines.append(f"  Finding: {self.key_finding}")
+        return "\n".join(lines)
+
+
+@dataclass
+class AgentThought:
+    """Captured reasoning/thought from an agent execution.
+
+    Attributes:
+        agent_name: Which agent produced this thought
+        thought: The raw thought/reasoning text
+        summary: A concise summary of the key insight
+        relevance: How relevant this is for future actions (0.0-1.0)
+        timestamp: When this was recorded
+    """
+    agent_name: str
+    thought: str
+    summary: str = ""
+    relevance: float = 0.5
+    timestamp: float = field(default_factory=time.time)
+
+    def format_for_context(self) -> str:
+        """Format for context output."""
+        if self.summary:
+            return f"[{self.agent_name}] {self.summary}"
+        # Truncate raw thought if no summary
+        truncated = self.thought[:150] + "..." if len(self.thought) > 150 else self.thought
+        return f"[{self.agent_name}] {truncated}"
+
+
 class StructuredContext:
     """Segmented context for efficient LLM consumption.
 
     Separates context into:
+    - target: The target URL/host being tested (ALWAYS included in context)
     - facts: Deduplicated discovered information
-    - attempts: History of exploitation attempts
+    - attempts: History of exploitation attempts (legacy)
+    - executions: Structured execution records (new, preferred)
+    - thoughts: Agent reasoning/insights
     - failed_approaches: Set of failed attempt hashes to prevent retries
-    - current_task_log: Only the current task's execution log
+    - tested_techniques: Set of (endpoint, technique) pairs already tested
     """
 
-    def __init__(self, goal: str = ""):
+    def __init__(self, goal: str = "", target: str = ""):
         self.goal: str = goal
+        self.target: str = target  # Target URL/host - ALWAYS included in context
         self.facts: Dict[str, DiscoveredFact] = {}
-        self.attempts: List[AttemptRecord] = []
+        self.attempts: List[AttemptRecord] = []  # Legacy, kept for compatibility
+        self.executions: List[ExecutionRecord] = []  # Structured execution history
+        self.thoughts: List[AgentThought] = []  # Agent reasoning
         self.failed_approaches: Set[str] = set()
+        self.tested_techniques: Set[str] = set()  # (endpoint:technique) pairs
         self.current_task_log: str = ""
         self.completed_tasks: List[str] = []
         self._max_log_chars: int = 8000  # Limit current log size
+        self._max_executions: int = 50  # Keep last N executions
+        self._max_thoughts: int = 20  # Keep last N thoughts
 
     def set_goal(self, goal: str) -> None:
         """Set the primary goal for context."""
         self.goal = goal
+
+    def set_target(self, target: str) -> None:
+        """Set the target URL/host for context."""
+        self.target = target
 
     def add_fact(self, fact: DiscoveredFact) -> bool:
         """Add a discovered fact, deduplicating by category:key.
@@ -196,6 +280,88 @@ class StructuredContext:
         """Clear current task log (call when moving to new task)."""
         self.current_task_log = ""
 
+    def add_execution(self, record: ExecutionRecord) -> bool:
+        """Add a structured execution record.
+
+        Returns:
+            False if this technique was already tested on this endpoint.
+        """
+        technique_key = f"{record.target_endpoint}:{record.technique}"
+
+        # Check for duplicate technique on same endpoint
+        if technique_key in self.tested_techniques and record.result_status != "success":
+            return False  # Already tested this
+
+        self.executions.append(record)
+        self.tested_techniques.add(technique_key)
+
+        # Keep list bounded
+        if len(self.executions) > self._max_executions:
+            self.executions = self.executions[-self._max_executions:]
+
+        # Also track as failed approach if failed
+        if record.result_status in ("failed", "blocked"):
+            self.failed_approaches.add(record.get_hash())
+
+        return True
+
+    def add_execution_simple(
+        self,
+        action: str,
+        target_endpoint: str,
+        technique: str,
+        result_status: str,
+        key_finding: str = "",
+        parameters: Dict[str, Any] | None = None,
+        response_summary: str = "",
+        agent_name: str = ""
+    ) -> bool:
+        """Convenience method to add an execution record."""
+        return self.add_execution(ExecutionRecord(
+            action=action,
+            target_endpoint=target_endpoint,
+            technique=technique,
+            parameters=parameters or {},
+            result_status=result_status,
+            key_finding=key_finding,
+            response_summary=response_summary,
+            agent_name=agent_name
+        ))
+
+    def add_thought(self, thought: AgentThought) -> None:
+        """Add an agent thought/reasoning to context."""
+        self.thoughts.append(thought)
+        # Keep list bounded
+        if len(self.thoughts) > self._max_thoughts:
+            self.thoughts = self.thoughts[-self._max_thoughts:]
+
+    def add_thought_simple(
+        self,
+        agent_name: str,
+        thought: str,
+        summary: str = "",
+        relevance: float = 0.5
+    ) -> None:
+        """Convenience method to add an agent thought."""
+        self.add_thought(AgentThought(
+            agent_name=agent_name,
+            thought=thought,
+            summary=summary,
+            relevance=relevance
+        ))
+
+    def was_technique_tested(self, endpoint: str, technique: str) -> bool:
+        """Check if a specific technique was already tested on an endpoint."""
+        return f"{endpoint}:{technique}" in self.tested_techniques
+
+    def get_tested_techniques_for_endpoint(self, endpoint: str) -> List[str]:
+        """Get all techniques that were tested on a specific endpoint."""
+        result = []
+        for key in self.tested_techniques:
+            if key.startswith(f"{endpoint}:"):
+                result.append(key.split(":", 1)[1])
+        return result
+
     def get_facts_summary(self) -> str:
         """Get actionable summary of discovered facts for LLM context.
 
@@ -216,8 +382,8 @@ class StructuredContext:
                 by_category[fact.category] = []
             by_category[fact.category].append(fact)
 
-        # Priority order: vulnerabilities first, then endpoints, then others
-        priority_order = ["vulnerability", "endpoint", "parameter", "filter", "auth_method", "technology"]
+        # Priority order: validated exploits first, then vulnerabilities, endpoints, others
+        priority_order = ["validated_exploit", "vulnerability", "endpoint", "parameter", "filter", "auth_method", "technology"]
         sorted_categories = sorted(
             by_category.keys(),
             key=lambda c: priority_order.index(c) if c in priority_order else len(priority_order)
@@ -298,7 +464,7 @@ class StructuredContext:
     def get_executor_context(self, max_tokens: int = 6000) -> str:
         """Get optimized context for task execution.
 
-        Prioritizes: goal > facts > failed approaches > current log
+        Prioritizes: goal > successful attempts > facts > failed approaches > current log
         Respects token budget.
         """
         parts = []
@@ -311,7 +477,21 @@ class StructuredContext:
             parts.append(goal_text)
             remaining -= goal_tokens
 
-        # 2. Facts (high priority)
+        # 2. Successful attempts (CRITICAL - must not lose working exploits)
+        successful = [a for a in self.attempts if a.result == "success"]
+        if successful:
+            success_lines = ["## Successful Exploits (IMPORTANT - use these as reference)"]
+            for attempt in successful[-10:]:  # Last 10 successful
+                success_lines.append(f"- Task: {attempt.task[:80]}")
+                success_lines.append(f"  Payload: {attempt.payload[:200]}")
+                success_lines.append(f"  Result: {attempt.reason[:150]}")
+            success_text = "\n".join(success_lines)
+            success_tokens = num_tokens_from_string(success_text)
+            if success_tokens < remaining:
+                parts.append(success_text)
+                remaining -= success_tokens
+
+        # 3. Facts (high priority)
         facts_text = self.get_facts_summary()
         if facts_text:
             facts_tokens = num_tokens_from_string(facts_text)
@@ -319,7 +499,7 @@ class StructuredContext:
                 parts.append(facts_text)
                 remaining -= facts_tokens
 
-        # 3. Failed approaches (important to avoid loops)
+        # 4. Failed approaches (important to avoid loops)
         failed_text = self.get_failed_approaches_summary()
         if failed_text:
             failed_tokens = num_tokens_from_string(failed_text)
@@ -327,7 +507,7 @@ class StructuredContext:
                 parts.append(failed_text)
                 remaining -= failed_tokens
 
-        # 4. Current log (truncate if needed)
+        # 5. Current log (truncate if needed)
         if self.current_task_log:
             log_text = f"## Current Execution\n{self.current_task_log}"
             log_tokens = num_tokens_from_string(log_text)
@@ -345,8 +525,9 @@ class StructuredContext:
 
         Provides the validator with:
         - The goal being validated
-        - Recent execution attempts and outcomes
+        - Recent execution attempts and outcomes (all tool calls)
         - Evidence from execution log
+        - Key discovered facts
         """
         parts = []
 
@@ -354,21 +535,40 @@ class StructuredContext:
         if self.goal:
             parts.append(f"## Goal Being Validated\n{self.goal}")
 
-        # Show last few attempts for context (not just the last one)
+        # Show all recent attempts for comprehensive validation (not just the last one)
         if self.attempts:
-            parts.append("\n## Recent Execution Attempts")
-            recent = self.attempts[-3:]  # Last 3 attempts
-            for i, attempt in enumerate(recent, 1):
-                parts.append(f"\n### Attempt {i}")
-                parts.append(f"- Task: {attempt.task[:100]}")
-                parts.append(f"- Payload: {attempt.payload[:150]}")
-                parts.append(f"- Result: {attempt.result}")
-                parts.append(f"- Details: {attempt.reason[:200]}")
+            parts.append("\n## Execution Attempts (All Tool Calls)")
+
+            # Group attempts by result for clarity
+            successful = [a for a in self.attempts if a.result == "success"]
+            partial = [a for a in self.attempts if a.result == "partial"]
+            failed = [a for a in self.attempts if a.result in ("failed", "blocked")]
+
+            if successful:
+                parts.append(f"\n### Successful ({len(successful)})")
+                for attempt in successful[-5:]:  # Last 5 successful
+                    parts.append(f"- Task: {attempt.task[:80]}")
+                    parts.append(f"  Payload: {attempt.payload[:120]}")
+                    parts.append(f"  Why: {attempt.reason[:150]}")
+
+            if partial:
+                parts.append(f"\n### Partial Success ({len(partial)})")
+                for attempt in partial[-3:]:
+                    parts.append(f"- Task: {attempt.task[:80]}")
+                    parts.append(f"  Payload: {attempt.payload[:120]}")
+                    parts.append(f"  Why: {attempt.reason[:150]}")
+
+            if failed:
+                parts.append(f"\n### Failed/Blocked ({len(failed)})")
+                for attempt in failed[-5:]:  # Last 5 failed
+                    parts.append(f"- Task: {attempt.task[:80]}")
+                    parts.append(f"  Payload: {attempt.payload[:100]}")
+                    parts.append(f"  Why: {attempt.reason[:100]}")
 
         # Include relevant log evidence
         if self.current_task_log:
             # Extract key evidence from log (look for responses, flags, errors)
-            log_excerpt = self.current_task_log[-2500:]
+            log_excerpt = self.current_task_log[-3000:]
             parts.append(f"\n## Execution Evidence\n{log_excerpt}")
         else:
             parts.append("\n## Execution Evidence\nNo execution log available.")
@@ -435,12 +635,174 @@ class StructuredContext:
 
         return "\n\n".join(parts)
 
+    def get_unified_context(self, max_tokens: int = 6000) -> str:
+        """Get UNIFIED context for ALL agents.
+
+        Single source of truth with NO duplication, NO truncation of critical info.
+        """
+        sections = []
+
+        # SECTION 1: TARGET + GOAL (once only)
+        header = f"Target: {self.target}" if self.target else ""
+        if self.goal:
+            goal_clean = self.goal.replace(self.target, "").strip() if self.target else self.goal
+            header += f"\nGoal: {goal_clean[:300]}"
+        if header:
+            sections.append(header)
+
+        # SECTION 2: FLAG FOUND (if any) - with FULL reproduction steps
+        flag_facts = [f for f in self.facts.values()
+                      if f.category == "validated_exploit" or "flag" in f.key.lower()]
+        flag_execs = [e for e in self.executions
+                      if "flag" in e.key_finding.lower() or e.result_status == "success"]
+
+        if flag_facts or flag_execs:
+            lines = ["## ⚑ FLAG/EXPLOIT FOUND - REPRODUCTION STEPS"]
+            for fact in flag_facts:
+                lines.append(f"Target: {fact.key}")
+                lines.append(f"Method: {fact.value}")
+                if fact.details:
+                    if fact.details.get("payload"):
+                        lines.append(f"Payload: {fact.details['payload']}")
+                    if fact.details.get("endpoint"):
+                        lines.append(f"Endpoint: {fact.details['endpoint']}")
+                    if fact.details.get("validation_token"):
+                        lines.append(f"Flag: {fact.details['validation_token']}")
+            for exec_rec in flag_execs:
+                lines.append(f"Action: {exec_rec.action}")
+                lines.append(f"Endpoint: {exec_rec.target_endpoint}")
+                lines.append(f"Technique: {exec_rec.technique}")
+                if exec_rec.parameters:
+                    lines.append(f"Parameters: {exec_rec.parameters}")
+                lines.append(f"Result: {exec_rec.key_finding}")
+            sections.append("\n".join(lines))
+
+        # SECTION 3: COMPLETE TEST HISTORY (exhaustive, no truncation)
+        if self.executions:
+            by_endpoint: Dict[str, List[ExecutionRecord]] = {}
+            for ex in self.executions:
+                ep = ex.target_endpoint
+                if ep not in by_endpoint:
+                    by_endpoint[ep] = []
+                by_endpoint[ep].append(ex)
+
+            lines = ["## COMPLETE TEST HISTORY"]
+            lines.append("Every technique tested per endpoint:")
+
+            for endpoint, execs in sorted(by_endpoint.items()):
+                successes = [e for e in execs if e.result_status == "success"]
+                failures = [e for e in execs if e.result_status != "success"]
+
+                lines.append(f"\n### {endpoint}")
+                if successes:
+                    lines.append("✓ WORKED:")
+                    for ex in successes:
+                        lines.append(f"  - {ex.technique}")
+                        if ex.key_finding:
+                            lines.append(f"    → {ex.key_finding}")
+                if failures:
+                    lines.append("✗ FAILED:")
+                    for ex in failures:
+                        reason = ex.key_finding or ex.result_status
+                        lines.append(f"  - {ex.technique} [{reason}]")
+
+            sections.append("\n".join(lines))
+
+        # SECTION 4: KEY DISCOVERIES (full text, no truncation)
+        findings = [f for f in self.facts.values()
+                    if f.category in ("finding", "technology", "attack_vector", "feature")]
+        if findings:
+            lines = ["## KEY DISCOVERIES"]
+            for fact in sorted(findings, key=lambda f: -f.confidence):
+                lines.append(f"[{fact.category}] {fact.key}: {fact.value}")
+                if fact.details:
+                    for k, v in fact.details.items():
+                        if v and k not in ("source",):
+                            lines.append(f"  {k}: {v}")
+            sections.append("\n".join(lines))
+
+        # SECTION 5: IDENTIFIED ENDPOINTS
+        endpoints = [f for f in self.facts.values() if f.category == "endpoint"]
+        if endpoints:
+            lines = ["## ENDPOINTS"]
+            for ep in endpoints:
+                details = ep.details or {}
+                params = details.get("parameters", [])
+                auth = "🔒" if details.get("auth_required") else "🔓"
+                techs = ", ".join(details.get("technologies", [])) or ""
+                notes = details.get("notes", "")
+                line = f"{auth} {ep.key}"
+                if params:
+                    line += f" params={params}"
+                if techs:
+                    line += f" [{techs}]"
+                if notes:
+                    line += f" - {notes}"
+                lines.append(line)
+            sections.append("\n".join(lines))
+
+        # SECTION 6: VULNERABILITIES STATUS
+        vulns = [f for f in self.facts.values() if f.category == "vulnerability"]
+        if vulns:
+            lines = ["## VULNERABILITIES"]
+            for v in vulns:
+                status = "CONFIRMED" if v.confidence >= 0.8 else "SUSPECTED" if v.confidence >= 0.5 else "POSSIBLE"
+                lines.append(f"[{status}] {v.key}: {v.value}")
+                if v.details:
+                    if v.details.get("payload"):
+                        lines.append(f"  Payload: {v.details['payload']}")
+                    if v.details.get("response_excerpt"):
+                        lines.append(f"  Response: {v.details['response_excerpt'][:200]}")
+            sections.append("\n".join(lines))
+
+        # SECTION 6.5: AUTHENTICATION STATE (for authenticated testing)
+        auth_facts = [f for f in self.facts.values() if f.category in ("authentication", "credential")]
+        if auth_facts:
+            lines = ["## AUTHENTICATION"]
+            for af in auth_facts:
+                if af.category == "authentication":
+                    lines.append(f"Session: {af.value}")
+                    if af.details:
+                        if af.details.get("session_cookie"):
+                            lines.append(f"  Cookie: {af.details['session_cookie']}")
+                        if af.details.get("auth_token"):
+                            lines.append(f"  Token: {af.details['auth_token']}")
+                        if af.details.get("registered_user"):
+                            user = af.details["registered_user"]
+                            lines.append(f"  Registered: {user.get('username', 'N/A')}")
+                elif af.category == "credential":
+                    if af.details:
+                        lines.append(f"Credential: {af.details.get('username', 'N/A')} / {af.details.get('password', 'N/A')}")
+            sections.append("\n".join(lines))
+
+        # SECTION 7: AGENT INSIGHTS (summarized learnings)
+        if self.thoughts:
+            high_relevance = [t for t in self.thoughts if t.relevance >= 0.6]
+            if high_relevance:
+                lines = ["## INSIGHTS"]
+                for t in high_relevance[-5:]:
+                    summary = t.summary or t.thought[:150]
+                    lines.append(f"[{t.agent_name}] {summary}")
+                sections.append("\n".join(lines))
+
+        # SECTION 8: NEXT STEPS (from recent executions)
+        recent_with_next = [e for e in self.executions[-5:]
+                           if hasattr(e, 'parameters') and e.parameters.get('next_steps')]
+        if not recent_with_next:
+            next_steps_facts = [f for f in self.facts.values()
+                               if "next" in f.key.lower() or f.category == "finding"]
+
+        return "\n\n".join(sections)
+
     def reset(self) -> None:
         """Reset all structured context."""
         self.goal = ""
         self.facts.clear()
         self.attempts.clear()
+        self.executions.clear()
+        self.thoughts.clear()
         self.failed_approaches.clear()
+        self.tested_techniques.clear()
         self.current_task_log = ""
         self.completed_tasks.clear()
 
@@ -547,19 +909,28 @@ class ContextEngine:
                 nested_tasks[task] = {}
             self.tasks[parent_task] = nested_tasks
 
-    def get_tasks(self, depth: int = 0) -> str:
+    def get_tasks(self, depth: int = 0, include_goal: bool = False) -> str:
         """Return a concise textual summary of planner tasks for the given depth.
 
         The summary includes tasks at the requested depth and recursively nests
         any available child depths. This string is later injected into prompts,
         so it favors short, high-signal lines.
+
+        Args:
+            depth: The depth level for task retrieval (default 0)
+            include_goal: If True, includes the primary goal. Set to False when
+                         goal is already provided via unified context. Default False.
         """
-        goal_line = f"## Primary objective\n {self.final_goal}" if self.final_goal else "Web Security assessment and threat model"
-        tasks_context = f"""
-{goal_line}
-"""
+        tasks_context = ""
+
+        # Only include goal if explicitly requested (avoids stale duplication)
+        if include_goal and self.final_goal:
+            # Truncate goal to avoid including stale verbose content
+            goal_preview = self.final_goal[:300] + "..." if len(self.final_goal) > 300 else self.final_goal
+            tasks_context = f"## Primary objective\n{goal_preview}\n"
+
         if not self.tasks:
-            return tasks_context
+            return tasks_context if tasks_context else "## Tasks\nNo tasks defined yet."
 
         # Separate tasks by status for better clarity
         pending_tasks = []
@@ -697,18 +1068,21 @@ class ContextEngine:
 
     def set_target(self, target: str) -> None:
         """Set the current target and update workflow context.
-        
+
         Args:
             target (str): Information about the new target to be analyzed.
-        
+
         Updates the workflow context with the new target information
-        and stores it in the target attribute. Also saves to text file.
+        and stores it in the target attribute. Also syncs to structured
+        context so all agents receive the target. Also saves to text file.
         """
         self.workflow_context += f"""\n
 ## Target
 {target}
 """
         self.target = target
+        # Sync target to structured context so unified context includes it
+        self.structured.set_target(target)
         self._append_to_context_file("[user input]", f"Target: {target}")
 
     async def get_all_context(self, max_tokens: int = 8000) -> str:
@@ -765,6 +1139,32 @@ class ContextEngine:
             str: Context with completed tasks, facts, and failed approaches.
         """
         return self.structured.get_planning_context()
+
+    def get_unified_context(self, max_tokens: int = 6000) -> str:
+        """Get UNIFIED context for ALL agents.
+
+        This is THE SINGLE SOURCE OF TRUTH for context. ALL agents
+        (executor, router, validator, planner) should use this method
+        to ensure they receive the SAME information.
+
+        The unified context combines:
+        - Target (ALWAYS included first)
+        - Concise goal statement
+        - Confirmed/successful exploits (highest priority)
+        - Discovered facts
+        - Failed approaches
+        - Recent execution log
+
+        Args:
+            max_tokens: Maximum token budget
+
+        Returns:
+            str: Unified context string
+        """
+        # Ensure target is synced to structured context before generating unified context
+        if self.target and not self.structured.target:
+            self.structured.set_target(self.target)
+        return self.structured.get_unified_context(max_tokens=max_tokens)
 
     async def maybe_summarize_context(
         self,
@@ -1059,6 +1459,107 @@ class ContextEngine:
         """Clear the current task log (call when starting a new task)."""
         self.structured.clear_current_log()
 
+    def add_execution(
+        self,
+        action: str,
+        target_endpoint: str,
+        technique: str,
+        result_status: str,
+        key_finding: str = "",
+        parameters: Dict[str, Any] | None = None,
+        response_summary: str = "",
+        agent_name: str = ""
+    ) -> bool:
+        """Record a structured execution for clear history tracking.
+
+        This is the preferred way to record what was tested, as it creates
+        clear (endpoint, technique) pairs that subsequent agents can understand.
+
+        Args:
+            action: What action was taken (e.g., "HTTP Request", "Script Execution")
+            target_endpoint: The specific endpoint/resource targeted
+            technique: The technique/approach used (e.g., "XSS injection", "SQLi UNION")
+            result_status: Clear status (success, failed, blocked, partial, error)
+            key_finding: The most important finding from this execution
+            parameters: Key parameters used in the attempt
+            response_summary: Brief summary of the response received
+            agent_name: Which agent performed this action
+
+        Returns:
+            False if this technique was already tested on this endpoint.
+
+        Example:
+            context.add_execution(
+                action="HTTP POST",
+                target_endpoint="/login",
+                technique="SQL injection UNION",
+                result_status="blocked",
+                key_finding="WAF detected and blocked the request",
+                parameters={"username": "admin' UNION SELECT--"},
+                agent_name="requester"
+            )
+        """
+        return self.structured.add_execution_simple(
+            action=action,
+            target_endpoint=target_endpoint,
+            technique=technique,
+            result_status=result_status,
+            key_finding=key_finding,
+            parameters=parameters,
+            response_summary=response_summary,
+            agent_name=agent_name
+        )
+
+    def add_thought(
+        self,
+        agent_name: str,
+        thought: str,
+        summary: str = "",
+        relevance: float = 0.5
+    ) -> None:
+        """Record an agent's reasoning/insight for context.
+
+        Thoughts with higher relevance (>= 0.6) are shown to subsequent agents.
+
+        Args:
+            agent_name: Which agent produced this thought
+            thought: The raw thought/reasoning text
+            summary: A concise summary of the key insight (auto-generated if empty)
+            relevance: How relevant this is for future actions (0.0-1.0)
+
+        Example:
+            context.add_thought(
+                agent_name="shell",
+                thought="The application uses Jinja2 templates based on the error message format.",
+                summary="Application uses Jinja2 templates",
+                relevance=0.8
+            )
+        """
+        self.structured.add_thought_simple(agent_name, thought, summary, relevance)
+
+    def was_technique_tested(self, endpoint: str, technique: str) -> bool:
+        """Check if a specific technique was already tested on an endpoint.
+
+        Args:
+            endpoint: The endpoint to check
+            technique: The technique to check
+
+        Returns:
+            True if this combination was already tested.
+        """
+        return self.structured.was_technique_tested(endpoint, technique)
+
+    def get_tested_techniques(self, endpoint: str) -> List[str]:
+        """Get all techniques that were tested on a specific endpoint.
+
+        Args:
+            endpoint: The endpoint to query
+
+        Returns:
+            List of technique names that were tested on this endpoint.
+        """
+        return self.structured.get_tested_techniques_for_endpoint(endpoint)
+
     def set_new_workflow(self, new_context: str) -> None:
         """Set a new workflow with the provided context string.
         
@@ -1077,33 +1578,44 @@ class ContextEngine:
         """
         return self.context_file_path
 
-    def reset(self, clear_file: bool = False) -> None:
+    def reset(self, clear_file: bool = False, preserve_target: bool = True) -> None:
         """Reset the context engine to its initial empty state.
 
         Args:
             clear_file: If True, also clears the context file. If False (default),
                        only resets in-memory state, preserving the file.
+            preserve_target: If True (default), preserves the target across reset.
+                            The target should persist throughout the session.
 
         Resets all workflow state including:
         - workflow_context: Cleared to empty string
         - tasks: Cleared to empty dictionary
         - next_agent: Cleared to empty string
-        - target: Cleared to empty string
+        - target: Preserved by default (cleared only if preserve_target=False)
         - assets: Cleared to empty dictionary
         - root_goal: Cleared to empty string
         - final_goal: Cleared to empty string
-        - structured: Reset structured context
+        - structured: Reset structured context (preserves target)
         """
+        # Preserve target before reset if requested
+        saved_target = self.target if preserve_target else ""
+
         self.workflow_context = ""
         self.tasks = {}
         self.next_agent = ""
-        self.target = ""
         self.assets = {}
         self.root_goal = ""
         self.final_goal = ""
 
         # Reset structured context
         self.structured.reset()
+
+        # Restore target (persists across phases)
+        if preserve_target and saved_target:
+            self.target = saved_target
+            self.structured.set_target(saved_target)
+        else:
+            self.target = ""
 
         if clear_file:
             # Clear the context file

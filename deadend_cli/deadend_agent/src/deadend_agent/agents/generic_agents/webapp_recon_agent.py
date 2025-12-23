@@ -14,7 +14,7 @@ import json
 from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
-from deadend_agent.agents.factory import AgentRunner
+from deadend_agent.agents.factory import AgentRunner, AgentOutput
 from deadend_agent.context.memory import MemoryHandler
 from deadend_agent.models.registry import AIModel
 from deadend_agent.tools import (
@@ -40,18 +40,50 @@ class RequesterOutput(BaseModel):
     state: str
     raw_response: str
 
-class RequesterSecOutput(BaseModel):
-    """Output model for Playwright's requester.
+class DiscoveredEndpoint(BaseModel):
+    """Record of an endpoint discovered during reconnaissance.
 
-    This playwright requester contains pour specific information for the agent to 
-    work on.
-    
+    Attributes:
+        path: The endpoint path (e.g., "/api/users")
+        method: HTTP method(s) supported
+        parameters: Parameters found (query, body, headers)
+        auth_required: Whether authentication is required
+        technologies: Technologies detected (framework, server, etc.)
+        notes: Additional observations
+    """
+    path: str
+    method: str = "GET"
+    parameters: list[str] = []
+    auth_required: bool = False
+    technologies: list[str] = []
+    notes: str = ""
+
+
+class RequesterSecOutput(AgentOutput):
+    """Output model for web application reconnaissance.
+
+    Captures comprehensive reconnaissance findings for downstream agents.
+
+    Attributes:
+        payload: The payload used (if any)
+        vulnerability_category: Category of vulnerability explored
+        attempt: Whether an exploitation attempt was made
+        request: Description of requests made
+        response: Summary of key responses
+        endpoints_discovered: List of endpoints found with details
+        key_findings: Most important discovery from this recon
+        next_steps: Suggested next actions based on findings
+        attempts: (inherited) List of all tool calls made during agent run
+        thought_summary: (inherited) Concise summary of agent's key insight
     """
     payload: str
     vulnerability_category: str
     attempt: bool
     request: str
     response: str
+    endpoints_discovered: list[DiscoveredEndpoint] = []
+    key_findings: str = ""
+    next_steps: str = ""
 
 
 class DummyCreds(BaseModel):

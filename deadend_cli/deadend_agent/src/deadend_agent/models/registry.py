@@ -19,6 +19,7 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openrouter import OpenRouterProvider
+from pydantic_ai.providers.azure import AzureProvider
 
 from deadend_agent.config.settings import Config
 
@@ -129,7 +130,7 @@ class ModelRegistry:
     Attributes:
         embedder_model: Embedding client instance, or None if not initialized.
     """
-    embedder_model: EmbedderClient | None 
+    embedder_model: EmbedderClient | None
 
     def __init__(self, config: Config):
         """Initialize the ModelRegistry with configuration.
@@ -201,6 +202,20 @@ class ModelRegistry:
                 provider=OpenRouterProvider(
                     # base_url="https://openrouter.ai/api/v1",
                     api_key=openrouter_settings.api_key
+                ),
+            )
+            self.embedder_model = EmbedderClient(
+                model_name=config.embedding_model,
+                api_key=config.open_router_key,
+                base_url="https://openrouter.ai/api/v1/embeddings"
+            )
+        if models_settings.local:
+            local_settings = models_settings.local
+            self._models['local'] = OpenAIChatModel(
+                model_name=local_settings.model_name,
+                provider=OpenAIProvider(
+                    base_url=local_settings.base_url,
+                    api_key=local_settings.api_key
                 ),
             )
             self.embedder_model = EmbedderClient(

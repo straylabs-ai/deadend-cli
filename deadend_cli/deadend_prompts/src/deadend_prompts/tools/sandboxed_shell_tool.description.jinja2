@@ -1,22 +1,29 @@
-Execute shell commands in sandboxed Kali Linux environment for system-level security assessment.
+Execute security tools in sandboxed Kali Linux environment for penetration testing.
 
-## USAGE
+## PURPOSE
 
-Run security tools and shell commands for reconnaissance, enumeration, and infrastructure analysis.
+Run **pentesting tools only** for network reconnaissance, vulnerability scanning, and security enumeration.
 
 **Parameters**:
-- `command`: Shell command to execute
+- `command`: Shell command to execute (security tools only)
 - `timeout`: Optional timeout in seconds (default: 120s, max: 600s)
 
 ## WHEN TO USE
 
-- Port scanning (nmap, masscan)
-- Network reconnaissance (dnsenum, dnsrecon)
-- Web vulnerability scanning (nikto, dirb, ffuf)
-- Password testing (hydra, john)
-- System enumeration (enum4linux, nbtscan)
+- Port scanning: nmap, masscan
+- Directory brute forcing: ffuf, gobuster, dirb
+- Vulnerability scanning: nikto, sqlmap, wpscan
+- DNS enumeration: dnsenum, dnsrecon
+- Password testing: hydra, john
 
-## AVAILABLE TOOLS
+## WHEN NOT TO USE
+
+- **NO source code access** - use `webapp_code_rag` for code analysis
+- **NO file reading** - container has no access to target source files
+- **NO HTTP requests** - use `pw_send_payload` for web requests
+- **NO cat/grep/find on source** - source code is NOT in this container
+
+## AVAILABLE SECURITY TOOLS
 
 Network: nmap, masscan, hping3, tcpdump
 Web: nikto, dirb, ffuf, gobuster, sqlmap, wpscan
@@ -28,16 +35,16 @@ System: enum4linux, nbtscan, onesixtyone
 
 ```python
 sandboxed_shell_tool(
-    command="nmap -sV -p- target.com",
-    timeout=300
+    command="nmap -sV -p 80,443 target.com",
+    timeout=120
 )
 ```
 
 ## RULES
 
-- **Use as LAST RESORT** - prefer specialized tools
-- **DO NOT** use for HTTP requests - use web tools
+- **ONLY for security tools** - not a general shell
+- **NO source code access** - container is isolated from target files
+- **NO file operations on source** - use webapp_code_rag instead
 - Always set appropriate timeouts
-- Verify tool availability: `which <tool>` or `command -v <tool>`
+- Verify tool availability: `which <tool>`
 - Limit scope for brute force (reasonable wordlists, rate limits)
-- Avoid commands causing system instability

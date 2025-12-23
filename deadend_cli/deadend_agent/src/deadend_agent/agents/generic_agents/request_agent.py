@@ -25,18 +25,51 @@ from deadend_agent.tools import (
 from deadend_prompts import render_agent_instructions, render_tool_description
 
 
+class TestedPayload(BaseModel):
+    """Record of a single payload that was tested.
+
+    Attributes:
+        payload: The exact payload/input tested
+        endpoint: Which endpoint it was sent to
+        method: HTTP method used (GET, POST, etc.)
+        result: What happened (success, blocked, error, no_effect)
+        why_failed: Explanation of why it didn't work (if failed)
+        response_indicator: Key response indicator (status code, error msg, etc.)
+    """
+    payload: str
+    endpoint: str
+    method: str = "POST"
+    result: str  # success, blocked, filtered, error, no_effect
+    why_failed: str = ""
+    response_indicator: str = ""
+
+
 class RequesterOutput(AgentOutput):
     """Output model for Playwright's requester.
 
-    This playwright requester contains pour specific information for the agent to 
-    work on.
-    
+    This requester output captures comprehensive information about what was
+    tested and what was learned, enabling subsequent agents to build on this.
+
+    Attributes:
+        payload: The most significant payload tested (or summary)
+        vulnerability_category: Category of vulnerability tested (XSS, SQLi, SSTI, etc.)
+        attempt: Whether an exploitation attempt was made
+        request: Description of requests made
+        response: Summary of key responses
+        payloads_tested: List of all payloads tested with their outcomes
+        key_findings: Most important discoveries from this execution
+        next_steps: Suggested next actions based on findings
+        attempts: (inherited) List of all tool calls made during agent run
+        thought_summary: (inherited) Concise summary of agent's key insight
     """
     payload: str
     vulnerability_category: str
     attempt: bool
     request: str
     response: str
+    payloads_tested: list[TestedPayload] = []
+    key_findings: str = ""
+    next_steps: str = ""
 
 
 class DummyCreds(BaseModel):
@@ -70,7 +103,7 @@ class RequesterAgent(AgentRunner):
         tools_metadata = {
             "is_valid_request_detailed": render_tool_description("is_valid_request_detailed"),
             "pw_send_payload": render_tool_description("send_payload"),
-            "webapp_code_rag": render_tool_description("webapp_code_rag")
+            # "webapp_code_rag": render_tool_description("webapp_code_rag")
         }
 
         path_creds = Path.home() / ".cache" / "deadend" / "memory" / "reusable_credentials.json"
@@ -102,7 +135,7 @@ class RequesterAgent(AgentRunner):
             tools=[
                 Tool(is_valid_request_detailed),
                 Tool(pw_send_payload, requires_approval=requires_approval),
-                Tool(webapp_code_rag)
+                # Tool(webapp_code_rag)
             ]
         )
 

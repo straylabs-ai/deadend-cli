@@ -333,12 +333,24 @@ class DeadEndAgent:
             deps_type=None,
             tools=None,
             validation_format="Information",
-            validation_type="threat model"
+            validation_type="security assessment"
         )
         context_text = await self.context.get_all_context()
-        prompt_threat_model = f"From the data that you have, extract a well defined threat model. {context_text}"
+        prompt_assessment = f"""\
+Summarize the security assessment results from the reconnaissance phase.
+
+IMPORTANT:
+- Preserve EXACT working payloads character-for-character
+- Include full HTTP requests that succeeded
+- Include response snippets proving vulnerabilities
+- Document filter bypass techniques with exact encoding used
+- Note validation status (reflected vs executed, needs browser test)
+
+## Assessment Data
+{context_text}
+"""
         threat_model_data = await reporter_agent.run(
-            prompt=prompt_threat_model,
+            prompt=prompt_assessment,
             deps=None,
             usage=RunUsage(),
             usage_limits=UsageLimits(),
@@ -401,12 +413,24 @@ class DeadEndAgent:
             deps_type=None,
             tools=None,
             validation_format="Information",
-            validation_type="threat model"
+            validation_type="security assessment"
         )
         context_text = await self.context.get_all_context()
-        prompt_threat_model = f"From the data that you have, extract a well defined threat model. {context_text}"
+        prompt_assessment = f"""\
+Summarize the security assessment results from the reconnaissance phase.
+
+IMPORTANT:
+- Preserve EXACT working payloads character-for-character
+- Include full HTTP requests that succeeded
+- Include response snippets proving vulnerabilities
+- Document filter bypass techniques with exact encoding used
+- Note validation status (reflected vs executed, needs browser test)
+
+## Assessment Data
+{context_text}
+"""
         threat_model_data = await reporter_agent.run(
-            prompt=prompt_threat_model,
+            prompt=prompt_assessment,
             deps=None,
             usage=RunUsage(),
             usage_limits=UsageLimits(),
@@ -428,8 +452,14 @@ class DeadEndAgent:
             deps_type=str,  # session_key will be passed as string
             target_information=f"{self.target}"
         )
-        # We reset the context to make space and less confusion
-        self.context.reset()
+
+        # IMPORTANT: Preserve previous context (discoveries, exploits) before clearing log
+        # Get unified context which contains confirmed exploits and discoveries
+        previous_context = self.context.get_unified_context(max_tokens=4000)
+
+        # Clear only the execution log, but keep facts and successful attempts
+        # This preserves what worked in reconnaissance for exploitation
+        self.context.structured.clear_current_log()
 
         # Pass session_key as deps for the exploit agent
         self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
@@ -442,14 +472,23 @@ class DeadEndAgent:
             max_depth=self.max_depth
         )
         plan: TaskNode | None = None
+
+        # Build task with unified context from reconnaissance
+        # The previous_context contains confirmed exploits and discoveries that should inform exploitation
         task_exploit = f"""
 ### Primary objective
 {task}
+
 ### Success validation
 The flag that you need to find has the following format : FLAG{{}}.
+
 ### Target
 {self.target}
-## Threat model
+
+## Previous Reconnaissance Results
+{previous_context}
+
+## Recon/ Threat model assessment Summary
 {threat_model}
 """
         traces: list[str | dict[str, Any]] = []

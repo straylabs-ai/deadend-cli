@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from typing import Any, Literal, AsyncGenerator, Tuple
 from uuid import UUID
 from deadend_agent.agents.exploit_web_agent import ExploitInfo, ExploitOutput
@@ -35,14 +36,8 @@ class ResultEvent(BaseModel):
     confidence_score: float
     context: dict[str, Any]
 
-
-def yield_formatted_response(message) -> RouterOutput | ExploitOutput | ThreatModelOutput:
-    pass
-
-
 # Union type for all possible executor events
 ExecutorEvent = LogEvent | ResultEvent
-
 
 class TaskNode(BaseModel):
     """Represents a task node in the ADaPT decomposition tree.
@@ -114,7 +109,7 @@ You need to understand the architecture, endpoints, authentication mechanisms, s
 You can then move on to the next step.
 Understand the task and what it encompasses: analyze the task goal, identify what components of the web application it involves, and determine what security vulnerabilities this task could lead to or help identify. 
 Based on this reasoning, break down the task into logical subtasks that systematically address the task goal.
-Break down this task into a maximum of 5 subtasks: {parent_task.task}. The context is : \n{str(context)}
+Break down this task into a maximum of 5 subtasks: {parent_task.task}. \n{str(context)}
 """
         result = await self.agent.run(
             prompt=planner_prompt,
@@ -528,8 +523,7 @@ class AgentExecutor:
         results = None
         webapprecon_deps = self.webapprecon_deps
         prompt = f"If you think the result is found, \
-            always return confidence score of 1. Execute the following : {prompt}"
-        print(prompt)
+            always return confidence score of 1. Execute the following : {prompt}\n"
         if isinstance(agent, RequesterAgent):
             # TODO: add interruptions
             # if self.interrupted:
@@ -659,9 +653,23 @@ class Validator:
             - confidence_score: Float (0.0-1.0) indicating validation confidence
             - critique: String explanation of the validation decision
         """
+        # Extract root goal from context (first line typically contains it)
+        # Parse the goal from unified context format "Goal: ..."
+        root_goal = ""
+        for line in context.split("\n"):
+            if line.startswith("Goal:"):
+                root_goal = line.replace("Goal:", "").strip()
+                break
+
+        # If we found a root goal, validate against that. Otherwise use task.task
+        validation_objective = root_goal if root_goal else task.task
+
         prompt = f"""\
 # Objective
-You are the Validator. Judge whether the task the following task is satisfied depending on the execution trace.
+You are the Validator. Judge whether the following goal is satisfied based on the execution trace.
+{validation_objective}
+
+# Current Task Being Validated
 {task.task}
 
 # Execution trace
@@ -671,7 +679,7 @@ You are the Validator. Judge whether the task the following task is satisfied de
 - valid (true/false)
 - confidence (float 0.00-1.00) - like a percentage
 - critique (string)
-- validation_token corresponding to the result if found (only return if found)
+- validation_token corresponding to the result if found (only return if found). Copy the exact FLAG{{...}} if present.
 """
         result = await self.agent.run(
             prompt=prompt,
@@ -769,6 +777,177 @@ class ADaPTAgent:
         # Key: task hash, Value: dict with attempt count and best confidence
         self._attempted_tasks: dict[int, dict[str, Any]] = {}
 
+    def _extract_payload_from_tool_args(
+        self,
+        tool_name: str,
+        tool_args: str,
+        tool_result: str
+    ) -> tuple[str, str]:
+        """Extract meaningful payload and context from tool arguments.
+
+        Parses tool arguments to extract the actual payload/action taken,
+        rather than the raw JSON structure.
+
+        Args:
+            tool_name: Name of the tool called
+            tool_args: Raw tool arguments string (often JSON)
+            tool_result: Tool execution result
+
+        Returns:
+            Tuple of (payload, context_info) where:
+            - payload: The actual payload/action (e.g., XSS payload, command)
+            - context_info: Additional context (e.g., endpoint, method)
+        """
+        import json
+        import re
+
+        payload = ""
+        context_info = ""
+
+        try:
+            # Try to parse as JSON
+            args_dict = json.loads(tool_args) if tool_args.startswith("{") else {}
+        except (json.JSONDecodeError, TypeError):
+            args_dict = {}
+
+        if tool_name == "pw_send_payload":
+            # Extract payload from raw_request body
+            raw_request = args_dict.get("raw_request", tool_args)
+
+            # Normalize escaped newlines to actual newlines
+            raw_request = raw_request.replace("\\r\\n", "\r\n").replace("\\n", "\n")
+
+            # Parse HTTP request to extract body (payload)
+            if "\r\n\r\n" in raw_request:
+                headers, body = raw_request.split("\r\n\r\n", 1)
+                payload = body.strip()
+
+                # Extract method and path for context
+                first_line = headers.split("\r\n")[0] if headers else ""
+                match = re.match(r"(GET|POST|PUT|DELETE|PATCH)\s+(\S+)", first_line)
+                if match:
+                    context_info = f"{match.group(1)} {match.group(2)}"
+            elif "\n\n" in raw_request:
+                headers, body = raw_request.split("\n\n", 1)
+                payload = body.strip()
+            else:
+                # No body found, use the request path/params as payload
+                payload = raw_request[:200]
+
+            # If body has form params, extract the value being tested
+            if "=" in payload and "&" not in payload:
+                # Single param - extract the value part (likely the injection payload)
+                parts = payload.split("=", 1)
+                if len(parts) > 1:
+                    payload = parts[1][:300]  # The actual payload value
+            elif "=" in payload:
+                # Multiple params - keep the full body but truncate
+                payload = payload[:300]
+
+        elif tool_name == "sandboxed_shell_tool":
+            # Extract the command
+            payload = args_dict.get("command", tool_args)[:300]
+            context_info = "shell command"
+
+        elif tool_name == "run_python_file":
+            # Extract script content or filename
+            payload = args_dict.get("script", args_dict.get("code", tool_args))[:300]
+            filename = args_dict.get("filename", "")
+            if filename:
+                context_info = f"script: {filename}"
+
+        elif tool_name == "is_valid_request_detailed":
+            # Extract the request being validated
+            raw_request = args_dict.get("raw_request", "")
+            if raw_request:
+                payload = raw_request[:200]
+            context_info = "request validation"
+
+        elif tool_name == "webapp_code_rag":
+            # Extract the query
+            payload = args_dict.get("query", tool_args)[:200]
+            context_info = "code search"
+
+        else:
+            # Generic fallback
+            payload = tool_args[:200]
+
+        return payload.strip(), context_info
+
+    def _process_tool_attempts(
+        self,
+        tool_attempts: list[dict[str, Any]],
+        task: str,
+        confidence_score: float
+    ) -> None:
+        """Process tool attempts from agent output and add to context.
+
+        Extracts meaningful information from each tool call made during agent
+        execution and records them for context and deduplication purposes.
+
+        Args:
+            tool_attempts: List of ToolAttempt dictionaries from agent output
+            task: The task description
+            confidence_score: The overall confidence score for the execution
+        """
+        if not tool_attempts:
+            return
+
+        # Build a summary of all tool calls for the structured log
+        tool_summary_parts = [f"\n### Tool Calls ({len(tool_attempts)} total)"]
+
+        for i, attempt in enumerate(tool_attempts, 1):
+            tool_name = attempt.get("tool_name", "unknown")
+            tool_args = attempt.get("tool_args", "")
+            tool_result = attempt.get("tool_result", "")
+            success = attempt.get("success", True)
+
+            # Extract meaningful payload from tool args
+            payload, context_info = self._extract_payload_from_tool_args(
+                tool_name, tool_args, tool_result
+            )
+
+            # Truncate for readability
+            payload_preview = payload[:150] + "..." if len(payload) > 150 else payload
+            result_preview = tool_result[:300] + "..." if len(tool_result) > 300 else tool_result
+
+            # Add to summary with extracted payload
+            status_icon = "✓" if success else "✗"
+            tool_summary_parts.append(f"{i}. {status_icon} {tool_name}")
+            if context_info:
+                tool_summary_parts.append(f"   Context: {context_info}")
+            if payload_preview:
+                tool_summary_parts.append(f"   Payload: {payload_preview}")
+            if result_preview:
+                tool_summary_parts.append(f"   Result: {result_preview[:200]}")
+
+            # Determine result status from tool result content
+            result_status = "success" if success else "failed"
+            result_lower = tool_result.lower()[:200]
+            if "error" in result_lower and "success" not in result_lower:
+                result_status = "failed"
+            elif "blocked" in result_lower or "denied" in result_lower or "filtered" in result_lower:
+                result_status = "blocked"
+            elif "flag{" in result_lower or "success" in result_lower:
+                result_status = "success"
+
+            # Only record significant tool calls (not metadata tools)
+            significant_tools = [
+                "pw_send_payload", "sandboxed_shell_tool", "run_python_file",
+                "is_valid_request_detailed", "webapp_code_rag"
+            ]
+            if tool_name in significant_tools and payload:
+                self.context.record_attempt(
+                    task=task[:100],
+                    payload=payload[:300],
+                    result=result_status,
+                    reason=f"{context_info}; Result: {tool_result[:80]}" if context_info else f"Result: {tool_result[:100]}"
+                )
+
+        # Append tool summary to structured context log
+        tool_summary = "\n".join(tool_summary_parts)
+        self.context.structured.append_to_log(tool_summary)
+
     def _extract_agent_output_to_context(
         self,
         last_output: dict[str, Any],
@@ -777,180 +956,397 @@ class ADaPTAgent:
     ) -> None:
         """Extract structured output from any agent type and add to context.
 
-        Handles all agent output types:
-        - RequesterOutput: payload, request, response, vulnerability_category
-        - ShellOutput: objective, stdin, stdout, stderr
-        - PythonInterpreterOutput: filename, goal, reasoning, script_stdout, script_stderr
-        - WebappReconOutput: reasoning, state, raw_response
+        Comprehensively extracts:
+        - payloads_tested: Each payload with endpoint, result, and why it failed
+        - updated_state: Discovered endpoints, technologies, vectors
+        - thought_summary: Agent's key insight
+        - key_findings: Important discoveries
+        - notes: Structured observations
 
         Args:
             last_output: The agent's output dictionary (from model_dump())
             confidence_score: The agent's confidence score
             task: The task description
         """
-        # === Extract fields from all agent types ===
+        # === 1. EXTRACT AND RECORD STRUCTURED TEST RESULTS ===
+        vuln_cat = last_output.get("vulnerability_category", "test")
 
-        # RequesterOutput / RequesterSecOutput fields
+        # Handle payloads_tested (RequesterOutput)
+        payloads_tested = last_output.get("payloads_tested", [])
+        for rec in payloads_tested:
+            if isinstance(rec, dict):
+                self.context.add_execution(
+                    action="HTTP " + rec.get("method", "POST"),
+                    target_endpoint=rec.get("endpoint", "unknown"),
+                    technique=f"{vuln_cat}: {rec.get('payload', '')}",
+                    result_status=rec.get("result", "unknown"),
+                    key_finding=rec.get("why_failed", "") or rec.get("response_indicator", ""),
+                    parameters={
+                        "payload": rec.get("payload", ""),
+                        "method": rec.get("method", "POST"),
+                        "response": rec.get("response_indicator", "")
+                    },
+                    agent_name="requester"
+                )
+
+        # Handle techniques_tested (PythonInterpreterOutput)
+        techniques_tested = last_output.get("techniques_tested", [])
+        for rec in techniques_tested:
+            if isinstance(rec, dict):
+                self.context.add_execution(
+                    action="Python Script",
+                    target_endpoint=rec.get("endpoint", "unknown"),
+                    technique=rec.get("technique", ""),
+                    result_status=rec.get("result", "unknown"),
+                    key_finding=rec.get("why_failed", "") or rec.get("response_indicator", ""),
+                    parameters={
+                        "payload": rec.get("payload", ""),
+                        "technique": rec.get("technique", ""),
+                        "response": rec.get("response_indicator", "")
+                    },
+                    agent_name="python_interpreter"
+                )
+
+        # Handle commands_executed (ShellOutput)
+        commands_executed = last_output.get("commands_executed", [])
+        for rec in commands_executed:
+            if isinstance(rec, dict):
+                self.context.add_execution(
+                    action="Shell Command",
+                    target_endpoint=rec.get("target", "unknown"),
+                    technique=rec.get("purpose", ""),
+                    result_status=rec.get("result", "unknown"),
+                    key_finding=rec.get("key_output", "") or rec.get("why_failed", ""),
+                    parameters={
+                        "command": rec.get("command", ""),
+                        "purpose": rec.get("purpose", ""),
+                        "output": rec.get("key_output", "")
+                    },
+                    agent_name="shell"
+                )
+
+        # Handle endpoints_discovered (WebappReconOutput)
+        endpoints_discovered = last_output.get("endpoints_discovered", [])
+        for ep_record in endpoints_discovered:
+            if isinstance(ep_record, dict):
+                path = ep_record.get("path", "")
+                if path:
+                    self.context.add_discovered_fact(
+                        category="endpoint",
+                        key=path,
+                        value=f"{ep_record.get('method', 'GET')} endpoint",
+                        confidence=confidence_score,
+                        details={
+                            "parameters": ep_record.get("parameters", []),
+                            "auth_required": ep_record.get("auth_required", False),
+                            "technologies": ep_record.get("technologies", []),
+                            "notes": ep_record.get("notes", "")
+                        },
+                        actionable=True
+                    )
+
+        # === 2. EXTRACT UPDATED_STATE (CRITICAL: Contains structured discoveries) ===
+        updated_state = last_output.get("updated_state", {})
+        if isinstance(updated_state, dict):
+            # Extract discovered endpoints
+            endpoints = updated_state.get("endpoints", [])
+            if endpoints and isinstance(endpoints, list):
+                for endpoint in endpoints[:15]:  # Limit to avoid bloat
+                    self.context.add_discovered_fact(
+                        category="endpoint",
+                        key=str(endpoint),
+                        value=f"Discovered endpoint",
+                        confidence=confidence_score,
+                        actionable=True
+                    )
+
+            # Extract technology stack
+            template_engine = updated_state.get("template_engine", "")
+            if template_engine:
+                self.context.add_discovered_fact(
+                    category="technology",
+                    key="template_engine",
+                    value=template_engine,
+                    confidence=confidence_score,
+                    actionable=True
+                )
+
+            # Extract primary attack vector
+            primary_vector = updated_state.get("primary_ssti_vector", "") or \
+                           updated_state.get("primary_xss_vector", "") or \
+                           updated_state.get("primary_sqli_vector", "") or \
+                           updated_state.get("primary_vector", "")
+            if primary_vector:
+                self.context.add_discovered_fact(
+                    category="attack_vector",
+                    key="primary",
+                    value=primary_vector,
+                    confidence=confidence_score,
+                    details={"source": "agent_discovery"},
+                    actionable=True
+                )
+
+            # Extract session/auth info
+            session_mgmt = updated_state.get("session_management", "")
+            if session_mgmt:
+                self.context.add_discovered_fact(
+                    category="technology",
+                    key="session_management",
+                    value=session_mgmt,
+                    confidence=confidence_score,
+                    actionable=False
+                )
+
+            # Extract any boolean flags indicating features
+            for key in ["file_upload", "error_based_template_inclusion", "debug_mode", "auth_required"]:
+                if updated_state.get(key):
+                    self.context.add_discovered_fact(
+                        category="feature",
+                        key=key,
+                        value=f"Detected: {key} = {updated_state[key]}",
+                        confidence=confidence_score,
+                        actionable=True
+                    )
+
+            # === CRITICAL: Extract FLAG if present in updated_state ===
+            flag_value = updated_state.get("flag", "")
+            if flag_value and isinstance(flag_value, str) and "FLAG{" in flag_value.upper():
+                self.context.add_discovered_fact(
+                    category="validated_exploit",
+                    key="captured_flag",
+                    value=f"FLAG CAPTURED: {flag_value}",
+                    confidence=1.0,  # Highest confidence for captured flags
+                    details={
+                        "flag": flag_value,
+                        "source": "agent_updated_state",
+                        "validation_token": flag_value
+                    },
+                    actionable=False  # Goal achieved, no further action needed
+                )
+                # Also record as a successful execution
+                self.context.add_execution(
+                    action="Flag Capture",
+                    target_endpoint="goal",
+                    technique="exploitation_success",
+                    result_status="success",
+                    key_finding=f"FLAG FOUND: {flag_value}",
+                    agent_name="requester"
+                )
+
+            # === EXTRACT AUTHENTICATION STATE (for other agents to reuse) ===
+            session_cookie = updated_state.get("session_cookie", "")
+            auth_token = updated_state.get("auth_token", "")
+            authenticated = updated_state.get("authenticated", False)
+            registered_user = updated_state.get("registered_user", {})
+            credentials_found = updated_state.get("credentials_found", {})
+
+            if session_cookie or auth_token or authenticated:
+                auth_details = {}
+                if session_cookie:
+                    auth_details["session_cookie"] = session_cookie
+                if auth_token:
+                    auth_details["auth_token"] = auth_token
+                if registered_user:
+                    auth_details["registered_user"] = registered_user
+                if credentials_found:
+                    auth_details["credentials_found"] = credentials_found
+
+                self.context.add_discovered_fact(
+                    category="authentication",
+                    key="session_state",
+                    value=f"Authenticated: {authenticated}, cookie: {bool(session_cookie)}, token: {bool(auth_token)}",
+                    confidence=0.95,
+                    details=auth_details,
+                    actionable=False  # Info for other agents, not an action item
+                )
+
+            # Extract credentials found separately for visibility
+            if credentials_found and isinstance(credentials_found, dict):
+                for username, password in credentials_found.items():
+                    self.context.add_discovered_fact(
+                        category="credential",
+                        key=f"cred_{username}",
+                        value=f"Username: {username}, Password: {password}",
+                        confidence=0.95,
+                        details={"username": username, "password": password},
+                        actionable=True
+                    )
+
+        # === 3. EXTRACT THOUGHT SUMMARY (Agent's key insight) ===
+        thought_summary = last_output.get("thought_summary", "")
+        agent_reasoning = last_output.get("agent_reasoning", "")
+        if thought_summary or agent_reasoning:
+            # Determine relevance based on confidence and content
+            relevance = 0.5
+            if confidence_score >= 0.7:
+                relevance = 0.8
+            elif "confirmed" in (thought_summary + agent_reasoning).lower():
+                relevance = 0.9
+            elif "failed" in (thought_summary + agent_reasoning).lower():
+                relevance = 0.6
+
+            self.context.add_thought(
+                agent_name=last_output.get("agent_name", "agent"),
+                thought=agent_reasoning[:500] if agent_reasoning else "",
+                summary=thought_summary[:200] if thought_summary else "",
+                relevance=relevance
+            )
+
+        # === 4. EXTRACT KEY FINDINGS, NOTES, AND NEXT STEPS ===
+        key_findings = last_output.get("key_findings", "")
+        notes = last_output.get("notes", "")
+        next_steps = last_output.get("next_steps", "")
+        reasoning = last_output.get("reasoning", "")
+
+        if key_findings:
+            self.context.add_discovered_fact(
+                category="finding",
+                key=f"finding_{task[:50]}",
+                value=key_findings,  # No truncation
+                confidence=confidence_score,
+                details={"next_steps": next_steps} if next_steps else {},
+                actionable=confidence_score < self.VALIDATE_THRESHOLD
+            )
+
+        if next_steps and confidence_score >= 0.5:
+            self.context.add_discovered_fact(
+                category="next_action",
+                key="suggested_next",
+                value=next_steps,
+                confidence=confidence_score,
+                actionable=True
+            )
+
+        # === 5. EXTRACT LEGACY FIELDS (for backward compatibility) ===
         payload = last_output.get("payload", "")
         request = last_output.get("request", "")
         response = last_output.get("response", "")
         vuln_category = last_output.get("vulnerability_category", "")
-        attempt_desc = last_output.get("attempt", "")
 
-        # ShellOutput fields
         objective = last_output.get("objective", "")
         stdin = last_output.get("stdin", "")
         stdout = last_output.get("stdout", "")
         stderr = last_output.get("stderr", "")
 
-        # PythonInterpreterOutput fields
         filename = last_output.get("filename", "")
         goal = last_output.get("goal", "")
         script_stdout = last_output.get("script_stdout", "")
         script_stderr = last_output.get("script_stderr", "")
 
-        # WebappReconOutput / common fields
         reasoning = last_output.get("reasoning", "")
-        state = last_output.get("state", "")
         raw_response = last_output.get("raw_response", "")
-        notes = last_output.get("notes", "")
 
-        # === Build comprehensive log for structured context ===
-        output_log_parts = [f"[Agent Result - confidence: {confidence_score:.2f}]"]
-
-        # Requester-type output
-        if payload:
-            output_log_parts.append(f"Payload: {payload[:400]}")
-        if request:
-            output_log_parts.append(f"Request: {request[:600]}")
-        if response:
-            output_log_parts.append(f"Response: {response[:1200]}")
-
-        # Shell-type output
-        if objective:
-            output_log_parts.append(f"Objective: {objective[:200]}")
-        if stdin:
-            output_log_parts.append(f"Command: {stdin[:300]}")
-        if stdout:
-            output_log_parts.append(f"Output: {stdout[:800]}")
-        if stderr:
-            output_log_parts.append(f"Errors: {stderr[:300]}")
-
-        # Python interpreter output
-        if filename:
-            output_log_parts.append(f"Script: {filename}")
-        if goal:
-            output_log_parts.append(f"Goal: {goal[:200]}")
-        if script_stdout:
-            output_log_parts.append(f"Script Output: {script_stdout[:800]}")
-        if script_stderr:
-            output_log_parts.append(f"Script Errors: {script_stderr[:300]}")
-
-        # Webapp recon output
-        if raw_response:
-            output_log_parts.append(f"Raw Response: {raw_response[:800]}")
-        if state:
-            output_log_parts.append(f"State: {state[:200]}")
-
-        # Common fields
-        if reasoning:
-            output_log_parts.append(f"Reasoning: {reasoning[:400]}")
-        if notes:
-            output_log_parts.append(f"Notes: {notes[:300]}")
-        if attempt_desc and isinstance(attempt_desc, str):
-            output_log_parts.append(f"Attempt: {attempt_desc[:200]}")
-
-        # Add to structured context log (only if we have meaningful content)
-        if len(output_log_parts) > 1:
-            full_output_log = "\n".join(output_log_parts)
-            self.context.structured.append_to_log(full_output_log)
-
-        # === Record attempt for deduplication and learning ===
-        # Determine the primary "action" that was taken
-        attempt_action = payload or request or stdin or script_stdout or raw_response or ""
-
-        if attempt_action:
-            # Determine result based on confidence
-            if confidence_score >= self.VALIDATE_THRESHOLD:
-                result = "success"
-            elif confidence_score >= self.EXPLORE_THRESHOLD:
-                result = "partial"
+        # === 6. RECORD PRIMARY EXECUTION (if not already via payloads_tested) ===
+        if not payloads_tested:
+            # Determine action type and endpoint
+            if payload or request:
+                action_type = "HTTP Request"
+                endpoint = self._extract_endpoint_from_request(request) if request else "unknown"
+                technique = f"{vuln_category}: {payload[:50]}" if vuln_category else payload[:50]
+            elif stdin or objective:
+                action_type = "Shell Command"
+                endpoint = objective[:50] if objective else "shell"
+                technique = stdin[:80] if stdin else "command"
+            elif filename or script_stdout:
+                action_type = "Python Script"
+                endpoint = filename or "script"
+                technique = goal[:80] if goal else "script execution"
             else:
-                result = "failed"
+                action_type = None
+                endpoint = None
+                technique = None
 
-            # Build reason with key indicators
-            reason_parts = [f"confidence: {confidence_score:.2f}"]
+            if action_type:
+                # Determine result
+                all_output = f"{response} {stdout} {script_stdout} {raw_response}"
+                if confidence_score >= self.VALIDATE_THRESHOLD:
+                    result_status = "success"
+                elif "blocked" in all_output.lower() or "filtered" in all_output.lower():
+                    result_status = "blocked"
+                elif "error" in all_output.lower() and confidence_score < 0.5:
+                    result_status = "error"
+                elif confidence_score >= self.EXPLORE_THRESHOLD:
+                    result_status = "partial"
+                else:
+                    result_status = "failed"
 
-            if vuln_category:
-                reason_parts.append(f"category: {vuln_category}")
+                # Build key finding from output
+                key_finding = ""
+                if "FLAG{" in all_output or "flag{" in all_output.lower():
+                    # Extract actual flag value using regex
+                    flag_match = re.search(r'FLAG\{[^}]+\}', all_output, re.IGNORECASE)
+                    if flag_match:
+                        extracted_flag = flag_match.group(0)
+                        key_finding = f"FLAG FOUND: {extracted_flag}"
+                        result_status = "success"
+                        # Add flag as discovered fact
+                        self.context.add_discovered_fact(
+                            category="validated_exploit",
+                            key="captured_flag",
+                            value=f"FLAG CAPTURED: {extracted_flag}",
+                            confidence=1.0,
+                            details={
+                                "flag": extracted_flag,
+                                "source": "response_output",
+                                "validation_token": extracted_flag
+                            },
+                            actionable=False
+                        )
+                    else:
+                        key_finding = "FLAG FOUND!"
+                        result_status = "success"
+                elif stderr or script_stderr:
+                    key_finding = f"Error: {(stderr or script_stderr)[:100]}"
+                elif response:
+                    key_finding = f"Response: {response[:100]}"
 
-            # Check all output sources for key indicators
-            all_output = f"{response} {stdout} {script_stdout} {raw_response}"
-            if "FLAG{" in all_output or "flag{" in all_output.lower():
-                reason_parts.append("FLAG FOUND")
-                result = "success"  # Override to success if flag found
-            elif "error" in all_output.lower() and "success" not in all_output.lower():
-                reason_parts.append("error in output")
-            elif "fail" in all_output.lower() and "success" not in all_output.lower():
-                reason_parts.append("fail indicator in output")
-            elif "success" in all_output.lower() or "completed" in all_output.lower():
-                reason_parts.append("success indicator in output")
+                self.context.add_execution(
+                    action=action_type,
+                    target_endpoint=endpoint,
+                    technique=technique,
+                    result_status=result_status,
+                    key_finding=key_finding,
+                    response_summary=all_output[:200],
+                    agent_name=last_output.get("agent_name", "agent")
+                )
 
-            if stderr or script_stderr:
-                reason_parts.append("stderr present")
-
-            self.context.record_attempt(
-                task=task,
-                payload=str(attempt_action)[:400],
-                result=result,
-                reason="; ".join(reason_parts)
-            )
-
-        # === Add discovered facts from agent output ===
-
-        # Add vulnerability facts
+        # === 7. ADD VULNERABILITY FACT (if high enough confidence) ===
         if vuln_category and confidence_score >= 0.5:
-            details = {}
-            if payload:
-                details["payload"] = payload[:150]
-            if request:
-                details["request"] = request[:150]
+            details = {"payload": payload[:150]} if payload else {}
             if response:
-                details["response_excerpt"] = response[:250]
-            if stdout or script_stdout:
-                details["output_excerpt"] = (stdout or script_stdout)[:250]
+                details["response_excerpt"] = response[:200]
 
             self.context.add_discovered_fact(
                 category="vulnerability",
                 key=vuln_category,
-                value=f"Tested: {payload[:100] or stdin[:100] or 'via agent'}",
+                value=f"Tested with confidence {confidence_score:.2f}",
                 confidence=confidence_score,
                 details=details,
                 actionable=confidence_score < self.VALIDATE_THRESHOLD
             )
 
-        # Add endpoint facts from shell discoveries
-        if objective and stdout and confidence_score >= 0.6:
-            # Shell agent often discovers endpoints/services
-            self.context.add_discovered_fact(
-                category="discovery",
-                key=objective[:50],
-                value=stdout[:200],
-                confidence=confidence_score,
-                details={"command": stdin[:100] if stdin else ""},
-                actionable=False
-            )
+        # === 8. BUILD CONCISE LOG FOR DISPLAY ===
+        log_parts = [f"[Execution - {confidence_score:.2f}]"]
+        if vuln_category:
+            log_parts.append(f"Category: {vuln_category}")
+        if key_findings:
+            log_parts.append(f"Finding: {key_findings[:150]}")
+        if thought_summary:
+            log_parts.append(f"Insight: {thought_summary[:150]}")
+        if next_steps:
+            log_parts.append(f"Next: {next_steps[:100]}")
 
-        # Add technology/state facts from webapp recon
-        if state and confidence_score >= 0.6:
-            self.context.add_discovered_fact(
-                category="state",
-                key="webapp_state",
-                value=state[:200],
-                confidence=confidence_score,
-                details={"reasoning": reasoning[:150] if reasoning else ""},
-                actionable=False
-            )
+        if len(log_parts) > 1:
+            self.context.structured.append_to_log("\n".join(log_parts))
+
+    def _extract_endpoint_from_request(self, request: str) -> str:
+        """Extract endpoint path from a request description."""
+        # Try to find patterns like "POST /path" or "/endpoint"
+        import re
+        match = re.search(r'(?:GET|POST|PUT|DELETE|PATCH)?\s*(/[^\s,]*)', request)
+        if match:
+            return match.group(1)[:50]
+        return "unknown"
 
     async def _solve(
         self,
@@ -1018,10 +1414,11 @@ class ADaPTAgent:
         # Use a local variable to track exit_loop since the parameter can't be modified
         should_exit = exit_loop
         while not should_exit:
-            # Build optimized context for executor
-            tasks_context = self.context.get_tasks(depth=0)
-            execution_context = await self.context.get_all_context(max_tokens=6000)
-            agent_context = f"{tasks_context}\n{execution_context}"
+            # Build UNIFIED context for executor (same as all other agents)
+            # This ensures router, executor, validator all see the same information
+            tasks_context = self.context.get_tasks(depth=0, include_goal=False)
+            unified_context = self.context.get_unified_context(max_tokens=6000)
+            agent_context = f"{unified_context}\n\n## Current Tasks\n{tasks_context}"
 
             executor_stream = self.executor.execute(task_node=node, agent_context=agent_context)
 
@@ -1086,13 +1483,12 @@ class ADaPTAgent:
 
             # If between 20%-60%
             elif decision == "expand" and depth < self.max_depth:
-                # Use optimized planning context instead of full context
+                # Use UNIFIED context for planner (same as executor/router)
                 planner_context = f"""
-## Current Plan Status
-{self.context.get_tasks()}
+{self.context.get_unified_context(max_tokens=5000)}
 
-## Context Summary
-{self.context.get_planning_context()}
+## Current Plan Status
+{self.context.get_tasks(include_goal=False)}
 
 ## Instructions
 Analyze what has been achieved and expand the plan with only what still needs to be done.
@@ -1156,13 +1552,12 @@ Update confidence_score based on progress. Reason step by step for the most logi
                     break
             # If refine
             else:
-                # Use optimized planning context for refinement
+                # Use UNIFIED context for planner (same as executor/router)
                 planner_context = f"""
-## Current Plan Status
-{self.context.get_tasks()}
+{self.context.get_unified_context(max_tokens=5000)}
 
-## Context Summary
-{self.context.get_planning_context()}
+## Current Plan Status
+{self.context.get_tasks(include_goal=False)}
 
 ## Instructions
 Analyze what has been achieved and update the plan with only what still needs to be done.
@@ -1271,8 +1666,9 @@ Update confidence_score for completed items. Reason step by step for the most lo
         if not self.validator:
             return ("completed", "")
 
-        # Use scoped validation context instead of full context (reduces token waste)
-        validation_context_text = self.context.get_validation_context()
+        # Use UNIFIED context for validator (same as executor/router/planner)
+        # This ensures validator sees the same discoveries and exploits as other agents
+        validation_context_text = self.context.get_unified_context(max_tokens=5000)
 
         (ok, validation, critique, validation_token) = await self.validator.verify(
             task=node,
@@ -1289,6 +1685,27 @@ Update confidence_score for completed items. Reason step by step for the most lo
         self.context.add_agent_response(validation_summary, skip_structured=True)
 
         node.confidence_score = validation
+
+        # If validation passed, add validated result as high-confidence fact
+        # This ensures the successful exploit details persist in context for next agents
+        if ok:
+            # Extract recent successful attempts to preserve as facts
+            successful_attempts = [a for a in self.context.structured.attempts if a.result == "success"]
+            for attempt in successful_attempts[-3:]:  # Last 3 successful
+                self.context.structured.add_fact_simple(
+                    category="validated_exploit",
+                    key=f"{node.task[:50]}",
+                    value=f"Payload: {attempt.payload[:200]}",
+                    confidence=validation,
+                    source_task=node.task[:100],
+                    details={
+                        "payload": attempt.payload,
+                        "reason": attempt.reason,
+                        "validation_token": validation_token,
+                        "task": attempt.task
+                    },
+                    actionable=True
+                )
 
         return ("completed", validation_token) if ok else ("failed-validation", validation_token)
 
@@ -1323,8 +1740,8 @@ Update confidence_score for completed items. Reason step by step for the most lo
         )
         self.context.set_root_task(root.task)
 
-        # Use optimized context for initial planning
-        initial_context = await self.context.get_all_context(max_tokens=4000)
+        # Use UNIFIED context for initial planning (same as all other agents)
+        initial_context = self.context.get_unified_context(max_tokens=4000)
         subtasks, website_info, exploit_info = await self.planner.expand(
             root,
             context=initial_context,

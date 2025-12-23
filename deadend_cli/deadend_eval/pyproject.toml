@@ -1,7 +1,7 @@
 [project]
 name = "deadend-eval"
 dynamic = ["version"]
-description = "Add your description here"
+description = "Evaluation package."
 readme = "README.md"
 authors = [
     { name = "Yassine Bargach", email = "yassine@straylabs.ai" }
