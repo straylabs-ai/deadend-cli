@@ -10,129 +10,35 @@ usage tracking for the security research framework.
 """
 from __future__ import annotations
 from typing import Any, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from pydantic_ai import Agent, capture_run_messages, DeferredToolResults, UnexpectedModelBehavior
 from pydantic_ai.messages import (
     ModelMessage,
-    ModelRequest,
     ModelResponse,
     TextPart,
-    ToolCallPart,
-    ToolReturnPart,
 )
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
 from deadend_agent.hooks import get_event_hooks
 
 
-class ToolAttempt(BaseModel):
-    """Record of a single tool call made during agent execution.
-
-    Captures the tool name, arguments, and result for each tool call,
-    enabling full visibility into what the agent tried during its run.
-
-    Attributes:
-        tool_name: Name of the tool that was called
-        tool_args: Arguments passed to the tool (truncated for size)
-        tool_result: Result returned by the tool (truncated for size)
-        success: Whether the tool call succeeded
-    """
-    tool_name: str
-    tool_args: str = ""
-    tool_result: str = ""
-    success: bool = True
-
-    @classmethod
-    def from_call_and_return(
-        cls,
-        call: ToolCallPart,
-        return_part: ToolReturnPart | None = None
-    ) -> "ToolAttempt":
-        """Create ToolAttempt from pydantic-ai message parts."""
-        # Extract args as string, truncate if too long
-        args_str = str(call.args)[:500] if call.args else ""
-
-        # Extract result as string, truncate if too long
-        result_str = ""
-        success = True
-        if return_part:
-            result_str = str(return_part.content)[:1500]
-            # Check for error indicators
-            if "error" in result_str.lower()[:100] or "exception" in result_str.lower()[:100]:
-                success = False
-
-        return cls(
-            tool_name=call.tool_name,
-            tool_args=args_str,
-            tool_result=result_str,
-            success=success
-        )
-
-
 class AgentOutput(BaseModel):
     """Standard output format for agent execution results.
 
-    This model provides a consistent structure for agent outputs, including
-    confidence scores, execution notes, updated context state, and all tool
-    attempts made during execution.
+    Simplified output with 4 essential fields for all agents.
 
     Attributes:
-        confidence_score: Confidence score (0.0-1.0) indicating the agent's
-            confidence in the execution result
-        notes: Optional notes or reasoning from the agent about the execution
-        updated_state: Optional dictionary containing updated context state
-            from the agent's execution
-        attempts: List of all tool calls made during this agent run
-        agent_reasoning: Extracted text reasoning from agent's responses
-            (populated on failure to preserve agent's thoughts)
-        thought_summary: Concise summary of the agent's key insight
+        detailed_summary: Summary of what was done, techniques used,
+            what worked/failed, and suggested next steps
+        proofs: Evidence including tool outputs, requests/responses,
+            flags found, credentials discovered
+        confidence_score: Confidence in findings (0.0-1.0)
+        thoughts: Agent's reasoning and analysis during execution
     """
-    confidence_score: float
-    notes: str | None = None
-    updated_state: dict[str, Any] | None = None
-    attempts: List[ToolAttempt] = Field(default_factory=list)
-    agent_reasoning: str | None = None
-    thought_summary: str | None = None
-
-
-def extract_tool_attempts_from_messages(messages: List[ModelMessage]) -> List[ToolAttempt]:
-    """Extract all tool attempts from pydantic-ai captured messages.
-
-    Pairs tool calls with their corresponding returns to create
-    a complete record of all tool invocations during an agent run.
-
-    Args:
-        messages: List of ModelMessage from capture_run_messages()
-
-    Returns:
-        List of ToolAttempt objects representing each tool call
-    """
-    attempts: List[ToolAttempt] = []
-
-    # Build a map of tool_call_id -> ToolCallPart
-    tool_calls: dict[str, ToolCallPart] = {}
-    tool_returns: dict[str, ToolReturnPart] = {}
-
-    for msg in messages:
-        # ModelResponse contains tool calls
-        if isinstance(msg, ModelResponse):
-            for part in msg.parts:
-                if isinstance(part, ToolCallPart):
-                    tool_calls[part.tool_call_id] = part
-
-        # ModelRequest contains tool returns
-        if isinstance(msg, ModelRequest):
-            for part in msg.parts:
-                if isinstance(part, ToolReturnPart):
-                    tool_returns[part.tool_call_id] = part
-
-    # Match calls with returns
-    for call_id, call in tool_calls.items():
-        return_part = tool_returns.get(call_id)
-        attempt = ToolAttempt.from_call_and_return(call, return_part)
-        attempts.append(attempt)
-
-    return attempts
+    detailed_summary: str = ""
+    proofs: str = ""
+    confidence_score: float = 0.5
+    thoughts: str = ""
 
 
 def extract_text_from_messages(messages: List[ModelMessage], max_chars: int = 3000) -> str:
@@ -272,22 +178,17 @@ class FallbackAgentResult:
         output: The fallback AgentOutput with low confidence
         error: The original error message
         raw_messages: Raw messages captured during failed execution
-        attempts: Tool attempts extracted from the failed run
     """
 
     def __init__(
         self,
         output: AgentOutput,
         error: str = "",
-        raw_messages: Any = None,
-        attempts: List[ToolAttempt] | None = None
+        raw_messages: Any = None
     ):
         self.output = output
         self.error = error
         self.raw_messages = raw_messages
-        # Attach attempts to output
-        if attempts:
-            self.output.attempts = attempts
 
 
 class AgentRunner:
@@ -316,13 +217,19 @@ class AgentRunner:
             output_type: Expected output type for the agent's responses
             tools: List of tools available to the agent
         """
+        # testing settings
+        # settings = OpenAIResponsesModelSettings(
+        #     openai_reasoning_effort='high',
+        #     openai_reasoning_summary='detailed',
+        # )
         self.name = name
         self.agent = Agent(
             model=model,
             instructions=instructions,
             deps_type=deps_type,
             output_type=output_type,
-            tools=tools
+            tools=tools,
+            # model_settings=settings
         )
         self.response = None
 
@@ -347,7 +254,6 @@ class AgentRunner:
 
         Returns:
             AgentRunResult or FallbackAgentResult containing the agent's output.
-            The output includes all tool attempts made during execution.
             FallbackAgentResult is returned when UnexpectedModelBehavior occurs,
             with a low confidence score (0.1) to signal the failure to callers.
 
@@ -355,6 +261,8 @@ class AgentRunner:
             Future enhancements will include token limit checking, rate-limit handling,
             and interruption support.
         """
+
+
         with capture_run_messages() as messages:
             try:
                 result = await self.agent.run(
@@ -366,51 +274,25 @@ class AgentRunner:
                     deferred_tool_results=deferred_tool_results
                 )
 
-                # Extract tool attempts from captured messages
+                # Extract agent's reasoning for successful runs
                 msg_list = list(messages)
-                attempts = extract_tool_attempts_from_messages(msg_list)
-
-                # Extract agent's reasoning for successful runs too
                 agent_reasoning = extract_text_from_messages(msg_list, max_chars=1500)
-                thought_summary = summarize_agent_thought(agent_reasoning) if agent_reasoning else None
 
-                # Emit AGENT_THOUGHT event if reasoning was extracted
-                if agent_reasoning:
-                    hooks = get_event_hooks()
-                    # Try to get session_id from deps
-                    session_id = getattr(deps, "session_id", None) or "unknown"
-                    hooks.emit_agent_thought(
-                        session_id=session_id,
-                        agent_name=self.name,
-                        thought=agent_reasoning,
-                        summary=thought_summary,
-                        relevance=0.7,  # Higher relevance for successful runs
-                    )
-
-                # Attach attempts and thought summary to the output
+                # Attach thoughts to the output
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
-                    result.output.attempts = attempts
-                    result.output.agent_reasoning = agent_reasoning
-                    result.output.thought_summary = thought_summary
-                elif hasattr(result, 'output') and hasattr(result.output, 'attempts'):
-                    # For subclasses that have attempts field
-                    result.output.attempts = attempts
-                    if hasattr(result.output, 'agent_reasoning'):
-                        result.output.agent_reasoning = agent_reasoning
-                    if hasattr(result.output, 'thought_summary'):
-                        result.output.thought_summary = thought_summary
+                    if not result.output.thoughts:
+                        result.output.thoughts = agent_reasoning
+                elif hasattr(result, 'output') and hasattr(result.output, 'thoughts'):
+                    if not result.output.thoughts:
+                        result.output.thoughts = agent_reasoning
 
             except UnexpectedModelBehavior as e:
                 error_msg = str(e)
                 print(f"[AgentRunner] UnexpectedModelBehavior: {error_msg}")
 
-                # Extract any tool attempts that occurred before failure
-                msg_list = list(messages)
-                attempts = extract_tool_attempts_from_messages(msg_list)
-
                 # Extract agent's text reasoning/thoughts from messages
+                msg_list = list(messages)
                 agent_reasoning = extract_text_from_messages(msg_list, max_chars=2500)
-                thought_summary = summarize_agent_thought(agent_reasoning) if agent_reasoning else None
                 if agent_reasoning:
                     print(f"[AgentRunner] Preserved agent reasoning ({len(agent_reasoning)} chars)")
                     # Emit AGENT_THOUGHT event even on error to preserve reasoning
@@ -424,28 +306,16 @@ class AgentRunner:
                         relevance=0.4,  # Lower relevance for failed runs
                     )
 
-                # Build comprehensive notes with error and preserved reasoning
-                notes_parts = [f"Agent behavior error: {error_msg}"]
-                if thought_summary:
-                    notes_parts.append(f"Key insight: {thought_summary}")
-
                 # Create a fallback result with low confidence but preserved context
                 fallback_output = AgentOutput(
-                    confidence_score=0.1,  # Low confidence signals failure
-                    notes="\n".join(notes_parts),
-                    updated_state={
-                        "error": error_msg,
-                        "agent": self.name,
-                        "partial_reasoning": agent_reasoning[:500] if agent_reasoning else ""
-                    },
-                    attempts=attempts,  # Include attempts even on failure
-                    agent_reasoning=agent_reasoning,  # Store full reasoning
-                    thought_summary=thought_summary
+                    detailed_summary=f"Agent error: {error_msg}. Agent: {self.name}",
+                    proofs=agent_reasoning[:1000] if agent_reasoning else "",
+                    confidence_score=0.1,
+                    thoughts=agent_reasoning or ""
                 )
                 result = FallbackAgentResult(
                     output=fallback_output,
                     error=error_msg,
-                    raw_messages=msg_list,
-                    attempts=attempts
+                    raw_messages=msg_list
                 )
         return result

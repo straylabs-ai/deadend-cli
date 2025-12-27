@@ -1,9 +1,7 @@
 """Main DeadEnd agent orchestration module."""
+import re
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
-import io
-import sys
-from contextlib import redirect_stdout
 
 from pydantic_ai import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel, EmbedderClient
@@ -28,28 +26,7 @@ from deadend_agent.utils.structures import (
 from deadend_agent.tools.browser_automation.http_parser import extract_host_port
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
 from .agents.exploit_web_agent import PlannerExploitAgent
-from deadend_eval.metrics import save_traces
-
-
-class _StdoutTee(io.TextIOBase):
-    """Simple tee that writes to multiple text streams.
-
-    Used to capture everything printed to stdout while still echoing it
-    to the original terminal.
-    """
-
-    def __init__(self, *streams: io.TextIOBase) -> None:
-        self._streams = streams
-
-    def write(self, s: str) -> int:  # type: ignore[override]
-        for stream in self._streams:
-            stream.write(s)
-            stream.flush()
-        return len(s)
-
-    def flush(self) -> None:  # type: ignore[override]
-        for stream in self._streams:
-            stream.flush()
+# from deadend_eval.metrics imporst save_traces
 
 ApprovalCallback = Callable[..., Awaitable[str]]
 
@@ -260,73 +237,73 @@ class DeadEndAgent:
         Returns:
             TaskNode with the execution plan and results
         """
-        # ADaPT agent handles both planning and execution, with router integration
-        # The executor within ADaPT uses the router to route tasks to appropriate agents
+        # Simplified: directly use the executor's supervisor pattern
+        # instead of going through the full ADaPT agent loop
 
-        # Add a plan to recon for the threat model.
-        # The threat model agent is a supervisor that can call
-        #  to the router for the generic agent calling
-        # Initialize threat model agent for planning
-        self.threat_model_agent = ReconThreatModelAgent(
-            name="threat_model",
-            model=self.model,
-            deps_type=RequesterDeps,
-            tools=[]
-        )
-
-        self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
-
-        self.adapt_agent = ADaPTAgent(
-            session_id=self.session_id,
-            context=self.context,
-            executor=self.executor,
-            planner=self.planner,
-            validator=self.validator,
-            max_depth=1
-        )
-        plan: TaskNode | None = None
         validation_token: str = ""
         traces: list[str | dict[str, Any]] = []
 
-        # Capture everything printed to stdout during the threat-model run
-        # while still echoing it to the original terminal/stdout.
-        stdout_buffer = io.StringIO()
-        tee = _StdoutTee(sys.stdout, stdout_buffer)
+        prompt_task = f"""Prepare the necessary information (reconnaissance) to achieve the following task: {task}
 
-        with redirect_stdout(tee):
-            async for event in self.adapt_agent.run(task=task, exit_strategy=""):
-                # Collect all events for trace saving
-                traces.append(event)
-                if isinstance(event, dict):
-                    if event.get("type") == "result":
-                        root_candidate = event.get("root")
-                        if isinstance(root_candidate, TaskNode):
-                            plan = root_candidate
-                    elif event.get("validation_token"):
-                        validation_token = event.get("validation_token")
-                    else:
-                        print(event.get("message", str(event)))
-                else:
-                    print(str(event))
+Focus on gathering ONLY the information needed for this specific task. Be precise - every piece of information must be retrieved from tooling responses, nothing should be invented or assumed.
 
-        # Add complete stdout log as a final trace entry so the trace file
-        # contains everything that was printed, not just structured events.
-        printed_output = stdout_buffer.getvalue()
-        if printed_output:
-            traces.append({"type": "stdout", "output": printed_output})
+What to discover:
+- Endpoints relevant to the task and how to use them
+- What data/parameters each endpoint needs
+- Authentication requirements (which endpoints need auth, which don't)
+- Session management and authentication mechanisms
+- Any suspicious or interesting behavior related to the task
 
-        # Save traces to file
-        try:
-            trace_file = save_traces(
-                traces=traces,
-                challenge_name=self.challenge_name,
-            )
-            print(f"Traces saved to: {trace_file}")
-        except Exception as e:
-            print(f"Warning: Failed to save traces: {e}")
+Critical rules:
+- Do NOT use nmap or similar scanning on localhost (127.0.0.1)
+- Make requests to the target and analyze responses
+- Follow forms, links, and endpoints to discover relevant information
+- Extract endpoints, authentication info, and secrets from actual tool responses
+- Do NOT invent or guess endpoints - only use what is discovered
+- Return when you have gathered sufficient information to proceed with the task
+"""
 
-        if plan is None:
-            raise RuntimeError("ADaPT agent did not produce a plan.")
+        # Create a simple task node for the threat model
+        task_node = TaskNode(
+            task=prompt_task,
+            depth=0,
+            confidence_score=0.7,
+            status="pending",
+            parent=None,
+            children=[]
+        )
+
+        # Set root task in context
+        self.context.set_root_task(prompt_task)
+
+        # Get unified context for the executor
+        unified_context = self.context.get_unified_context(max_tokens=6000)
+
+        # Run the supervisor directly
+        async for event in self.executor.execute_supervisor(
+            task_node=task_node,
+            agent_context=unified_context,
+            usage=RunUsage(),
+            usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
+        ):
+            traces.append(event)
+            if hasattr(event, 'type'):
+                if event.type == "result":
+                    # ResultEvent - extract the context
+                    task_node.confidence_score = event.confidence_score
+                    task_node.status = "completed" if event.context.get("task_achieved") else "in_progress"
+                    # Check for validation token in proofs
+                    proofs = event.context.get("proofs", "")
+                    if proofs and "FLAG{" in proofs.upper():
+                        flag_match = re.search(r'FLAG\{[^}]+\}', proofs, re.IGNORECASE)
+                        if flag_match:
+                            validation_token = flag_match.group(0)
+                elif event.type == "log":
+                    # LogEvent
+                    try:
+                        print(event.message)
+                    except (BlockingIOError, OSError):
+                        pass
 
         reporter_agent = ReporterAgent(
             model=self.model,
@@ -358,7 +335,7 @@ IMPORTANT:
             message_history=""
         )
 
-        return plan, threat_model_data, validation_token
+        return task_node, threat_model_data, validation_token
 
     async def threat_model_stream(self, task: str):
         """Execute the threat modeling and orchestration workflow.
@@ -494,43 +471,37 @@ The flag that you need to find has the following format : FLAG{{}}.
         traces: list[str | dict[str, Any]] = []
         validation_token = ""
 
-        # Capture everything printed to stdout during the run while still
-        # echoing it to the original terminal/stdout.
-        stdout_buffer = io.StringIO()
-        tee = _StdoutTee(sys.stdout, stdout_buffer)
+        async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
+            # Collect all events for trace saving
+            traces.append(event)
 
-        with redirect_stdout(tee):
-            async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
-                # Collect all events for trace saving
-                traces.append(event)
-
-                if isinstance(event, dict):
-                    if event.get("type") == "result":
-                        root_candidate = event.get("root")
-                        if isinstance(root_candidate, TaskNode):
-                            plan = root_candidate
-                    elif event.get("validation_token"):
-                        validation_token = event.get("validation_token")
-                    else:
-                        print(event.get("message", str(event)))
+            if isinstance(event, dict):
+                if event.get("type") == "result":
+                    root_candidate = event.get("root")
+                    if isinstance(root_candidate, TaskNode):
+                        plan = root_candidate
+                elif event.get("validation_token"):
+                    validation_token = event.get("validation_token")
                 else:
+                    try:
+                        print(event.get("message", str(event)))
+                    except (BlockingIOError, OSError):
+                        pass
+            else:
+                try:
                     print(str(event))
-
-        # Add complete stdout log as a final trace entry so the trace file
-        # contains everything that was printed, not just structured events.
-        printed_output = stdout_buffer.getvalue()
-        if printed_output:
-            traces.append({"type": "stdout", "output": printed_output})
+                except (BlockingIOError, OSError):
+                    pass
 
         # Save traces to file
-        try:
-            trace_file = save_traces(
-                traces=traces,
-                challenge_name=self.challenge_name,
-            )
-            print(f"Traces saved to: {trace_file}")
-        except Exception as e:
-            print(f"Warning: Failed to save traces: {e}")
+        # try:
+        #     trace_file = save_traces(
+        #         traces=traces,
+        #         challenge_name=self.challenge_name,
+        #     )
+        #     print(f"Traces saved to: {trace_file}")
+        # except Exception as e:
+        #     print(f"Warning: Failed to save traces: {e}")
 
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")

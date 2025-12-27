@@ -942,10 +942,11 @@ class PlaywrightRequester:
             if await storage_file.exists():
                 # Read back to verify cookies are saved
                 content = await storage_file.read_text(encoding='utf-8')
-                storage_data = json.loads(content)
-                cookie_count = len(storage_data.get('cookies', []))
-                if cookie_count > 0:
-                    print(f"Saved {cookie_count} cookies to storage for session {session_id}")
+                if content and content.strip():
+                    storage_data = json.loads(content)
+                    cookie_count = len(storage_data.get('cookies', []))
+                    if cookie_count > 0:
+                        print(f"Saved {cookie_count} cookies to storage for session {session_id}")
         except Exception as e:
             print(f"Error saving storage state: {e}")
             import traceback

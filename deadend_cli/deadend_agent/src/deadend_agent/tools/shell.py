@@ -8,11 +8,10 @@ This module provides a tool for executing shell commands within a sandboxed
 environment, ensuring security and isolation during security research tasks
 while capturing command output and execution logs.
 """
-
 from typing import Dict
 from pydantic_ai import RunContext
 from rich import print as console_printer
-from deadend_agent.sandbox.sandbox import Sandbox, SandboxStatus
+from deadend_agent.sandbox.sandbox import SandboxStatus
 from deadend_agent.utils.structures import WebappreconDeps, CmdLog
 from deadend_agent.tools.tool_wrappers import with_tool_events
 
@@ -35,6 +34,7 @@ def sandboxed_shell_tool(
     """
     if ctx.deps.shell_runner.sandbox.status == SandboxStatus.RUNNING:
         result = ctx.deps.shell_runner.run_command(command, timeout_seconds)
+
         console_printer(
             f"Command execution completed in \
                 {result.get('execution_time', 0):.2f}s"

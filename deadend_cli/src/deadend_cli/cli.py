@@ -72,8 +72,8 @@ def chat(
     config = config_setup()
     print_banner(config=config)
     # Monitoring
-    logfire.configure(scrubbing=False, console=None)
-    logfire.instrument_pydantic_ai()
+    # logfire.configure(scrubbing=False, console=None)
+    # logfire.instrument_pydantic_ai()
     python_process = start_python_sandbox()
     console.print(f"Python sandbox started: {python_process}")
     try:

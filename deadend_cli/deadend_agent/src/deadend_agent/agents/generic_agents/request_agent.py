@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.agents.factory import AgentRunner, AgentOutput
-from deadend_agent.context.memory import MemoryHandler
 from deadend_agent.models.registry import AIModel
 from deadend_agent.tools import (
     is_valid_request_detailed,
@@ -25,51 +24,12 @@ from deadend_agent.tools import (
 from deadend_prompts import render_agent_instructions, render_tool_description
 
 
-class TestedPayload(BaseModel):
-    """Record of a single payload that was tested.
-
-    Attributes:
-        payload: The exact payload/input tested
-        endpoint: Which endpoint it was sent to
-        method: HTTP method used (GET, POST, etc.)
-        result: What happened (success, blocked, error, no_effect)
-        why_failed: Explanation of why it didn't work (if failed)
-        response_indicator: Key response indicator (status code, error msg, etc.)
-    """
-    payload: str
-    endpoint: str
-    method: str = "POST"
-    result: str  # success, blocked, filtered, error, no_effect
-    why_failed: str = ""
-    response_indicator: str = ""
-
-
 class RequesterOutput(AgentOutput):
     """Output model for Playwright's requester.
 
-    This requester output captures comprehensive information about what was
-    tested and what was learned, enabling subsequent agents to build on this.
-
-    Attributes:
-        payload: The most significant payload tested (or summary)
-        vulnerability_category: Category of vulnerability tested (XSS, SQLi, SSTI, etc.)
-        attempt: Whether an exploitation attempt was made
-        request: Description of requests made
-        response: Summary of key responses
-        payloads_tested: List of all payloads tested with their outcomes
-        key_findings: Most important discoveries from this execution
-        next_steps: Suggested next actions based on findings
-        attempts: (inherited) List of all tool calls made during agent run
-        thought_summary: (inherited) Concise summary of agent's key insight
+    Inherits from AgentOutput: detailed_summary, proofs, confidence_score, thoughts
     """
-    payload: str
-    vulnerability_category: str
-    attempt: bool
-    request: str
-    response: str
-    payloads_tested: list[TestedPayload] = []
-    key_findings: str = ""
-    next_steps: str = ""
+    pass
 
 
 class DummyCreds(BaseModel):

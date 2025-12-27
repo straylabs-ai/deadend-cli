@@ -15,20 +15,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Set, Any, TYPE_CHECKING
 
-import tiktoken
-
 from deadend_agent.models import AIModel
 from deadend_agent.utils.structures import Task, TaskPlanner
+from deadend_agent.utils.functions import num_tokens_from_string
 
 if TYPE_CHECKING:
     from deadend_agent.agents import RouterOutput
     from deadend_agent.agents.reporter import ReporterAgent
 
-
-def num_tokens_from_string(string: str, encoding_name: str = "o200k_base") -> int:
-    """Returns the number of tokens in a text string using tiktoken."""
-    encoding = tiktoken.get_encoding(encoding_name)
-    return len(encoding.encode(string))
 
 
 @dataclass
@@ -646,7 +640,7 @@ class StructuredContext:
         header = f"Target: {self.target}" if self.target else ""
         if self.goal:
             goal_clean = self.goal.replace(self.target, "").strip() if self.target else self.goal
-            header += f"\nGoal: {goal_clean[:300]}"
+            header += f"\nGoal: {goal_clean}"  # Full goal, no truncation
         if header:
             sections.append(header)
 
@@ -910,11 +904,11 @@ class ContextEngine:
             self.tasks[parent_task] = nested_tasks
 
     def get_tasks(self, depth: int = 0, include_goal: bool = False) -> str:
-        """Return a concise textual summary of planner tasks for the given depth.
+        """Return a concise textual summary of all planner tasks with their status.
 
-        The summary includes tasks at the requested depth and recursively nests
-        any available child depths. This string is later injected into prompts,
-        so it favors short, high-signal lines.
+        The summary includes all tasks at the requested depth with their actual
+        status and recursively nests any available child depths. This string is
+        later injected into prompts, so it favors short, high-signal lines.
 
         Args:
             depth: The depth level for task retrieval (default 0)
@@ -925,126 +919,63 @@ class ContextEngine:
 
         # Only include goal if explicitly requested (avoids stale duplication)
         if include_goal and self.final_goal:
-            # Truncate goal to avoid including stale verbose content
-            goal_preview = self.final_goal[:300] + "..." if len(self.final_goal) > 300 else self.final_goal
-            tasks_context = f"## Primary objective\n{goal_preview}\n"
+            tasks_context = f"## Primary objective\n{self.final_goal}\n"  # Full goal, no truncation
 
         if not self.tasks:
             return tasks_context if tasks_context else "## Tasks\nNo tasks defined yet."
 
-        # Separate tasks by status for better clarity
-        pending_tasks = []
-        completed_tasks = []
-        failed_tasks = []
+        tasks_lines = "\n## All Tasks:\n"
 
-        for task_planner, children in self.tasks.items():
-            task_info = {
-                'planner': task_planner,
-                'children': children
-            }
-            if task_planner.status == 'pending':
-                pending_tasks.append(task_info)
-            elif task_planner.status in ['completed', 'success', 'validated']:
-                completed_tasks.append(task_info)
-            elif task_planner.status in ['failed', 'failed-validation']:
-                failed_tasks.append(task_info)
-            else:
-                pending_tasks.append(task_info)  # Default to pending for unknown statuses
+        for idx, (task_planner, children) in enumerate(self.tasks.items(), 1):
+            task_desc = task_planner.task.strip()  # Full task, no truncation
 
-        tasks_lines = ""
+            # Status indicator for quick scanning
+            status_icon = {
+                'pending': '○',
+                'in_progress': '◐',
+                'completed': '✓',
+                'success': '✓',
+                'validated': '✓',
+                'failed': '✗',
+                'failed-validation': '✗',
+                'aborted:max_depth': '⊘',
+                'failed:max_attempts': '⊘',
+            }.get(task_planner.status, '?')
 
-        # Format: Show completed tasks first (what's been done),
-        # then pending (what needs to be done)
-        if completed_tasks:
-            tasks_lines += "\n## Completed Tasks:\n"
-            for idx, task_info in enumerate(completed_tasks, 1):
-                tp = task_info['planner']
-                children = task_info['children']
-                task_desc = tp.task.strip()
-                # Truncate very long descriptions
-                if len(task_desc) > 200:
-                    task_desc = task_desc[:197] + "..."
+            tasks_lines += f"{idx}. {status_icon} {task_desc}\n"
+            tasks_lines += f"   Status: {task_planner.status} | Confidence: {task_planner.confidence_score:.2f}\n"
 
-                tasks_lines += f"{idx}. {task_desc}\n"
-                tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n"
-
-                # Show subtasks if nested
-                if children:
-                    if isinstance(children, dict) and children:
-                        tasks_lines += f"   Subtasks ({len(children)}):\n"
-                        for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
-                            child_desc = child_planner.task.strip()
-                            if len(child_desc) > 150:
-                                child_desc = child_desc[:147] + "..."
-                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
-                    elif isinstance(children, list) and children:
-                        tasks_lines += f"   Subtasks ({len(children)}):\n"
-                        for sub_idx, child_planner in enumerate(children, 1):
-                            child_desc = child_planner.task.strip()
-                            if len(child_desc) > 150:
-                                child_desc = child_desc[:147] + "..."
-                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
-                tasks_lines += "\n"
-
-        if pending_tasks:
-            tasks_lines += "\n## Pending Tasks (To Do):\n"
-            for idx, task_info in enumerate(pending_tasks, 1):
-                tp = task_info['planner']
-                children = task_info['children']
-                task_desc = tp.task.strip()
-                if len(task_desc) > 200:
-                    task_desc = task_desc[:197] + "..."
-
-                tasks_lines += f"{idx}. {task_desc}\n"
-                tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n"
-
-                # Show subtasks if nested
-                if children:
-                    if isinstance(children, dict) and children:
-                        tasks_lines += f"   Subtasks ({len(children)}):\n"
-                        for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
-                            child_desc = child_planner.task.strip()
-                            if len(child_desc) > 150:
-                                child_desc = child_desc[:147] + "..."
-                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
-                    elif isinstance(children, list) and children:
-                        tasks_lines += f"   Subtasks ({len(children)}):\n"
-                        for sub_idx, child_planner in enumerate(children, 1):
-                            child_desc = child_planner.task.strip()
-                            if len(child_desc) > 150:
-                                child_desc = child_desc[:147] + "..."
-                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
-                tasks_lines += "\n"
-
-        if failed_tasks:
-            tasks_lines += "\n## Failed Tasks:\n"
-            for idx, task_info in enumerate(failed_tasks, 1):
-                tp = task_info['planner']
-                children = task_info['children']
-                task_desc = tp.task.strip()
-                if len(task_desc) > 200:
-                    task_desc = task_desc[:197] + "..."
-
-                tasks_lines += f"{idx}. {task_desc}\n"
-                tasks_lines += f"   Status: {tp.status} | Confidence: {tp.confidence_score:.2f}\n"
-
-                # Show subtasks if nested
-                if children:
-                    if isinstance(children, dict) and children:
-                        tasks_lines += f"   Subtasks ({len(children)}):\n"
-                        for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
-                            child_desc = child_planner.task.strip()
-                            if len(child_desc) > 150:
-                                child_desc = child_desc[:147] + "..."
-                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
-                    elif isinstance(children, list) and children:
-                        tasks_lines += f"   Subtasks ({len(children)}):\n"
-                        for sub_idx, child_planner in enumerate(children, 1):
-                            child_desc = child_planner.task.strip()
-                            if len(child_desc) > 150:
-                                child_desc = child_desc[:147] + "..."
-                            tasks_lines += f"      {sub_idx}. {child_desc}\n"
-                tasks_lines += "\n"
+            # Show subtasks if nested
+            if children:
+                if isinstance(children, dict) and children:
+                    tasks_lines += f"   Subtasks ({len(children)}):\n"
+                    for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
+                        child_desc = child_planner.task.strip()  # Full task, no truncation
+                        child_icon = {
+                            'pending': '○',
+                            'in_progress': '◐',
+                            'completed': '✓',
+                            'success': '✓',
+                            'validated': '✓',
+                            'failed': '✗',
+                            'failed-validation': '✗',
+                        }.get(child_planner.status, '?')
+                        tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
+                elif isinstance(children, list) and children:
+                    tasks_lines += f"   Subtasks ({len(children)}):\n"
+                    for sub_idx, child_planner in enumerate(children, 1):
+                        child_desc = child_planner.task.strip()  # Full task, no truncation
+                        child_icon = {
+                            'pending': '○',
+                            'in_progress': '◐',
+                            'completed': '✓',
+                            'success': '✓',
+                            'validated': '✓',
+                            'failed': '✗',
+                            'failed-validation': '✗',
+                        }.get(child_planner.status, '?')
+                        tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
+            tasks_lines += "\n"
 
         tasks_context += tasks_lines
         return tasks_context
@@ -1378,7 +1309,7 @@ class ContextEngine:
         Appends the tool response to the context file with proper formatting.
         """
         self.workflow_context += f"\n[Tool response {tool_name}]\n{response}\n"
-        self.structured.append_to_log(f"[{tool_name}] {response[:500]}")  # Limit log size
+        self.structured.append_to_log(f"[{tool_name}] {response}")  # Full response, no truncation
         self._append_to_context_file(f"[Tool use: {tool_name}]", response)
 
     def record_attempt(
@@ -1451,9 +1382,60 @@ class ContextEngine:
         """
         return self.structured.was_already_attempted(payload, task)
 
-    def mark_task_completed(self, task: str) -> None:
-        """Mark a task as completed in structured context."""
+    def mark_task_completed(self, task: str, confidence_score: float = 1.0) -> None:
+        """Mark a task as completed in structured context and update task status.
+
+        Args:
+            task: The task description to mark as completed
+            confidence_score: The confidence score for the completed task
+        """
         self.structured.mark_task_completed(task)
+
+        # Also update the task status in the tasks dictionary
+        # TaskPlanner is frozen, so we need to replace the key with a new instance
+        for task_planner in list(self.tasks.keys()):
+            if task_planner.task == task or task in task_planner.task:
+                # Get the subtasks for this task
+                subtasks = self.tasks.pop(task_planner)
+                # Create a new TaskPlanner with updated status
+                updated_planner = TaskPlanner(
+                    task=task_planner.task,
+                    confidence_score=confidence_score,
+                    status="completed"
+                )
+                self.tasks[updated_planner] = subtasks
+                break
+
+    def update_task_status(
+        self,
+        task: str,
+        status: str,
+        confidence_score: float | None = None
+    ) -> bool:
+        """Update a task's status in the tasks dictionary.
+
+        Args:
+            task: The task description to update
+            status: The new status (pending, in_progress, completed, failed, etc.)
+            confidence_score: Optional confidence score to update
+
+        Returns:
+            True if task was found and updated, False otherwise.
+        """
+        # TaskPlanner is frozen, so we need to replace the key with a new instance
+        for task_planner in list(self.tasks.keys()):
+            if task_planner.task == task or task in task_planner.task:
+                # Get the subtasks for this task
+                subtasks = self.tasks.pop(task_planner)
+                # Create a new TaskPlanner with updated status
+                updated_planner = TaskPlanner(
+                    task=task_planner.task,
+                    confidence_score=confidence_score if confidence_score is not None else task_planner.confidence_score,
+                    status=status
+                )
+                self.tasks[updated_planner] = subtasks
+                return True
+        return False
 
     def clear_current_task_log(self) -> None:
         """Clear the current task log (call when starting a new task)."""
