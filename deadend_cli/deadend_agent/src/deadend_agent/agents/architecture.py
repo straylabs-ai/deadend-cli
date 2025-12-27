@@ -1,7 +1,7 @@
 from __future__ import annotations
 import re
 from typing import Any, Literal, AsyncGenerator, Tuple
-from uuid import UUID
+from uuid import UUID, uuid4
 from deadend_agent.agents.exploit_web_agent import ExploitInfo, ExploitOutput
 from deadend_agent.agents.recon_threatmodel_agent import GeneralInfoOutput, ThreatModelOutput
 from pydantic import BaseModel, Field
@@ -20,6 +20,7 @@ from deadend_agent.agents import (
 from deadend_agent.agents.factory import AgentOutput
 from deadend_agent.utils.structures import WebappreconDeps, RequesterDeps, ShellDeps
 from deadend_agent.context import ContextEngine
+from deadend_agent.hooks import get_event_hooks
 from deadend_prompts.template_renderer import render_agent_instructions
 from rich import print
 
@@ -388,14 +389,31 @@ class AgentExecutor:
         """
         context: dict[str, Any] = {"log": ""}
         confidence_score: float | None = None
+        hooks = get_event_hooks()
+        task_id = str(uuid4())
+        agent_name = "unknown"
 
         def emit(message: str) -> LogEvent:
             """Append a log entry to the context and return it for streaming."""
             context["log"] += f"\n{message}"
+            # Also emit to hooks
+            hooks.emit_log_message(
+                session_id=self.session_id or "",
+                message=message,
+                level="info",
+                source="executor",
+                agent_name=agent_name,
+            )
             return LogEvent(message=message)
 
         try:
             yield emit(f"Current task: {task_node.task}\n")
+
+            # Check for interruption
+            if hooks.is_interrupted(self.session_id or ""):
+                yield emit("[EXECUTOR] Workflow interrupted")
+                yield ResultEvent(confidence_score=0.0, context=context)
+                return
 
             routing_info = None
             selected_agent: AgentRunner | None = None
@@ -411,9 +429,18 @@ class AgentExecutor:
                     )
                     routing_info = router_result.output
                     if isinstance(routing_info, RouterOutput):
+                        agent_name = routing_info.next_agent_name
                         yield emit(
                             "Selected agent: "
                             f"{routing_info.next_agent_name}\nReasoning: {routing_info.reasoning}"
+                        )
+                        # Emit routing event
+                        hooks.emit_agent_routed(
+                            session_id=self.session_id or "",
+                            task=task_node.task,
+                            selected_agent=routing_info.next_agent_name,
+                            reasoning=routing_info.reasoning,
+                            available_agents=list(self.available_agents.keys()),
                         )
                         selected_agent = self._get_agent(routing_info.next_agent_name)
                         if selected_agent:
@@ -422,6 +449,15 @@ class AgentExecutor:
                     yield emit(f"Routing failed: {exc}, using generic executor")
 
             if isinstance(selected_agent, AgentRunner):
+                # Emit agent start event
+                hooks.emit_agent_start(
+                    session_id=self.session_id or "",
+                    agent_name=agent_name,
+                    task=task_node.task,
+                    task_id=task_id,
+                    depth=task_node.depth,
+                )
+
                 result = await self._run_agent(
                     agent=selected_agent,
                     prompt=agent_context+task_node.task,
@@ -437,13 +473,40 @@ class AgentExecutor:
 
             notes = ""
             updated_state = {}
+            thought_summary = None
+            attempts = []
             if isinstance(output, AgentOutput):
                 confidence_score = output.confidence_score
                 notes = output.notes
                 updated_state = output.updated_state or {}
+                thought_summary = getattr(output, 'thought_summary', None)
+                # Extract attempts for event
+                if hasattr(output, 'attempts') and output.attempts:
+                    attempts = [a.model_dump() if hasattr(a, 'model_dump') else a for a in output.attempts]
+                # Emit agent thought if available
+                agent_reasoning = getattr(output, 'agent_reasoning', None)
+                if agent_reasoning:
+                    hooks.emit_agent_thought(
+                        session_id=self.session_id or "",
+                        agent_name=agent_name,
+                        thought=agent_reasoning,
+                        summary=thought_summary,
+                    )
             else:
                 # Default confidence score when output is not an AgentOutput
                 confidence_score = 0.5
+
+            # Emit agent end event
+            hooks.emit_agent_end(
+                session_id=self.session_id or "",
+                agent_name=agent_name,
+                task=task_node.task,
+                confidence_score=confidence_score,
+                task_id=task_id,
+                notes=notes,
+                thought_summary=thought_summary,
+                attempts=attempts,
+            )
 
             # yield emit(f"[EXECUTOR] Task: {task_node.task}\nNotes: {notes}\n{output}")
             context.update(updated_state)
@@ -455,6 +518,14 @@ class AgentExecutor:
             return
         except UsageLimitExceeded as exc:
             yield emit(f"[EXECUTOR] Usage limit reached: {exc}")
+            hooks.emit_agent_error(
+                session_id=self.session_id or "",
+                agent_name=agent_name,
+                task=task_node.task,
+                error_type="UsageLimitExceeded",
+                error_message=str(exc),
+                task_id=task_id,
+            )
             yield ResultEvent(
                 confidence_score=confidence_score or 0.5,
                 context=context,
@@ -462,6 +533,14 @@ class AgentExecutor:
             return
         except Exception as exc:
             yield emit(f"[EXECUTOR] Error: {exc}")
+            hooks.emit_agent_error(
+                session_id=self.session_id or "",
+                agent_name=agent_name,
+                task=task_node.task,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                task_id=task_id,
+            )
             yield ResultEvent(
                 confidence_score=confidence_score or 0.5,
                 context=context,
