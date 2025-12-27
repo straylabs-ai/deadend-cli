@@ -91,7 +91,7 @@ async def eval_interface(
 
     # adding automatic build and ask prompt
     sandbox_id = sandbox_manager.create_sandbox(
-        image="kali_deadend",
+        image="xoxruns/sandboxed_kali",
         volume_path=eval_metadata.assets_path
     )
     sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)

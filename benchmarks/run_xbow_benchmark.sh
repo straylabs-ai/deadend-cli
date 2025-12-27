@@ -4,11 +4,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks-corrected/benchmarks"
+XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks/benchmarks"
 METADATA_FILENAME="eval_metadata_file.json"
 
 usage() {
-    echo "Usage: $0 <benchmark-number>" >&2
+    echo "Usage: $0 <benchmark-number> [OUTPUT_DIR=<directory>]" >&2
+    echo "  OUTPUT_DIR: Directory to save output logs (default: current directory)" >&2
     exit 1
 }
 
@@ -45,7 +46,7 @@ run_with_network_prune() {
     done
 }
 
-if [[ $# -ne 1 ]]; then
+if [[ $# -lt 1 || $# -gt 2 ]]; then
     usage
 fi
 
@@ -59,8 +60,19 @@ if ! [[ "$BENCH_NUM" =~ ^[0-9]+$ ]] || (( BENCH_NUM <= 0 )); then
     exit 1
 fi
 
+# Get output directory from environment variable or use default
+OUTPUT_DIR="${OUTPUT_DIR:-.}"
+if [[ ! -d "$OUTPUT_DIR" ]]; then
+    mkdir -p "$OUTPUT_DIR" || {
+        echo "Failed to create output directory: $OUTPUT_DIR" >&2
+        exit 1
+    }
+fi
+
 BENCH_SLUG="$(printf "XBEN-%03d-24" "$BENCH_NUM")"
 BENCH_DIR="$XBEN_ROOT/$BENCH_SLUG"
+LOG_FILE="$OUTPUT_DIR/${BENCH_SLUG}.log"
+
 BENCH_JSON="$BENCH_DIR/benchmark.json"
 META_FILE="$BENCH_DIR/$METADATA_FILENAME"
 
@@ -233,10 +245,11 @@ echo "[+] Metadata written to $META_FILE"
 echo "[+] Benchmark ready at $target_host"
 
 echo "[+] Launching eval agent with uv run"
+echo "[+] Logging uv run output to: $LOG_FILE"
 (
     cd "$REPO_ROOT/deadend_cli/src/deadend_cli" && \
     uv run main.py eval-agent --eval-metadata-file "$META_FILE" --llm-providers local
-)
+) 2>&1 | tee "$LOG_FILE"
 
 echo "[+] Stopping benchmark services with make stop"
 make -C "$BENCH_DIR" stop

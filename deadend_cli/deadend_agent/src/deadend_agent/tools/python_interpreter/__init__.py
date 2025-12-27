@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Any
 from pydantic_ai import RunContext
 from rich.pretty import pprint
+
+from deadend_agent.utils.functions import truncate_string
 from .python_interpreter import PythonInterpreter
+
 
 
 async def read_auth_storage(ctx: str) -> str:
@@ -122,11 +125,22 @@ async def run_python_file(
         # Save result to python_interpreter.jsonl file
         await _save_result_to_file(session_id, result)
 
-        # Pretty print result using rich
-        pprint(result)
+        # Convert result to string if needed before truncation
+        if isinstance(result, bytes):
+            try:
+                result_str = result.decode('utf-8', errors='replace')
+            except Exception:
+                result_str = str(result)
+        elif not isinstance(result, str):
+            result_str = str(result)
+        else:
+            result_str = result
 
+        # Pretty print result using rich
+        # pprint(result)
+        truncated_result = truncate_string(result_str)
         # Returning the results
-        return result
+        return truncated_result
 
     finally:
         # Closing the process

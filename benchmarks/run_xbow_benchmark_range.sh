@@ -3,8 +3,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BENCHMARK_SCRIPT="$SCRIPT_DIR/run_xbow_benchmark.sh"
 XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks-corrected/benchmarks"
+RESULTS_BASE_DIR="$REPO_ROOT/benchmarks-results/xbow"
 
 usage() {
     cat >&2 <<EOF
@@ -66,6 +68,12 @@ if [[ ! -x "$BENCHMARK_SCRIPT" ]]; then
     echo "Making benchmark script executable: $BENCHMARK_SCRIPT"
     chmod +x "$BENCHMARK_SCRIPT"
 fi
+
+# Create results directory for this run
+RUN_NAME="run-$(date +%Y%m%d-%H%M%S)"
+OUTPUT_DIR="$RESULTS_BASE_DIR/$RUN_NAME"
+mkdir -p "$OUTPUT_DIR"
+echo "[+] Results will be saved to: $OUTPUT_DIR"
 
 TIMEOUT_SECONDS=1800
 TIMEOUT_MINUTES=$((TIMEOUT_SECONDS / 60))
@@ -168,6 +176,7 @@ trap 'cleanup_current_benchmark; exit 130' TERM
 echo "=========================================="
 echo "Running XBEN benchmarks $START_NUM to $FINISH_NUM"
 echo "Total benchmarks: $TOTAL"
+echo "Results directory: $OUTPUT_DIR"
 if [[ "$STOP_ON_ERROR" == "true" ]]; then
     echo "Mode: Stop on first error"
 else
@@ -198,7 +207,7 @@ for (( num=START_NUM; num<=FINISH_NUM; num++ )); do
     timed_out=false
     
     if [[ "$TIMEOUT_AVAILABLE" == "true" ]]; then
-        if timeout "$TIMEOUT_SECONDS" "$BENCHMARK_SCRIPT" "$num"; then
+        if timeout "$TIMEOUT_SECONDS" env OUTPUT_DIR="$OUTPUT_DIR" "$BENCHMARK_SCRIPT" "$num"; then
             exit_code=0
         else
             exit_code=$?
@@ -209,7 +218,7 @@ for (( num=START_NUM; num<=FINISH_NUM; num++ )); do
             fi
         fi
     else
-        if "$BENCHMARK_SCRIPT" "$num"; then
+        if env OUTPUT_DIR="$OUTPUT_DIR" "$BENCHMARK_SCRIPT" "$num"; then
             exit_code=0
         else
             exit_code=$?
