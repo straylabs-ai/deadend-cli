@@ -219,73 +219,37 @@ Analyze goal and context to:
 - onesixtyone: SNMP enumeration
 
 {% include '_shared/_tool_priority.jinja2' %}
-{% include '_shared/_output_format.jinja2' %}
+## OUTPUT FORMAT
 
-### REQUIRED OUTPUT FIELDS
+Your output MUST have these FOUR fields:
 
-Your output MUST include these structured fields so downstream agents learn from your work:
+### detailed_summary (string)
+- Commands executed and their purpose (nmap, ffuf, nikto, etc.)
+- What was discovered (ports, services, versions, endpoints)
+- What failed and why (timeout, filtered, no results)
+- Next steps to try (ONLY on discovered targets, never guess)
 
-**flag_verification** (REQUIRED if reporting a flag):
-If you claim to have found a flag, you MUST include:
-```json
-"flag_verification": {
-  "flag_found": "FLAG{exact_value_here}",
-  "source_quote": "Exact line from command output containing the flag",
-  "command": "The command that produced this output"
-}
-```
-**If you cannot fill source_quote with an EXACT quote from command output, you did NOT find a flag.**
+### proofs (string)
+- Full command output (stdout/stderr - do NOT truncate)
+- Exact commands used with all flags
+- Open ports with service versions (e.g., "22/tcp ssh OpenSSH 8.2")
+- Discovered endpoints from directory brute-force
+- Any FLAG{} values found (copy EXACTLY from output - must be hex string)
+- Credentials or tokens discovered
 
-**commands_executed** (List - REQUIRED):
-Record EVERY command you ran with its outcome:
-```json
-"commands_executed": [
-  {
-    "command": "nmap -sV -p 80,443 target.com",
-    "target": "target.com",
-    "purpose": "port scan with version detection",
-    "result": "success",
-    "key_output": "80/tcp open http nginx/1.18.0",
-    "why_failed": ""
-  },
-  {
-    "command": "ffuf -w wordlist.txt -u http://target/FUZZ",
-    "target": "http://target/",
-    "purpose": "directory bruteforce",
-    "result": "success",
-    "key_output": "Found: /admin, /api, /backup",
-    "why_failed": ""
-  }
-]
-```
+### confidence_score (float 0.0-1.0)
+- 0.9-1.0: Flag found and verified in command output
+- 0.7-0.9: Vulnerability/finding confirmed with evidence
+- 0.5-0.7: Likely finding, initial scan completed, needs deeper testing
+- 0.3-0.5: Some progress, keep enumerating with different tools/techniques
+- 0.1-0.3: Multiple attempts failed (10+ retries), try different approach
+- 0.0-0.1: Exhausted all options (20+ retries), target unreachable
 
-Result values: `success`, `failed`, `timeout`, `no_results`
-
-**key_findings** (String - REQUIRED):
-The single most important discovery from this execution.
-Example: "Found /admin endpoint with directory listing enabled"
-
-**next_steps** (String - REQUIRED):
-What should be tested next based on findings.
-Example: "Test /admin for auth bypass, enumerate /api endpoints"
-
-**updated_state** (Dict - REQUIRED):
-Structured discoveries (include auth state if obtained):
-```json
-"updated_state": {
-  "open_ports": [80, 443, 22],
-  "services": {"80": "nginx/1.18.0", "443": "nginx/1.18.0"},
-  "endpoints_found": ["/admin", "/api", "/backup"],
-  "technologies": ["nginx", "php"],
-  "vulnerabilities": ["directory_listing"],
-  "session_cookie": "session=abc123",
-  "credentials_found": {"admin": "password123"}
-}
-```
-
-**thought_summary** (String - REQUIRED):
-Your key insight in ONE sentence.
-Example: "Nginx 1.18.0 serving PHP app with exposed /admin and /backup directories"
+### thoughts (string)
+- Why you chose this tool/technique
+- What the scan results indicate about the target
+- Which services look interesting for further testing
+- What reconnaissance tool to run next
 
 {% include '_shared/_error_recovery.jinja2' %}
 {% include '_shared/_stopping_conditions.jinja2' %}
@@ -320,17 +284,6 @@ dnsenum --enum target.com
 ```bash
 nikto -h http://target.com -C all -Tuning 123456789
 ```
-
-## OUTPUT FORMAT
-
-**Include in findings**:
-- Command executed
-- Key discoveries: Open ports, services, versions, vulnerabilities, endpoints
-- Notable information: OS details, technologies detected, security issues
-
-**Include in raw_data**:
-- Full command output for downstream agent analysis
-- Don't truncate - other agents need complete data
 
 ## CRITICAL RULES
 

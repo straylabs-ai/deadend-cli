@@ -1,15 +1,14 @@
 import json
 from anyio import Path
-from deadend_agent.utils.structures import RequesterDeps
 from pydantic_ai import RunContext
-from rich.pretty import pprint
+from deadend_agent.utils.structures import RequesterDeps
+from deadend_agent.utils.functions import truncate_string
 
 from .http_parser import is_valid_request_detailed, extract_host_port
-
 from .auth_handler import replace_credential_placeholders
 from .pw_requester import PlaywrightRequester
 from .pw_session_manager import PlaywrightSessionManager
-from deadend_agent.context import MemoryHandler
+# from deadend_agent.context import MemoryHandler
 
 __all__ = ["is_valid_request_detailed"]
 
@@ -66,10 +65,21 @@ async def pw_send_payload(
 
         # Save responses to requester.jsonl file
         await _save_responses_to_file(session_key, responses)
-        
-        # Pretty print responses using rich
-        pprint(responses)
-        return str(responses)
+
+        # Convert bytes responses to strings before truncation
+        string_responses = []
+        for response in responses:
+            if isinstance(response, bytes):
+                try:
+                    response_str = response.decode('utf-8', errors='replace')
+                except Exception:
+                    response_str = str(response)
+            else:
+                response_str = str(response)
+            string_responses.append(response_str)
+
+        truncated_responses = [truncate_string(resp) for resp in string_responses]
+        return str(truncated_responses)
 
     except Exception as e:
         return f"Error when sending payload: {str(e)}"
@@ -83,7 +93,6 @@ async def cleanup_playwright_sessions():
     you want to clear all session data (cookies, etc.).
     """
     await PlaywrightSessionManager.cleanup_all_sessions()
-
 
 async def _save_responses_to_file(session_key: str, responses: list):
     """
@@ -117,11 +126,10 @@ async def _save_responses_to_file(session_key: str, responses: list):
                 response_data = {
                     "response": response_str
                 }
-                
+
                 # Append to file with pretty-printed JSON (indented for readability)
                 json_line = json.dumps(response_data, ensure_ascii=False, indent=2)
                 f.write(json_line + "\n")
-
     except Exception as e:
         print(f"Warning: Could not save responses to file: {e}")
 

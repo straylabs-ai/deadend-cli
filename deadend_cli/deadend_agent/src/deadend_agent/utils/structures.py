@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox
 from deadend_agent.models.registry import EmbedderClient
+from deadend_agent.utils.functions import truncate_string
 
 class CmdLog(BaseModel):
     """
@@ -69,13 +70,13 @@ class ShellRunner:
             timeout_seconds: Optional timeout for command execution
         """
         result = self.sandbox.execute_command(
-            new_cmd, 
-            stream=False, 
+            new_cmd,
+            stream=False,
             timeout_seconds=timeout_seconds,
             shell_execution=True
         )
         cmds_number = len(self.cmd_log.keys())
-        print(f"command run function inside shellrunner : {result}")
+
 
         # Handle timeout cases
         if result.get("timed_out", False):
@@ -85,8 +86,8 @@ class ShellRunner:
 
         self.cmd_log[cmds_number+1] = CmdLog(
             stdin=new_cmd,
-            stdout=result["stdout"],
-            stderr=stderr
+            stdout=truncate_string(result["stdout"]),
+            stderr=truncate_string(stderr)
         )
         return result
 

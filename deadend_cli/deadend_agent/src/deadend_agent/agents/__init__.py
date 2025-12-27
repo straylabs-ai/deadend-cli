@@ -3,20 +3,18 @@
 # See LICENSE file for full license information.
 
 from .planner import Planner, PlannerAgent, PlannerOutput, RagDeps
-from .router import RouterAgent, RouterOutput
+from .supervisor_agent import SupervisorAgent, SupervisorOutput
 from .judge import JudgeAgent, JudgeOutput
-from .factory import AgentRunner, AgentOutput, ToolAttempt
-from .generic_agents.webapp_recon_agent import WebappReconAgent, RequesterOutput
+from .factory import AgentRunner, AgentOutput
 from .generic_agents.shell_agent import ShellAgent, ShellOutput
 from .generic_agents.python_interpreter_agent import PythonInterpreterAgent, PythonInterpreterOutput
 from .generic_agents.request_agent import RequesterAgent, RequesterOutput
 
 __all__ = [
-            "AgentRunner", "AgentOutput", "ToolAttempt",
+            "AgentRunner", "AgentOutput",
             "Planner", "PlannerAgent", "PlannerOutput", "RagDeps",
-            "RouterAgent", "RouterOutput",
+            "SupervisorAgent", "SupervisorOutput",
             "JudgeOutput", "JudgeAgent",
-            "WebappReconAgent", "RequesterOutput",
             # Generic agents
             "ShellAgent", "ShellOutput",
             "PythonInterpreterAgent", "PythonInterpreterOutput",
