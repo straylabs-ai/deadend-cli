@@ -13,7 +13,10 @@ from pydantic_ai import RunContext
 from rich import print as console_printer
 from deadend_agent.sandbox.sandbox import SandboxStatus
 from deadend_agent.utils.structures import WebappreconDeps, CmdLog
+from deadend_agent.tools.tool_wrappers import with_tool_events
 
+
+@with_tool_events("sandboxed_shell")
 def sandboxed_shell_tool(
     ctx: RunContext[WebappreconDeps],
     command: str,

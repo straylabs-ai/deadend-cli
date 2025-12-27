@@ -20,11 +20,12 @@ from .browser_automation import (
 from .python_interpreter import run_python_file, read_auth_storage
 from .webapp_code_rag import webapp_code_rag
 from .grep import grep_session_logs
+from .tool_wrappers import with_tool_events, wrap_tool_with_events
 
 
 __all__ = [
     # Shell
-    "sandboxed_shell_tool", 
+    "sandboxed_shell_tool",
     #Python interpreter
     "run_python_file",
     "read_auth_storage",
@@ -36,5 +37,8 @@ __all__ = [
     "cleanup_playwright_sessions",
     "cleanup_playwright_session_for_target",
     # Grep
-    "grep_session_logs"
+    "grep_session_logs",
+    # Tool wrappers
+    "with_tool_events",
+    "wrap_tool_with_events",
 ]

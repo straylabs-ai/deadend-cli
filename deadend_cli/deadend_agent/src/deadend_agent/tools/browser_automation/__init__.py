@@ -9,9 +9,12 @@ from .auth_handler import replace_credential_placeholders
 from .pw_requester import PlaywrightRequester
 from .pw_session_manager import PlaywrightSessionManager
 # from deadend_agent.context import MemoryHandler
+from deadend_agent.tools.tool_wrappers import with_tool_events
 
 __all__ = ["is_valid_request_detailed"]
 
+
+@with_tool_events("pw_send_payload")
 async def pw_send_payload(
     ctx: RunContext[RequesterDeps],
     target_host: str,

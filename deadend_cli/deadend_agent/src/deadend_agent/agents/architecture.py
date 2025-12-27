@@ -2,7 +2,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from typing import Any, Literal, AsyncGenerator, Tuple
-from uuid import UUID
+from uuid import UUID, uuid4
 from deadend_agent.agents.exploit_web_agent import ExploitInfo, ExploitOutput
 from deadend_agent.agents.recon_threatmodel_agent import GeneralInfoOutput, ThreatModelOutput
 from pydantic import BaseModel, Field
@@ -21,6 +21,7 @@ from deadend_agent.agents import (
 from deadend_agent.agents.factory import AgentOutput
 from deadend_agent.utils.structures import WebappreconDeps, RequesterDeps, ShellDeps
 from deadend_agent.context import ContextEngine
+from deadend_agent.hooks import get_event_hooks
 from deadend_prompts.template_renderer import render_agent_instructions
 from rich import print
 
@@ -519,10 +520,21 @@ class AgentExecutor:
 
         context: dict[str, Any] = {"log": ""}
         confidence_score: float | None = None
+        hooks = get_event_hooks()
+        task_id = str(uuid4())
+        agent_name = "unknown"
 
         def emit(message: str) -> LogEvent:
             """Append a log entry to the context and return it for streaming."""
             context["log"] += f"\n{message}"
+            # Also emit to hooks
+            hooks.emit_log_message(
+                session_id=self.session_id or "",
+                message=message,
+                level="info",
+                source="executor",
+                agent_name=agent_name,
+            )
             return LogEvent(message=message)
 
         try:
@@ -721,6 +733,14 @@ class AgentExecutor:
 
         except UsageLimitExceeded as exc:
             yield emit(f"[SUPERVISOR] Usage limit reached: {exc}")
+            hooks.emit_agent_error(
+                session_id=self.session_id or "",
+                agent_name=agent_name,
+                task=task_node.task,
+                error_type="UsageLimitExceeded",
+                error_message=str(exc),
+                task_id=task_id,
+            )
             yield ResultEvent(
                 confidence_score=confidence_score or 0.5,
                 context=context,
@@ -728,6 +748,14 @@ class AgentExecutor:
             return
         except Exception as exc:
             yield emit(f"[SUPERVISOR] Error: {exc}")
+            hooks.emit_agent_error(
+                session_id=self.session_id or "",
+                agent_name=agent_name,
+                task=task_node.task,
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+                task_id=task_id,
+            )
             yield ResultEvent(
                 confidence_score=confidence_score or 0.5,
                 context=context,

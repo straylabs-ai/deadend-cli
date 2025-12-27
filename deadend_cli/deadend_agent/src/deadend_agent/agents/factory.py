@@ -19,6 +19,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
+from deadend_agent.hooks import get_event_hooks
 
 
 class AgentOutput(BaseModel):
@@ -294,6 +295,16 @@ class AgentRunner:
                 agent_reasoning = extract_text_from_messages(msg_list, max_chars=2500)
                 if agent_reasoning:
                     print(f"[AgentRunner] Preserved agent reasoning ({len(agent_reasoning)} chars)")
+                    # Emit AGENT_THOUGHT event even on error to preserve reasoning
+                    hooks = get_event_hooks()
+                    session_id = getattr(deps, "session_id", None) or "unknown"
+                    hooks.emit_agent_thought(
+                        session_id=session_id,
+                        agent_name=self.name,
+                        thought=agent_reasoning,
+                        summary=thought_summary,
+                        relevance=0.4,  # Lower relevance for failed runs
+                    )
 
                 # Create a fallback result with low confidence but preserved context
                 fallback_output = AgentOutput(
