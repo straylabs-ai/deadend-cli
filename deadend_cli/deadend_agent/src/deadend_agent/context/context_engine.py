@@ -597,7 +597,7 @@ class StructuredContext:
         failed = sum(1 for a in self.attempts if a.result in ("failed", "blocked"))
 
         if total_attempts > 0:
-            parts.append(f"\n## Progress Summary")
+            parts.append("\n## Progress Summary")
             parts.append(f"- Total attempts: {total_attempts}")
             parts.append(f"- Successful: {successful}")
             parts.append(f"- Failed/Blocked: {failed}")

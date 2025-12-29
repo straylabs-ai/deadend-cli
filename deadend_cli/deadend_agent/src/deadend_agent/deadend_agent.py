@@ -10,13 +10,10 @@ from deadend_agent.context import ContextEngine
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox
 from deadend_agent.agents.reporter import ReporterAgent
-from deadend_agent.agents.architecture import (
-    ADaPTAgent,
-    AgentExecutor,
-    Planner,
-    TaskNode,
-    Validator
-)
+from deadend_agent.agents.architecture import ADaPTAgent
+from deadend_agent.agents.components.executor import AgentExecutor
+from deadend_agent.agents.components.planner import Planner, TaskNode
+from deadend_agent.agents.components.validator import Validator
 from deadend_agent.utils.structures import (
     RequesterDeps,
     ShellDeps,
