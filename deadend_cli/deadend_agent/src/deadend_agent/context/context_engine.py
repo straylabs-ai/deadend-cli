@@ -164,7 +164,7 @@ class StructuredContext:
         self.tested_techniques: Set[str] = set()  # (endpoint:technique) pairs
         self.current_task_log: str = ""
         self.completed_tasks: List[str] = []
-        self._max_log_chars: int = 8000  # Limit current log size
+        self._max_log_chars: int = 50000  # Limit current log size
         self._max_executions: int = 50  # Keep last N executions
         self._max_thoughts: int = 20  # Keep last N thoughts
 
@@ -640,7 +640,7 @@ class StructuredContext:
         header = f"Target: {self.target}" if self.target else ""
         if self.goal:
             goal_clean = self.goal.replace(self.target, "").strip() if self.target else self.goal
-            header += f"\nGoal: {goal_clean}"  # Full goal, no truncation
+            header += f"{goal_clean}"  # Full goal, no truncation
         if header:
             sections.append(header)
 
@@ -1007,10 +1007,6 @@ class ContextEngine:
         and stores it in the target attribute. Also syncs to structured
         context so all agents receive the target. Also saves to text file.
         """
-        self.workflow_context += f"""\n
-## Target
-{target}
-"""
         self.target = target
         # Sync target to structured context so unified context includes it
         self.structured.set_target(target)
@@ -1337,7 +1333,7 @@ class ContextEngine:
         category: str,
         key: str,
         value: str,
-        confidence: float = 0.7,
+        confidence: float = 0.5,
         source_task: str = "",
         details: Dict[str, Any] | None = None,
         actionable: bool = False

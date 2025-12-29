@@ -78,7 +78,7 @@ You need to understand the architecture, endpoints, authentication mechanisms, s
 You can then move on to the next step.
 Understand the task and what it encompasses: analyze the task goal, identify what components of the web application it involves, and determine what security vulnerabilities this task could lead to or help identify. 
 Based on this reasoning, break down the task into logical subtasks that systematically address the task goal.
-Break down this task into a maximum of 5 subtasks: {parent_task.task}. \n{str(context)}
+Break down this task into a maximum of 5 subtasks.{parent_task.task}. The goal is to find a flag in the following format FLAG{{}}. \n{str(context)}
 """
         result = await self.agent.run(
             prompt=planner_prompt,

@@ -148,13 +148,18 @@ class ADaPTAgent:
 
         # Use a local variable to track exit_loop since the parameter can't be modified
         should_exit = exit_loop
-        while not should_exit:
+
+        while not should_exit or node.status != 'completed':
+        # We need to add that this loop should run while we still have the task running
+        # and not comple otherwise we should exit_loop too.
             # Build UNIFIED context for executor (same as all other agents)
             # This ensures router, executor, validator all see the same information
             tasks_context = self.context.get_tasks(depth=0, include_goal=False)
             unified_context = self.context.get_unified_context(max_tokens=6000)
             agent_context = f"{unified_context}\n\n## Current Tasks\n{tasks_context}"
-
+            # First here, we should give the executor the right task. which means the right
+            # task with the right context to achieve this task.the supervisor is actually
+            # more of a subagent.
             executor_stream = self.executor.execute_supervisor(task_node=node, agent_context=agent_context)
 
             confidence_score: float | None = None
@@ -197,21 +202,21 @@ class ADaPTAgent:
                             actionable=not task_achieved
                         )
                         # Check for FLAG in proofs
-                        if "FLAG{" in proofs.upper():
-                            flag_match = re.search(r'FLAG\{[^}]+\}', proofs, re.IGNORECASE)
-                            if flag_match:
-                                self.context.add_discovered_fact(
-                                    category="validated_exploit",
-                                    key="captured_flag",
-                                    value=f"FLAG CAPTURED: {flag_match.group(0)}",
-                                    confidence=1.0,
-                                    details={
-                                        "flag": flag_match.group(0),
-                                        "source": "supervisor_proofs",
-                                        "task": node.task[:100]
-                                    },
-                                    actionable=False
-                                )
+                        # if "FLAG{" in proofs.upper():
+                        #     flag_match = re.search(r'FLAG\{[^}]+\}', proofs, re.IGNORECASE)
+                        #     if flag_match:
+                        #         self.context.add_discovered_fact(
+                        #             category="validated_exploit",
+                        #             key="captured_flag",
+                        #             value=f"FLAG CAPTURED: {flag_match.group(0)}",
+                        #             confidence=1.0,
+                        #             details={
+                        #                 "flag": flag_match.group(0),
+                        #                 "source": "supervisor_proofs",
+                        #                 "task": node.task[:100]
+                        #             },
+                        #             actionable=False
+                        #         )
 
                     # Log task status
                     status_str = "ACHIEVED" if task_achieved else "IN PROGRESS"
@@ -251,7 +256,8 @@ class ADaPTAgent:
 
             decision = self._policy(confidence_score)
             try:
-                print(f"task: {node.task[:50]}... decision: {decision}, confidence: {confidence_score:.2f}")
+                print(f"task: {node.task[:50]}... decision: {decision}, \
+                    confidence: {confidence_score:.2f}")
             except (BlockingIOError, OSError):
                 pass
 
@@ -259,13 +265,15 @@ class ADaPTAgent:
             if decision == "fail":
                 node.status = "failed"
                 self.context.update_task_status(node.task, "failed", confidence_score)
-                yield emit(f"[POLICY] Task '{node.task[:50]}...' failed with confidence {confidence_score:.2f}")
+                yield emit(f"[POLICY] Task '{node.task[:50]}...' \
+                    failed with confidence {confidence_score:.2f}")
                 return
 
             # If the decision is validate >80%
             elif decision == "validate":
                 node.status, validation_token = await self._validate(node)
-                yield emit(f"[POLICY] Validation completed for '{node.task[:50]}...' with status {node.status}")
+                yield emit(f"[POLICY] Validation completed for \
+                    '{node.task[:50]}...' with status {node.status}")
                 # Update task status in context
                 if node.status == "completed":
                     self.context.mark_task_completed(node.task, node.confidence_score)
@@ -465,13 +473,13 @@ Update confidence_score for completed items. Reason step by step for the most lo
         # This ensures validator sees the same discoveries and exploits as other agents
         validation_context_text = self.context.get_unified_context(max_tokens=5000)
 
-        (ok, validation, critique, validation_token) = await self.validator.verify(
+        (valid, confidence_score, critique, validation_token) = await self.validator.verify(
             task=node,
             context=validation_context_text
         )
 
         # Record validation result compactly
-        validation_summary = f"Validation: {critique[:100]}, confidence: {validation:.2f}"
+        validation_summary = f"Validation: {critique[:100]}, confidence: {confidence_score:.2f}"
         if validation_token:
             validation_summary += f", token: {validation_token}"
 
@@ -479,20 +487,20 @@ Update confidence_score for completed items. Reason step by step for the most lo
         self.context.structured.append_to_log(validation_summary)
         self.context.add_agent_response(validation_summary, skip_structured=True)
 
-        node.confidence_score = validation
+        node.confidence_score = confidence_score
 
         # If validation passed, add validated result as high-confidence fact
         # This ensures the successful exploit details persist in context for next agents
-        if ok:
+        if valid:
             # Extract recent successful attempts to preserve as facts
             successful_attempts = [a for a in self.context.structured.attempts if a.result == "success"]
             for attempt in successful_attempts[-3:]:  # Last 3 successful
                 self.context.structured.add_fact_simple(
                     category="validated_exploit",
                     key=f"{node.task[:50]}",
-                    value=f"Payload: {attempt.payload[:200]}",
-                    confidence=validation,
-                    source_task=node.task[:100],
+                    value=f"Payload: {attempt.payload}",
+                    confidence=confidence_score,
+                    source_task=node.task,
                     details={
                         "payload": attempt.payload,
                         "reason": attempt.reason,
@@ -502,7 +510,7 @@ Update confidence_score for completed items. Reason step by step for the most lo
                     actionable=True
                 )
 
-        return ("completed", validation_token) if ok else ("failed-validation", validation_token)
+        return ("completed", validation_token) if valid else ("failed-validation", validation_token)
 
     async def run(
         self,

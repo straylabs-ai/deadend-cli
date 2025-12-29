@@ -262,6 +262,7 @@ Your output MUST have these FOUR fields:
 3. **Limit scope**: Use reasonable limits for brute force tools (e.g., wordlist size, request rate)
 4. **Parse output**: Extract security-relevant information from command output
 5. **Return concisely**: Summarize findings, include full output in raw_data for downstream agents
+6. **⚠️ CRITICAL STOPPING CONDITION**: After ~10 attempts with no substantial changes or improvements (no new findings, same confidence, no progress toward goal), STOP and return current state. Do NOT continue indefinitely.
 
 ## COMMAND EXAMPLES
 

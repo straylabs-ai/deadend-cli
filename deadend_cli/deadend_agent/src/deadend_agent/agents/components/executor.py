@@ -266,8 +266,6 @@ class AgentExecutor:
 
         try:
             yield emit(f"Current task: {task_node.task}\n")
-            yield emit("Instantiating generic agents as tools for supervisor...\n")
-
             # Instantiate all generic agents
             requester_agent = RequesterAgent(
                 model=self.model,
@@ -302,19 +300,18 @@ class AgentExecutor:
                 context=self.context  # Pass context for storing agent outputs
             )
 
-
-
             # Create new router with agent tools and supervisor deps
             supervisor = SupervisorAgent(
                 model=self.model,
                 deps_type=SupervisorDeps,
                 tools=[],
                 available_agents=self.available_agents
-            )            
+            )     
             # Build list of tools for router
 
             # Helper function to add agent output to context
             def _add_agent_output_to_context(
+                task: str,
                 context: ContextEngine | None,
                 agent_name: str,
                 output: AgentOutput
@@ -337,22 +334,22 @@ class AgentExecutor:
                 # Add detailed summary as discovered fact - FULL content
                 if detailed_summary:
                     context.add_discovered_fact(
+                        source_task=task,
                         category="agent_result",
                         key=f"{agent_name}_summary",
                         value=detailed_summary,
                         confidence=confidence_score,
-                        source_task=agent_name,
                         actionable=True
                     )
 
                 # Add proofs as discovered fact - FULL content
                 if proofs:
                     context.add_discovered_fact(
+                        source_task=task,
                         category="agent_proofs",
                         key=f"{agent_name}_proofs",
                         value=proofs,
                         confidence=confidence_score,
-                        source_task=agent_name,
                         actionable=True
                     )
 
@@ -389,7 +386,12 @@ class AgentExecutor:
                 )
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
                     # Add output to context for future reference
-                    _add_agent_output_to_context(ctx.deps.context, "requester", result.output)
+                    _add_agent_output_to_context(
+                        task=task_node.task,
+                        context=ctx.deps.context,
+                        agent_name="requester",
+                        output=result.output
+                    )
                     return f"Requester agent result: {result.output.model_dump()}"
                 return str(result.output) if hasattr(result, 'output') else str(result)
 
@@ -408,7 +410,12 @@ class AgentExecutor:
                 )
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
                     # Add output to context for future reference
-                    _add_agent_output_to_context(ctx.deps.context, "shell", result.output)
+                    _add_agent_output_to_context(
+                        task=task_node.task,
+                        context=ctx.deps.context,
+                        agent_name="shell",
+                        output=result.output
+                    )
                     return f"Shell agent result: {result.output.model_dump()}"
                 return str(result.output) if hasattr(result, 'output') else str(result)
 
@@ -426,13 +433,22 @@ class AgentExecutor:
                 )
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
                     # Add output to context for future reference
-                    _add_agent_output_to_context(ctx.deps.context, "python_interpreter", result.output)
+                    _add_agent_output_to_context(
+                        task=task_node.task,
+                        context=ctx.deps.context,
+                        agent_name="python_interpreter",
+                        output=result.output
+                    )                    
                     return f"Python interpreter agent result: {result.output.model_dump()}"
                 return str(result.output) if hasattr(result, 'output') else str(result)
 
             # Execute task with supervisor
+            supervisor_prompt = f"Your task is : {task_node.task}\n"
+            if agent_context:
+                supervisor_prompt += f"Previously you've achieved the following: \n{agent_context}\n"
+
             result = await supervisor.run(
-                prompt=f"{agent_context}\n{task_node.task}",
+                prompt=supervisor_prompt,
                 deps=supervisor_deps,
                 message_history=message_history,
                 usage=usage,
