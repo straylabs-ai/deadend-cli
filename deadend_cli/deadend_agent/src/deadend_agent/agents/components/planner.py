@@ -93,7 +93,10 @@ Break down this task into a maximum of 5 subtasks.{parent_task.task}. The goal i
 
         # Populating task nodes
         nested_tasks = []
-        # print(result.output)
+
+        # Debug: show what output type we got
+        print(f"[Planner Debug] result.output type: {type(result.output)}")
+        print(f"[Planner Debug] result.output: {result.output}")
 
         # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
         if result.output:
