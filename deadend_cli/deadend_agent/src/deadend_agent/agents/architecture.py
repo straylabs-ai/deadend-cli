@@ -578,7 +578,21 @@ Update confidence_score for completed items. Reason step by step for the most lo
         # Add exploit info if available
         if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
             if exploit_info.highly_possible_vulnerabilities:
-                for vuln in exploit_info.highly_possible_vulnerabilities[:5]:  # Limit to 5
+                # Handle both string and list formats
+                vulns_raw = exploit_info.highly_possible_vulnerabilities
+                if isinstance(vulns_raw, str):
+                    # Split by comma or newline if it's a string
+                    if ',' in vulns_raw:
+                        vulns = [v.strip() for v in vulns_raw.split(',') if v.strip()]
+                    elif '\n' in vulns_raw:
+                        vulns = [v.strip() for v in vulns_raw.split('\n') if v.strip()]
+                    else:
+                        # Single vulnerability as string
+                        vulns = [vulns_raw.strip()] if vulns_raw.strip() else []
+                else:
+                    vulns = list(vulns_raw) if vulns_raw else []
+
+                for vuln in vulns[:5]:  # Limit to 5
                     self.context.add_discovered_fact(
                         category="vulnerability",
                         key=str(vuln)[:50],

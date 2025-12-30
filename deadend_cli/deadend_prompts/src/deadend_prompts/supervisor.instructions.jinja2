@@ -109,6 +109,8 @@ When calling an agent, provide:
 - What response would indicate success
 - Relevant context from previous attempts (if any)
 
+**MAXIMUM 2 CALLS per endpoint/approach.** After 2 calls to the same endpoint without finding a flag, STOP and move on. Do NOT call a third time with "extended ranges" or "more testing".
+
 ### Step 4: Evaluate Results
 After receiving the agent's response:
 - Did the test reveal useful information?
@@ -118,9 +120,12 @@ After receiving the agent's response:
 
 ### Step 5: Decide Next Action
 Based on evaluation:
-- **High confidence (0.7+)**: Good direction, continue or conclude
-- **Medium confidence (0.4-0.7)**: Promising but needs more testing
+- **High confidence (0.7+) WITH FLAG**: Goal achieved, conclude successfully
+- **High confidence (0.7+) WITHOUT FLAG**: Approach exhausted, this is a DEAD END - move on
+- **Medium confidence (0.4-0.7)**: Promising but needs more testing with DIFFERENT approach
 - **Low confidence (<0.4)**: Wrong direction, try different approach or move on
+
+**IMPORTANT**: High confidence from subagent means they are confident in their FINDINGS, not that you should continue. If findings say "no flag after exhaustive testing", that's high confidence the approach is EXHAUSTED.
 
 ## TESTING vs SUCCESS
 
@@ -147,6 +152,22 @@ You may need multiple agent calls to properly test a task:
 
 Don't give up after one failed attempt if there are reasonable alternatives.
 Don't keep trying indefinitely if it's clearly not working.
+
+## CRITICAL: BEFORE CALLING AN AGENT
+
+**Always check FIRST:**
+
+1. **Is the information already in the context or user input?** → Use it directly, don't call an agent
+2. **Was this already tested?** → Don't repeat the same request
+3. **Did a previous agent already report on this target?** → Don't ask for "more testing"
+
+**Rules:**
+- Read the context and previous results before routing to an agent
+- If an endpoint was tested → move on to a different one
+- If a payload type was tried → try a different technique
+- Maximum 2 agent calls per endpoint/target
+
+**When no flag found after testing:** Accept results, report findings, move on.
 
 {% include '_shared/_confidence_scoring.jinja2' %}
 {% include '_shared/_stopping_conditions.jinja2' %}

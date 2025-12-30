@@ -244,7 +244,7 @@ class CoreAgent:
                 # Log LLM request
                 try:
                     console.print(
-                        f"\n[bold cyan][LLM Request][/bold cyan] [{self.name}] Iteration {iteration}, "
+                        f"\n[bold cyan][LLM Request][/bold cyan] \\[{self.name}] Iteration {iteration}, "
                         f"{len(messages)} messages"
                     )
                     # Show the last message being sent (user prompt or tool results)
@@ -377,7 +377,7 @@ class CoreAgent:
         # Print run summary
         try:
             console.print(
-                f"\n[bold white on blue][{self.name}] Run Summary[/bold white on blue] "
+                f"\n[bold white on blue]\\[{self.name}] Run Summary[/bold white on blue] "
                 f"Requests: {self.request_count} | "
                 f"Tool Calls: {self.tool_call_count} | "
                 f"Tokens: {self.total_tokens} (prompt: {self.prompt_tokens}, completion: {self.completion_tokens})"
