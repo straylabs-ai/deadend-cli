@@ -156,7 +156,7 @@ class ADaPTAgent:
             # This ensures router, executor, validator all see the same information
             tasks_context = self.context.get_tasks(depth=0, include_goal=False)
             unified_context = self.context.get_unified_context(max_tokens=6000)
-            agent_context = f"{unified_context}\n\n## Current Tasks\n{tasks_context}"
+            agent_context = f"{unified_context}\n\n{tasks_context}"
             # First here, we should give the executor the right task. which means the right
             # task with the right context to achieve this task.the supervisor is actually
             # more of a subagent.
@@ -515,7 +515,8 @@ Update confidence_score for completed items. Reason step by step for the most lo
     async def run(
         self,
         task: str,
-        exit_strategy: str
+        exit_strategy: str,
+        context: str | None = None,
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         """Run the ADaPT agent on a given task.
 
@@ -543,11 +544,11 @@ Update confidence_score for completed items. Reason step by step for the most lo
         )
         self.context.set_root_task(root.task)
 
-        # Use UNIFIED context for initial planning (same as all other agents)
-        initial_context = self.context.get_unified_context(max_tokens=4000)
+        # # Use UNIFIED context for initial planning (same as all other agents)
+        # initial_context = self.context.get_unified_context(max_tokens=4000)
         subtasks, website_info, exploit_info = await self.planner.expand(
             root,
-            context=initial_context,
+            context=context,
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )

@@ -637,7 +637,7 @@ class StructuredContext:
         sections = []
 
         # SECTION 1: TARGET + GOAL (once only)
-        header = f"Target: {self.target}" if self.target else ""
+        header = f"Target: {self.target}\n" if self.target else ""
         if self.goal:
             goal_clean = self.goal.replace(self.target, "").strip() if self.target else self.goal
             header += f"{goal_clean}"  # Full goal, no truncation

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any, Literal, AsyncGenerator
+import asyncio
 from pydantic import BaseModel
 from pydantic_ai import DeferredToolResults, RunContext, UsageLimits, RunUsage, UsageLimitExceeded
 from deadend_agent.agents import (
@@ -445,7 +446,7 @@ class AgentExecutor:
             # Execute task with supervisor
             supervisor_prompt = f"Your task is : {task_node.task}\n"
             if agent_context:
-                supervisor_prompt += f"Previously you've achieved the following: \n{agent_context}\n"
+                supervisor_prompt += f"## Traces: \n{agent_context}\n"
 
             result = await supervisor.run(
                 prompt=supervisor_prompt,
@@ -466,7 +467,12 @@ class AgentExecutor:
                 context["last_output"] = supervisor_output.model_dump()
             else:
                 confidence_score = 0.5
-                context["last_output"] = str(supervisor_output)
+                # Ensure detailed_summary is set even for non-SupervisorOutput results
+                output_str = str(supervisor_output)
+                context["last_output"] = output_str
+                context["detailed_summary"] = output_str
+                context["task_achieved"] = False
+                context["proofs"] = ""
 
             yield ResultEvent(
                 confidence_score=confidence_score,
@@ -481,10 +487,22 @@ class AgentExecutor:
                 context=context,
             )
             return
+        except (GeneratorExit, asyncio.CancelledError):
+            # These exceptions must not be caught - re-raise to allow proper cleanup
+            raise
         except Exception as exc:
-            yield emit(f"[SUPERVISOR] Error: {exc}")
-            yield ResultEvent(
-                confidence_score=confidence_score or 0.5,
-                context=context,
-            )
+            # Store error info in context before yielding
+            # This prevents "generator didn't stop after throw()" if the generator
+            # is being closed due to the exception
+            context["last_output"] = f"detailed_summary=\"Agent error: {exc}. Agent: supervisor\""
+            context["detailed_summary"] = f"Agent error: {exc}. Agent: supervisor"
+            try:
+                yield emit(f"[SUPERVISOR] Error: {exc}")
+                yield ResultEvent(
+                    confidence_score=confidence_score or 0.5,
+                    context=context,
+                )
+            except GeneratorExit:
+                # If generator is being closed, don't try to yield more
+                pass
             return

@@ -25,7 +25,9 @@ Operating principles:
 {% for tool_name, tool_description in tools.items() %}
 - {{tool_name}} — {{tool_description}}
 {% endfor %}
-8. Keep the vulnerability landscape in view—IDOR, XSS, SQLi, LFI, command injection, SSRF, misconfigurations, etc.—but only propose tasks aligned with the evidence at hand.
+8. Keep the vulnerability landscape in view—IDOR, XSS, SQLi, LFI, SSTI, command injection, SSRF, misconfigurations, etc.—but only propose tasks aligned with the evidence at hand. Reference the vulnerability playbooks below for specific attack strategies.
+
+{% include '_shared/_vulnerability_playbooks.jinja2' %}
 
 ## STRATEGIC TASK DECOMPOSITION
 

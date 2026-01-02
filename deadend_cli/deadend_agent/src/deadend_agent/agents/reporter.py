@@ -80,7 +80,8 @@ Current workflow context:
         else:
             # Fallback if the output structure is different
             summarized_context = str(result.output)
-
+        print(f"result reporter : {result}")
+        print(f"result reporter output : {result.output}")
         # Update the context engine with the summarized context
         context_engine.set_new_workflow(summarized_context)
 

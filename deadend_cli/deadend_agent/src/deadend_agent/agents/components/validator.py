@@ -89,9 +89,6 @@ class Validator:
 You are the Validator. Judge whether the following goal is satisfied based on the execution trace.
 {validation_objective}
 
-# Current Task Being Validated
-{task.task}
-
 # Execution trace
 {context}
 
