@@ -16,9 +16,11 @@ from rich.pretty import pprint
 
 from deadend_agent.utils.functions import truncate_string
 from .python_interpreter import PythonInterpreter
+from deadend_agent.tools.tool_wrappers import with_tool_events
 
 
 
+@with_tool_events("read_auth_storage")
 async def read_auth_storage(ctx: str) -> str:
     """Return the JSON contents of storage.json for the given session.
 
@@ -72,6 +74,7 @@ async def read_auth_storage(ctx: str) -> str:
             "credentials": []
         })
 
+@with_tool_events("run_python_file")
 async def run_python_file(
     ctx: RunContext[str],
     code: str,

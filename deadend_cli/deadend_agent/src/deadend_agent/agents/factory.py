@@ -18,6 +18,7 @@ from pydantic_ai import DeferredToolResults, UnexpectedModelBehavior
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
 from deadend_agent.core_agent import CoreAgent, AgentResult as CoreAgentResult, get_session_metrics, UsageLimitExceeded
+from deadend_agent.hooks import get_event_hooks
 
 
 class AgentOutput(BaseModel):

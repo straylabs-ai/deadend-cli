@@ -15,18 +15,29 @@ from .models.registry import ModelRegistry, AIModel
 from .rag.db_cruds import RetrievalDatabaseConnector
 from .sandbox.sandbox import Sandbox
 from .deadend_agent import DeadEndAgent
+from .hooks import (
+    EventHooks,
+    NullEventHooks,
+    set_event_hooks,
+    get_event_hooks,
+)
 
 
 __all__ = [
     'DeadEndAgent',
-    'Config', 
-    'ModelRegistry', 
+    'Config',
+    'ModelRegistry',
     'AIModel',
     'RetrievalDatabaseConnector',
     'Sandbox',
-    'config_setup', 
-    'init_rag_database', 
-    'sandbox_setup', 
-    'setup_model_registry'
+    'config_setup',
+    'init_rag_database',
+    'sandbox_setup',
+    'setup_model_registry',
+    # Hooks
+    'EventHooks',
+    'NullEventHooks',
+    'set_event_hooks',
+    'get_event_hooks',
 ]
 
