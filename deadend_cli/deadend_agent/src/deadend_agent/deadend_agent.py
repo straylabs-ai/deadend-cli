@@ -10,13 +10,10 @@ from deadend_agent.context import ContextEngine
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 from deadend_agent.sandbox.sandbox import Sandbox
 from deadend_agent.agents.reporter import ReporterAgent
-from deadend_agent.agents.architecture import (
-    ADaPTAgent,
-    AgentExecutor,
-    Planner,
-    TaskNode,
-    Validator
-)
+from deadend_agent.agents.architecture import ADaPTAgent
+from deadend_agent.agents.components.executor import AgentExecutor, ResultEvent
+from deadend_agent.agents.components.planner import Planner, TaskNode
+from deadend_agent.agents.components.validator import Validator
 from deadend_agent.utils.structures import (
     RequesterDeps,
     ShellDeps,
@@ -243,7 +240,8 @@ class DeadEndAgent:
         validation_token: str = ""
         traces: list[str | dict[str, Any]] = []
 
-        prompt_task = f"""Prepare the necessary information (reconnaissance) to achieve the following task: {task}
+        prompt_task = f"""
+Prepare the necessary information (reconnaissance) to achieve the following task: {task}
 
 Focus on gathering ONLY the information needed for this specific task. Be precise - every piece of information must be retrieved from tooling responses, nothing should be invented or assumed.
 
@@ -274,36 +272,27 @@ Critical rules:
         )
 
         # Set root task in context
-        self.context.set_root_task(prompt_task)
+        self.context.set_root_task(task)
 
         # Get unified context for the executor
         unified_context = self.context.get_unified_context(max_tokens=6000)
-
+        target_context =f"Target : {self.context.target}"
+        context = {}
+        confidence_score = 0.0
         # Run the supervisor directly
         async for event in self.executor.execute_supervisor(
             task_node=task_node,
-            agent_context=unified_context,
+            agent_context=target_context,
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
         ):
             traces.append(event)
-            if hasattr(event, 'type'):
-                if event.type == "result":
-                    # ResultEvent - extract the context
-                    task_node.confidence_score = event.confidence_score
-                    task_node.status = "completed" if event.context.get("task_achieved") else "in_progress"
-                    # Check for validation token in proofs
-                    proofs = event.context.get("proofs", "")
-                    if proofs and "FLAG{" in proofs.upper():
-                        flag_match = re.search(r'FLAG\{[^}]+\}', proofs, re.IGNORECASE)
-                        if flag_match:
-                            validation_token = flag_match.group(0)
-                elif event.type == "log":
-                    # LogEvent
-                    try:
-                        print(event.message)
-                    except (BlockingIOError, OSError):
-                        pass
+            if isinstance(event, ResultEvent):
+                confidence_score = event.confidence_score
+                context = event.context
+
+        task_node.confidence_score = confidence_score
+        task_node.status = "completed"
 
         reporter_agent = ReporterAgent(
             model=self.model,
@@ -312,7 +301,7 @@ Critical rules:
             validation_format="Information",
             validation_type="security assessment"
         )
-        context_text = await self.context.get_all_context()
+        # context_text = await self.context.get_all_context()
         prompt_assessment = f"""\
 Summarize the security assessment results from the reconnaissance phase.
 
@@ -324,7 +313,7 @@ IMPORTANT:
 - Note validation status (reflected vs executed, needs browser test)
 
 ## Assessment Data
-{context_text}
+{context}
 """
         threat_model_data = await reporter_agent.run(
             prompt=prompt_assessment,
@@ -335,7 +324,7 @@ IMPORTANT:
             message_history=""
         )
 
-        return task_node, threat_model_data, validation_token
+        return task_node, context, validation_token
 
     async def threat_model_stream(self, task: str):
         """Execute the threat modeling and orchestration workflow.
@@ -453,14 +442,12 @@ IMPORTANT:
         # Build task with unified context from reconnaissance
         # The previous_context contains confirmed exploits and discoveries that should inform exploitation
         task_exploit = f"""
+
 ### Primary objective
 {task}
 
 ### Success validation
 The flag that you need to find has the following format : FLAG{{}}.
-
-### Target
-{self.target}
 
 ## Previous Reconnaissance Results
 {previous_context}
@@ -492,16 +479,6 @@ The flag that you need to find has the following format : FLAG{{}}.
                     print(str(event))
                 except (BlockingIOError, OSError):
                     pass
-
-        # Save traces to file
-        # try:
-        #     trace_file = save_traces(
-        #         traces=traces,
-        #         challenge_name=self.challenge_name,
-        #     )
-        #     print(f"Traces saved to: {trace_file}")
-        # except Exception as e:
-        #     print(f"Warning: Failed to save traces: {e}")
 
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")

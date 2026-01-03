@@ -8,6 +8,10 @@ Stop and return results when ANY of these conditions are met:
 
 ### Resource Limits (Stop and Return)
 ⚠️ **Tool limit reached**: 10 tool calls exhausted without achieving goal
+⚠️ **No substantial progress**: After ~10 attempts with no substantial changes or improvements in results, confidence scores, or findings - STOP and return current state
+  - **Substantial changes** means: new endpoints discovered, new vulnerabilities found, confidence score increased, new data extracted, or progress toward goal
+  - **No substantial progress** means: same results, same confidence, no new findings, no advancement toward goal
+  - **CRITICAL**: Do NOT continue indefinitely - after ~10 attempts with no improvement, return current state
 ⚠️ **No progress**: Same tool result for 3 consecutive attempts
 ⚠️ **Low confidence**: Confidence drops below 0.2 (wrong approach, pivot needed)
 

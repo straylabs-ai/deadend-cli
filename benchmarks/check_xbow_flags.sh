@@ -6,12 +6,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-XBEN_ROOT_CORRECTED="$SCRIPT_DIR/xbow/validation-benchmarks-corrected/benchmarks"
-XBEN_ROOT_LEGACY="$SCRIPT_DIR/xbow/validation-benchmarks/benchmarks"
-RESULTS_DIR="$REPO_ROOT/deadend_cli/benchmarks"
+XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks/benchmarks"
 
 START_NUM=1
 END_NUM=104
+
+usage() {
+    echo "Usage: $0 [RESULTS_DIR]" >&2
+    echo "  RESULTS_DIR: Directory containing .log result files (default: current directory)" >&2
+    exit 1
+}
 
 require_cmd() {
     local cmd="$1"
@@ -24,6 +28,17 @@ require_cmd() {
 require_cmd jq
 require_cmd grep
 
+# Get results directory from argument or use current directory
+if [[ $# -gt 1 ]]; then
+    usage
+fi
+
+RESULTS_DIR="${1:-.}"
+if [[ ! -d "$RESULTS_DIR" ]]; then
+    echo "Error: Results directory does not exist: $RESULTS_DIR" >&2
+    exit 1
+fi
+
 TOTAL=0
 SUCCESS=0
 FAILED=0
@@ -34,26 +49,18 @@ NOT_STARTED_NUMS=()
 
 printf "Checking benchmarks from %d to %d\n" "$START_NUM" "$END_NUM"
 printf "Results directory: %s\n" "$RESULTS_DIR"
-printf "Metadata roots   :\n"
-printf "  - %s\n" "$XBEN_ROOT_CORRECTED"
-printf "  - %s\n" "$XBEN_ROOT_LEGACY"
+printf "Metadata root    : %s\n" "$XBEN_ROOT"
 echo "============================================================"
 
 for (( num=START_NUM; num<=END_NUM; num++ )); do
     TOTAL=$((TOTAL + 1))
     BENCH_SLUG="$(printf "XBEN-%03d-24" "$num")"
 
-    # Prefer corrected benchmarks, fall back to legacy path if needed.
-    BENCH_DIR="$XBEN_ROOT_CORRECTED/$BENCH_SLUG"
+    BENCH_DIR="$XBEN_ROOT/$BENCH_SLUG"
     META_FILE="$BENCH_DIR/eval_metadata_file.json"
 
-    if [[ ! -f "$META_FILE" ]]; then
-        BENCH_DIR="$XBEN_ROOT_LEGACY/$BENCH_SLUG"
-        META_FILE="$BENCH_DIR/eval_metadata_file.json"
-    fi
-
     if [[ ! -d "$BENCH_DIR" || ! -f "$META_FILE" ]]; then
-        printf "[NOT STARTED] %s (missing directory or %s in corrected/legacy trees)\n" "$BENCH_SLUG" "$(basename "$META_FILE")"
+        printf "[NOT STARTED] %s (missing directory or %s)\n" "$BENCH_SLUG" "$(basename "$META_FILE")"
         NOT_STARTED=$((NOT_STARTED + 1))
         NOT_STARTED_NUMS+=("$num")
         continue
@@ -67,10 +74,11 @@ for (( num=START_NUM; num<=END_NUM; num++ )); do
         continue
     fi
 
-    # Look for matching result files in deadend_cli/benchmarks/
+    # Look for matching result files in RESULTS_DIR
     # They typically start with the benchmark slug, but we allow any match.
+    # Support both .txt and .log extensions
     shopt -s nullglob
-    mapfile -t candidate_files < <(find "$RESULTS_DIR" -maxdepth 1 -type f -name "${BENCH_SLUG}_*.txt" -o -name "*${BENCH_SLUG}*.txt")
+    mapfile -t candidate_files < <(find "$RESULTS_DIR" -maxdepth 1 -type f \( -name "${BENCH_SLUG}_*.txt" -o -name "*${BENCH_SLUG}*.txt" -o -name "${BENCH_SLUG}_*.log" -o -name "*${BENCH_SLUG}*.log" \))
     shopt -u nullglob
 
     if [[ ${#candidate_files[@]} -eq 0 ]]; then

@@ -20,10 +20,8 @@ Choose the most efficient tool for each task type. Prefer specialized tools over
 
 **Semantic search** (finding patterns, endpoints):
 1. `webapp_code_rag` - Semantic search over indexed code
-2. `grep_session_logs` - If searching previous tool outputs
 
 **Pattern matching** (regex, specific strings):
-1. `grep_session_logs` - Search session history
 2. `webapp_code_rag` - If pattern is in indexed code
 
 **File reading** (specific files):
@@ -38,7 +36,7 @@ Choose the most efficient tool for each task type. Prefer specialized tools over
 3. `run_python_file` - For complex analysis
 
 **System reconnaissance** (ports, services, infrastructure):
-1. `sandboxed_shell_tool` - Use nmap, masscan, specialized tools
+1. `sandboxed_shell_tool` - Use nmap, sqlmap, specialized tools
 2. `run_python_file` - Only if shell tools insufficient
 
 ### Exploitation
@@ -65,7 +63,6 @@ Need to make HTTP request?
 
 Need to search code?
 ├─ Semantic/pattern → webapp_code_rag
-├─ Previous results → grep_session_logs
 └─ Specific file → source_code_browser
 
 Need to exploit?

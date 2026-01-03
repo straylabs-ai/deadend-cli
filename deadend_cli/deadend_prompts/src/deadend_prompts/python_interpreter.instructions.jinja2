@@ -393,6 +393,7 @@ from bs4 import BeautifulSoup  # Third-party → include as "beautifulsoup4"
 - **Error handling**: Add try/except in code for meaningful error messages
 - **Print detailed data**: Actual responses, extracted info, findings - not just status
 - **Iterative development**: If script fails, analyze error, modify code, retry with new call
+- **⚠️ CRITICAL STOPPING CONDITION**: After ~10 attempts with no substantial changes or improvements (no new findings, same confidence, no progress toward goal), STOP and return current state. Do NOT continue indefinitely.
 
 ## RESPONSE ANALYSIS
 

@@ -86,8 +86,8 @@ async def eval_interface(
         raise SystemExit(1) from exc
 
     # Monitoring
-    logfire.configure(scrubbing=False)
-    logfire.instrument_pydantic_ai()
+    # logfire.configure(scrubbing=False)
+    # logfire.instrument_pydantic_ai()
 
     # adding automatic build and ask prompt
     sandbox_id = sandbox_manager.create_sandbox(
