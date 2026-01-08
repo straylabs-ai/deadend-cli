@@ -3,9 +3,7 @@
 # See LICENSE file for full license information.
 
 """Component manager for initializing and managing daemon components."""
-
 from __future__ import annotations
-
 import asyncio
 import subprocess
 import time
@@ -13,7 +11,6 @@ from datetime import datetime
 from typing import Any, Optional
 
 import docker
-from docker.errors import DockerException, NotFound
 
 from .rpc_models import (
     ComponentStatus,
