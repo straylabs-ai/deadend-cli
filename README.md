@@ -1,5 +1,6 @@
 # Deadend CLI
-
+**Autonomous pentesting agent using feedback-driven iteration**
+Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic architecture.
 ![Deadend CLI](./assets/zTJJbo2XDi94T8ynIpozt.png)
 
 *Like the project or want to know more? Feel free to [reach out](#contact)!*
@@ -7,8 +8,7 @@
 > [!WARNING]
 > **Active Development**: This project is undergoing active development. Current features are functional but the interface and workflows are being improved based on new architecture and features.
 
-**Autonomous pentesting agent using feedback-driven iteration**
-Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic architecture.
+
 
 📄 [Read Technical Deep Dive](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01) | 📊 [Benchmark Results](https://github.com/xoxruns/deadend-cli/tree/main/benchmarks-results/xbow)
 
