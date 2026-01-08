@@ -22,9 +22,9 @@ from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 PYTHON_SANDBOX_NAME = "python-sandbox-tool-linux"
 SIMPLE_PYTHON_SANDBOX_URL = (
     "https://github.com/xoxruns/simple-python-interpreter-sandbox/"
-    "releases/download/v0.0.2/python-sandbox-tool-linux"
+    "releases/download/v0.0.3/python-sandbox-tool-linux"
 )
-PYTHON_SANDBOX_SHA256 = "4fb4393b1f58cd5d6f0a4db0fe886a42f8e086f020a1e05cc4b7cfbc4501afc3"
+PYTHON_SANDBOX_SHA256 = "74b8a80709a912028600f39b9953889c011278a80acf066af5bd6979366455f4"
 
 def config_setup() -> Config:
     """Setup config"""

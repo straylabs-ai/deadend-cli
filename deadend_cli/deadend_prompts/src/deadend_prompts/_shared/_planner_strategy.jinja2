@@ -55,29 +55,21 @@ Each task must include:
 - `description`: How to approach it (2-3 sentences)
 - `goal_connection`: How this advances toward the goal (1 sentence)
 - `status`: Always "pending"
-- `confidence_score`: 0.0-1.0 based on available evidence
+- `confidence_score`: Always 0.0 when creating tasks
 
-### Confidence Assignment
+**Important**: When creating tasks, always set `confidence_score` to 0.0. This does NOT mean the task failed—it simply indicates the task hasn't been treated/executed yet. Confidence scores are assigned later during task execution, not during task creation.
 
-- **0.7-0.9**: Strong evidence, clear path, high likelihood of success
-- **0.4-0.6**: Reasonable approach, some uncertainty, worth testing
-- **0.2-0.4**: Exploratory, limited evidence, but necessary for progress
-
-Tasks with confidence <0.2 should not be included (too speculative).
-
-### Example: Goal "Extract admin user credentials"
+### Example: Goal "Find XSS injection in the web page"
 
 **Good decomposition** (goal-connected):
-1. "Find authentication endpoints and credential storage patterns" (0.8)
-   - Goal connection: Must understand where/how credentials are stored to extract them
-2. "Discover admin user identifiers and access patterns" (0.7)
-   - Goal connection: Need to identify which user is admin to target extraction
-3. "Test authorization on admin-related endpoints" (0.6)
-   - Goal connection: IDOR or auth bypass could expose admin credentials
-4. "Exploit most promising vulnerability to access admin data" (0.5)
-   - Goal connection: Direct path to credential extraction
-5. "Validate extracted credentials achieve admin access" (0.7)
-   - Goal connection: Confirms goal achievement with proof
+1. "Find and extract the inputs and different sources where a XSS could be injected" (confidence_score: 0.0)
+   - Goal connection: Understanding where we can send or alter the data to inject.
+2. "Testing XSS payloads to understand how the web application behaves" (confidence_score: 0.0)
+   - Goal connection: Directly testing XSS payloads to understand the behavior or the web app
+3. "Test complex XSS payloads, look for hints and changes in the web app." (confidence_score: 0.0)
+   - Goal connection: Trying harder to trigger an XSS vulnerability
+4. "Validation the XSS injection found or extensive search" (confidence_score: 0.0)
+   - Goal connection: Validate the vulnerability
 
 **Bad decomposition** (no goal connection):
 1. ❌ "Enumerate all endpoints" (generic, not goal-focused)

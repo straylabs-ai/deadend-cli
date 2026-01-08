@@ -7,18 +7,18 @@
 This module provides a factory pattern implementation for creating and
 configuring AI agents with proper error handling, retry logic, and
 usage tracking for the security research framework.
+
+COMPATIBILITY LAYER: AgentRunner now wraps the new CoreAgent implementation
+while maintaining the same interface as Pydantic AI for backward compatibility.
 """
 from __future__ import annotations
 from typing import Any, List
 from pydantic import BaseModel
-from pydantic_ai import Agent, capture_run_messages, DeferredToolResults, UnexpectedModelBehavior
-from pydantic_ai.messages import (
-    ModelMessage,
-    ModelResponse,
-    TextPart,
-)
+from pydantic_ai import DeferredToolResults, UnexpectedModelBehavior
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
+from deadend_agent.core_agent import CoreAgent, AgentResult as CoreAgentResult, get_session_metrics, UsageLimitExceeded
+from deadend_agent.hooks import get_event_hooks
 
 
 class AgentOutput(BaseModel):
@@ -192,10 +192,11 @@ class FallbackAgentResult:
 
 class AgentRunner:
     """
-    Wrapper for Pydantic AI agents that provides a consistent interface for agent execution.
+    Backward-compatible wrapper that uses CoreAgent under the hood.
 
-    This class encapsulates a Pydantic AI Agent instance and provides methods to run
-    agent tasks with proper configuration, error handling, and usage tracking.
+    This class maintains the same interface as the previous Pydantic AI implementation
+    but uses the new CoreAgent system internally. This allows existing code to work
+    without modifications.
     """
     def __init__(
         self,
@@ -212,24 +213,45 @@ class AgentRunner:
             name: Unique identifier for this agent instance
             model: The AI model to use for agent execution
             instructions: System instructions/prompt for the agent
-            deps_type: Optional dependency type for the agent
+            deps_type: Optional dependency type for the agent (not used in CoreAgent)
             output_type: Expected output type for the agent's responses
-            tools: List of tools available to the agent
+            tools: List of tool functions or Tool objects available to the agent
         """
-        # testing settings
-        # settings = OpenAIResponsesModelSettings(
-        #     openai_reasoning_effort='high',
-        #     openai_reasoning_summary='detailed',
-        # )
         self.name = name
-        self.agent = Agent(
-            model=model,
+        self.deps_type = deps_type
+
+        # Handle list output_type (e.g., [RequesterOutput, DeferredToolRequests])
+        # Use the first element as the primary output schema
+        if isinstance(output_type, list) and len(output_type) > 0:
+            self.output_type = output_type[0]  # Primary output type for fallbacks
+            output_schema = output_type[0]  # For CoreAgent
+        else:
+            self.output_type = output_type
+            output_schema = output_type
+
+        # Extract model info from AIModel
+        model_name, api_key, api_base = self._extract_model_info(model)
+
+        # Extract tool functions from Tool objects or use directly if callable
+        tool_functions = []
+        for tool in tools:
+            if callable(tool):
+                tool_functions.append(tool)
+            elif hasattr(tool, 'function') and callable(tool.function):
+                # Pydantic AI Tool object
+                tool_functions.append(tool.function)
+
+        # Create CoreAgent instance
+        self.agent = CoreAgent(
+            model=model_name,
             instructions=instructions,
-            deps_type=deps_type,
-            output_type=output_type,
-            tools=tools,
-            # model_settings=settings
+            tools=tool_functions,
+            output_schema=output_schema,
+            api_key=api_key,
+            api_base=api_base,
+            name=name,
         )
+
         self.response = None
 
     async def run(
@@ -249,62 +271,248 @@ class AgentRunner:
             message_history: Previous conversation messages for context
             usage: Optional usage tracking object
             usage_limits: Optional limits for token usage
-            deferred_tool_results: Optional deferred tool results from previous runs
+            deferred_tool_results: Optional deferred tool results (not used in CoreAgent)
 
         Returns:
-            AgentRunResult or FallbackAgentResult containing the agent's output.
-            FallbackAgentResult is returned when UnexpectedModelBehavior occurs,
+            CoreAgentResult or FallbackAgentResult containing the agent's output.
+            FallbackAgentResult is returned when UsageLimitExceeded or other errors occur,
             with a low confidence score (0.1) to signal the failure to callers.
-
-        Note:
-            Future enhancements will include token limit checking, rate-limit handling,
-            and interruption support.
         """
+        try:
+            # Pass deps as-is to CoreAgent (it will be wrapped in RunContextCompat for tools)
+            # This preserves the original object (e.g., SupervisorDeps) so tools can access
+            # attributes like .requester_agent, .shell_agent, etc.
 
+            # Convert usage_limits to dict
+            limits_dict = {}
+            if usage_limits:
+                limits_dict["requests"] = getattr(usage_limits, 'request_limit', None) or float('inf')
+                limits_dict["tools"] = getattr(usage_limits, 'tool_call_limit', None) or float('inf')
 
-        with capture_run_messages() as messages:
-            try:
-                result = await self.agent.run(
-                    user_prompt=prompt,
-                    deps=deps,
-                    message_history=message_history,
-                    usage=usage,
-                    usage_limits=usage_limits,
-                    deferred_tool_results=deferred_tool_results
+            # Run CoreAgent
+            result = await self.agent.run(
+                prompt=prompt,
+                deps=deps,  # Pass original deps object, not converted dict
+                message_history=message_history,
+                usage_limits=limits_dict,
+            )
+
+            # Update usage object if provided
+            # Note: RunUsage.total_tokens is a read-only computed property,
+            # so we only update the request count
+            if usage:
+                usage.requests = self.agent.request_count
+
+            # Record session metrics
+            # Extract session_id from deps (could be dict or object)
+            # Convert to string in case it's a UUID
+            if deps is None:
+                session_id = "default"
+            elif isinstance(deps, dict):
+                session_id = deps.get("session_id", "default")
+            else:
+                session_id = getattr(deps, "session_id", "default")
+            # Convert UUID to string if needed
+            if session_id and session_id != "default":
+                session_id = str(session_id)
+                session_metrics = get_session_metrics(session_id)
+                session_metrics.record_completion(
+                    agent_name=self.name,
+                    prompt_tokens=self.agent.prompt_tokens,
+                    completion_tokens=self.agent.completion_tokens,
                 )
+                session_metrics.record_tool_call(count=self.agent.tool_call_count)
+                session_metrics.save()
 
-                # Extract agent's reasoning for successful runs
-                msg_list = list(messages)
-                agent_reasoning = extract_text_from_messages(msg_list, max_chars=1500)
+            # Ensure thoughts are populated
+            if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
+                if not result.output.thoughts and result.thoughts:
+                    result.output.thoughts = result.thoughts
 
-                # Attach thoughts to the output
-                if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
-                    if not result.output.thoughts:
-                        result.output.thoughts = agent_reasoning
-                elif hasattr(result, 'output') and hasattr(result.output, 'thoughts'):
-                    if not result.output.thoughts:
-                        result.output.thoughts = agent_reasoning
+            return result
 
-            except UnexpectedModelBehavior as e:
-                error_msg = str(e)
-                print(f"[AgentRunner] UnexpectedModelBehavior: {error_msg}")
+        except UsageLimitExceeded as e:
+            error_msg = str(e)
+            print(f"[AgentRunner] UsageLimitExceeded: {error_msg}")
 
-                # Extract agent's text reasoning/thoughts from messages
-                msg_list = list(messages)
-                agent_reasoning = extract_text_from_messages(msg_list, max_chars=2500)
-                if agent_reasoning:
-                    print(f"[AgentRunner] Preserved agent reasoning ({len(agent_reasoning)} chars)")
+            # Create a fallback result with the correct output type
+            fallback_output = self._create_fallback_output(error_msg, "Usage limit exceeded")
+            return FallbackAgentResult(
+                output=fallback_output,
+                error=error_msg,
+                raw_messages=[]
+            )
 
-                # Create a fallback result with low confidence but preserved context
-                fallback_output = AgentOutput(
-                    detailed_summary=f"Agent error: {error_msg}. Agent: {self.name}",
-                    proofs=agent_reasoning[:1000] if agent_reasoning else "",
-                    confidence_score=0.1,
-                    thoughts=agent_reasoning or ""
-                )
-                result = FallbackAgentResult(
-                    output=fallback_output,
-                    error=error_msg,
-                    raw_messages=msg_list
-                )
+        except Exception as e:
+            error_msg = str(e)
+            print(f"[AgentRunner] Error: {error_msg}")
+
+            # Create a fallback result with the correct output type
+            fallback_output = self._create_fallback_output(error_msg, "Agent error")
+            return FallbackAgentResult(
+                output=fallback_output,
+                error=error_msg,
+                raw_messages=[]
+            )
+
+    def _deps_to_dict(self, deps: Any) -> dict:
+        """Convert dataclass/object deps to dict for CoreAgent.
+
+        Args:
+            deps: Dependencies object (usually a dataclass)
+
+        Returns:
+            Dict with all non-private attributes
+        """
+        if deps is None:
+            return {}
+
+        if isinstance(deps, dict):
+            return deps
+
+        # Convert dataclass or object to dict
+        result = {}
+        for attr_name in dir(deps):
+            if not attr_name.startswith("_") and not callable(getattr(deps, attr_name)):
+                try:
+                    result[attr_name] = getattr(deps, attr_name)
+                except Exception:
+                    pass
+
         return result
+
+    def _extract_model_info(self, model: AIModel) -> tuple[str, str | None, str | None]:
+        """Extract model name, API key, and base URL from AIModel.
+
+        For OpenAI-compatible custom endpoints (local models), formats the model
+        name as "openai/<model_name>" for litellm compatibility.
+
+        Args:
+            model: AIModel instance
+
+        Returns:
+            Tuple of (model_name, api_key, api_base)
+        """
+        # Handle different model types
+        model_name = str(model)
+        api_key = None
+        api_base = None
+
+        if hasattr(model, 'model_name'):
+            model_name = model.model_name
+
+        # Extract from provider (preferred - this is where config values are stored)
+        # Pydantic AI stores provider as _provider (private field)
+        if hasattr(model, '_provider'):
+            provider = model._provider
+
+            # Pydantic AI providers store api_key/base_url in the underlying client
+            # For OpenAIProvider, access via provider.client property
+            if hasattr(provider, 'client'):
+                try:
+                    client = provider.client
+
+                    # Extract api_key from client
+                    if hasattr(client, 'api_key'):
+                        raw_key = client.api_key
+                        # Handle SecretStr or similar types - convert to string
+                        if hasattr(raw_key, 'get_secret_value'):
+                            api_key = raw_key.get_secret_value()
+                        else:
+                            api_key = str(raw_key) if raw_key else None
+
+                    # Extract base_url from client
+                    if hasattr(client, 'base_url'):
+                        # OpenAI client stores base_url as httpx.URL object
+                        api_base = str(client.base_url)
+
+                except Exception:
+                    pass
+
+            # Also try provider properties (some providers expose these)
+            if not api_base and hasattr(provider, 'base_url'):
+                try:
+                    api_base = provider.base_url
+                except Exception:
+                    pass
+
+        # Fallback: extract directly from model
+        if not api_key and hasattr(model, 'api_key'):
+            api_key = model.api_key
+
+        if not api_base:
+            for attr in ['api_base', 'base_url']:
+                if hasattr(model, attr):
+                    val = getattr(model, attr, None)
+                    if val:
+                        api_base = val
+                        break
+
+        # For OpenAI-compatible custom endpoints (local models), format for litellm
+        # If we have a custom base_url, this is an OpenAI-compatible endpoint
+        if api_base and api_base not in [
+            "https://api.openai.com/v1",
+            "https://api.anthropic.com",
+            "https://generativelanguage.googleapis.com",
+            "https://openrouter.ai/api/v1"
+        ]:
+            # Custom endpoint - prefix with "openai/" for litellm
+            # But only if the model doesn't already have a provider prefix
+            known_prefixes = ("openai/", "azure_ai/", "anthropic/", "gemini/", "openrouter/", "bedrock/", "vertex_ai/")
+            if not any(model_name.startswith(prefix) for prefix in known_prefixes):
+                model_name = f"openai/{model_name}"
+
+        # Debug logging
+        print(f"[AgentRunner] Extracted model info: model_name={model_name}, api_key={'***' if api_key else None}, api_base={api_base}")
+
+        return model_name, api_key, api_base
+
+    def _create_fallback_output(self, error_msg: str, error_type: str) -> BaseModel:
+        """Create a fallback output with the correct schema type.
+
+        Args:
+            error_msg: The error message
+            error_type: Type of error (e.g., "Usage limit exceeded", "Agent error")
+
+        Returns:
+            Fallback output instance (either output_type or AgentOutput)
+        """
+        full_msg = f"{error_type}: {error_msg}. Agent: {self.name}"
+
+        # Try to create instance of the specified output_type
+        if self.output_type and hasattr(self.output_type, 'model_fields'):
+            # Get the model fields to determine what to populate
+            fields = self.output_type.model_fields
+            fallback_data = {}
+
+            # Map common field names to error values
+            field_mappings = {
+                'detailed_summary': full_msg,
+                'summarized_context': full_msg,
+                'summary': full_msg,
+                'message': full_msg,
+                'content': full_msg,
+                'text': full_msg,
+                'proofs': "",
+                'confidence_score': 0.1,
+                'thoughts': "",
+            }
+
+            # Populate fields that exist in the schema
+            for field_name, default_value in field_mappings.items():
+                if field_name in fields:
+                    fallback_data[field_name] = default_value
+
+            try:
+                return self.output_type(**fallback_data)
+            except Exception:
+                # If instantiation fails, fall back to AgentOutput
+                pass
+
+        # Default fallback to AgentOutput
+        return AgentOutput(
+            detailed_summary=full_msg,
+            proofs="",
+            confidence_score=0.1,
+            thoughts=""
+        )

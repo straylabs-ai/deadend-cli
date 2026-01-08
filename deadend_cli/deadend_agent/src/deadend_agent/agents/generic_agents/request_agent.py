@@ -17,7 +17,6 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.agents.factory import AgentRunner, AgentOutput
 from deadend_agent.models.registry import AIModel
 from deadend_agent.tools import (
-    is_valid_request_detailed,
     pw_send_payload,
     webapp_code_rag
 )
@@ -61,7 +60,6 @@ class RequesterAgent(AgentRunner):
         requires_approval: bool,
     ):
         tools_metadata = {
-            "is_valid_request_detailed": render_tool_description("is_valid_request_detailed"),
             "pw_send_payload": render_tool_description("send_payload"),
             # "webapp_code_rag": render_tool_description("webapp_code_rag")
         }
@@ -93,7 +91,6 @@ class RequesterAgent(AgentRunner):
             deps_type=deps_type,
             output_type=[RequesterOutput, DeferredToolRequests],
             tools=[
-                Tool(is_valid_request_detailed),
                 Tool(pw_send_payload, requires_approval=requires_approval),
                 # Tool(webapp_code_rag)
             ]

@@ -14,6 +14,37 @@ import shutil
 from importlib.resources import files
 from pathlib import Path
 from .cli import app
+from .rpc_server import RPCServer
+from .event_bus import EventBus, event_bus
+from .component_manager import ComponentManager
+from .hooks_adapter import EventBusHooksAdapter
+from .rpc_models import (
+    AgentEvent,
+    EventType,
+    ComponentStatus,
+    ComponentState,
+    InitResult,
+    HealthResult,
+    AllHealthResult,
+    RPCErrorCode,
+)
+
+__all__ = [
+    "main",
+    "RPCServer",
+    "EventBus",
+    "event_bus",
+    "ComponentManager",
+    "EventBusHooksAdapter",
+    "AgentEvent",
+    "EventType",
+    "ComponentStatus",
+    "ComponentState",
+    "InitResult",
+    "HealthResult",
+    "AllHealthResult",
+    "RPCErrorCode",
+]
 
 
 def main():

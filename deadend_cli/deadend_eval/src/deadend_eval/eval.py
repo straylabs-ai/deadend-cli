@@ -200,18 +200,31 @@ async def eval_deadend_agent(
         print("Validation check: Continuing to the exploitation phase.")
 
     print(f"Plan produced is : {plan}")
-    if threat_model_data.output:
-        print(f"Threat model is :\n{threat_model_data.output}")
-        threat_model_computed = threat_model_data.output.summarized_context
-    else:
-        print(f"Threat model is :\n{threat_model_data[0].parts[0].content}")
-        threat_model_computed = threat_model_data[0].parts[0].content
+    print(f"threat model is : {threat_model_data}")
+    # if threat_model_data.output:
+    #     print(f"Threat model is :\n{threat_model_data.output}")
+    #     threat_model_computed = threat_model_data.output.summarized_context
+    # else:
+    #     print(f"Threat model is :\n{threat_model_data[0].parts[0].content}")
+    #     threat_model_computed = threat_model_data[0].parts[0].content
+    threat_model_computed = threat_model_data
     if not solved:
         if len(validation_token) > 1:
             threat_model_computed += f"## Important NOTE\nThe flag found previously \
                 {validation_token} is false and is not the right response. Find another way."
 
-        plan, validation_token = await deadend_agent.run_exploitation(threat_model=threat_model_computed, task=prompt)
+        # Safely extract detailed_summary from threat_model_data
+        # When supervisor fails, detailed_summary may not be set
+        detailed_summary = threat_model_data.get('detailed_summary', '')
+        if not detailed_summary:
+            # Fallback to last_output if available
+            last_output = threat_model_data.get('last_output', '')
+            if isinstance(last_output, dict):
+                detailed_summary = last_output.get('detailed_summary', str(last_output))
+            else:
+                detailed_summary = str(last_output) if last_output else "No threat model data available"
+
+        plan, validation_token = await deadend_agent.run_exploitation(threat_model=detailed_summary, task=prompt)
         if validation_token and len(validation_token) > 1 and eval_metadata.solution:
             solved = (validation_token == eval_metadata.solution)
             print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
@@ -266,20 +279,3 @@ async def eval_deadend_agent(
 #             eval_metadata_path=eval_metadata_path,
 #             output_report=output_report
 #         )
-
-
-def run_benchmark_script(run_script_path: str):
-    """Execute a benchmark script to start a challenge environment.
-    
-    Runs the specified script that prepares and starts the challenge environment
-    for benchmark evaluation. This is typically used to set up targets, databases,
-    or other infrastructure required for the evaluation.
-    
-    Args:
-        run_script_path: Path to the script that starts the benchmark challenge
-        
-    Note:
-        Currently implemented as a placeholder. Future implementation will
-        execute the script with proper error handling and environment validation.
-    """
-    pass

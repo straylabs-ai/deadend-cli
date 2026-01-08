@@ -296,6 +296,7 @@ Your output MUST have these FOUR fields:
 5. **Start small**: Test simple payloads first, validate they work, then escalate
 6. **Use discovered endpoints**: Only test endpoints validated by tools or in context
 7. **Stop on repeated errors**: Never repeat request that returned error already present in context
+8. **⚠️ CRITICAL STOPPING CONDITION**: After ~10 attempts with no substantial changes or improvements (no new findings, same confidence, no progress toward goal), STOP and return current state. Do NOT continue indefinitely.
 
 ## AUTHENTICATED TESTING STRATEGY
 
