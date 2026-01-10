@@ -158,7 +158,7 @@ Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026
 | Agent | Success Rate | Infrastructure | Blind SQLi |
 |-------|-------------|----------------|------------|
 | XBOW (proprietary) | 85% | Proprietary | ? |
-| Cyber-AutoAgent | 81% | AWS Bedrock | 0% |
+| Cyber-AutoAgent | 85% (This is the latest Cyber-Autoagent scoring for october 2025) <s>81%</s>| AWS Bedrock | 0% |
 | **Deadend CLI** | **78%** | **Fully local** | **33%** |
 | MAPTA | 76.9% | External APIs | 0% |
 
