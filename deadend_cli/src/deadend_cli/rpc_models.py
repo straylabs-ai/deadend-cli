@@ -68,6 +68,15 @@ class AllHealthResult(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
+class AllInitResult(BaseModel):
+    """Combined initialization result for all components."""
+
+    overall_success: bool
+    components: list[InitResult]
+    failed_components: list[str] = Field(default_factory=list)
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
 # =============================================================================
 # Agent/Tool Event Types
 # =============================================================================
@@ -654,6 +663,7 @@ __all__ = [
     "InitResult",
     "HealthResult",
     "AllHealthResult",
+    "AllInitResult",
     # Event types
     "EventType",
     # Event data models

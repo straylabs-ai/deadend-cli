@@ -26,8 +26,10 @@ from .rpc_models import (
     InitResult,
     HealthResult,
     AllHealthResult,
+    AllInitResult,
     RPCErrorCode,
 )
+from .logging import logger, setup_logging, get_module_logger
 
 __all__ = [
     "main",
@@ -43,7 +45,12 @@ __all__ = [
     "InitResult",
     "HealthResult",
     "AllHealthResult",
+    "AllInitResult",
     "RPCErrorCode",
+    # Logging
+    "logger",
+    "setup_logging",
+    "get_module_logger",
 ]
 
 

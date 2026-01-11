@@ -16,20 +16,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import signal
 import sys
 from dataclasses import asdict, is_dataclass
 from typing import Any, Callable, Coroutine, Dict, Optional
 
-from deadend_agent import (
-    Config,
-    DeadEndAgent,
-    ModelRegistry,
-    RetrievalDatabaseConnector,
-    Sandbox,
-    init_rag_database,
-    sandbox_setup,
-)
+# Centralized logging
+from .logging import logger, setup_logging
+
+from deadend_agent import DeadEndAgent, Sandbox
 from deadend_agent.hooks import set_event_hooks
 from deadend_agent.tools.tool_wrappers import (
     set_approval_provider,
@@ -40,7 +36,7 @@ from deadend_agent.tools.tool_wrappers import (
 from deadend_agent.utils.network import check_target_alive
 
 from .component_manager import ComponentManager
-from .event_bus import EventBus, event_bus
+from .event_bus import event_bus
 from .hooks_adapter import EventBusHooksAdapter
 from .rpc_models import RPCErrorCode
 
@@ -48,11 +44,17 @@ from .rpc_models import RPCErrorCode
 class RPCServer:
     def __init__(
         self,
-        config: Optional[Config] = None,
         llm_provider: str = "openai",
+        debug: bool = False,
+        log_file: Optional[str] = None,
     ) -> None:
-        self.config = config or Config()
-        self.config.configure()
+        # Setup logging first so all subsequent operations are logged
+        log_level = logging.DEBUG if debug else logging.INFO
+        setup_logging(level=log_level, log_file=log_file)
+        logger.info("RPC Server initializing...")
+        if debug:
+            logger.debug("Debug logging enabled")
+
         self.llm_provider = llm_provider
 
         # Event bus and hooks
@@ -68,6 +70,8 @@ class RPCServer:
         # Component manager
         self.component_manager = ComponentManager()
 
+        #
+
         # Shutdown flag
         self._shutdown_requested = False
 
@@ -77,9 +81,11 @@ class RPCServer:
             "ping": self._handle_ping,
             "shutdown": self._handle_shutdown,
             # Initialization
+            "init_all": self._handle_init_all,
             "init_docker": self._handle_init_docker,
             "init_pgvector": self._handle_init_pgvector,
             "init_config": self._handle_init_config,
+            "init_model_registry": self._handle_init_model_registry,
             "init_python_sandbox": self._handle_init_python_sandbox,
             "init_shell_sandbox": self._handle_init_shell_sandbox,
             "init_playwright": self._handle_init_playwright,
@@ -107,35 +113,29 @@ class RPCServer:
         *,
         prompt: str,
         target: str,
-        openapi_spec: Any | None = None,
-        knowledge_base: str = "",
         mode: str = "yolo",
     ):
-        model_registry = ModelRegistry(config=self.config)
-        if not model_registry.has_any_model():
+        # Verify all required components are initialized
+        is_ready, missing = self.component_manager.is_ready_for_tasks()
+        if not is_ready:
             raise RuntimeError(
-                "No LM model configured. Run `deadend init` to initialize the model configuration."
+                f"Components not initialized: {', '.join(missing)}. "
+                "Call init_all or initialize individual components first."
             )
 
-        model = model_registry.get_model(provider=self.llm_provider)
-        embedder_client = model_registry.get_embedder_model()
+        # Get pre-initialized components
+        model = self.component_manager.get_model(provider=self.llm_provider)
+        embedder_client = self.component_manager.get_embedder()
+        rag_db = self.component_manager.get_rag_connector()
 
-        rag_db: RetrievalDatabaseConnector | None = None
-        try:
-            rag_db = await init_rag_database(self.config.db_url)
-        except Exception as exc:
-            raise RuntimeError(f"Vector DB not accessible: {exc}") from exc
-
+        # Create a sandbox for this task
         sandbox: Sandbox | None = None
         try:
-            sandbox_manager = sandbox_setup()
-            sandbox_id = sandbox_manager.create_sandbox(
-                "xoxruns/sandboxed_kali", network_name="host"
-            )
-            sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)
+            sandbox = self.component_manager.create_task_sandbox(network_name="host")
         except Exception:
             sandbox = None
 
+        # Check if target is reachable
         alive, status_code, err = await check_target_alive(target)
         if not alive:
             raise RuntimeError(
@@ -172,7 +172,8 @@ class RPCServer:
         await deadend_agent.crawl_target()
         code_chunks = await deadend_agent.embed_target(embedder_client=embedder_client)
 
-        if rag_db is not None and self.config.openai_api_key and self.config.embedding_model:
+        config = self.component_manager.config
+        if rag_db is not None and config.openai_api_key and config.embedding_model:
             await rag_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
 
         deadend_agent.prepare_dependencies(
@@ -203,8 +204,6 @@ class RPCServer:
             "phase": "done",
             "mode": mode,
             "target": target,
-            "openapi_spec": openapi_spec,
-            "knowledge_base": knowledge_base,
         }
 
     def serve(self) -> None:
@@ -333,6 +332,12 @@ class RPCServer:
         result = await self.component_manager.shutdown()
         return {"status": "shutdown", "components": result}
 
+    async def _handle_init_all(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Initialize all components in the correct order."""
+        logger.info("Starting initialization of all components...")
+        result = await self.component_manager.init_all()
+        return result.model_dump()
+
     async def _handle_init_docker(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
         """Initialize Docker component."""
         result = await self.component_manager.init_docker()
@@ -346,6 +351,11 @@ class RPCServer:
     async def _handle_init_config(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
         """Initialize configuration."""
         result = await self.component_manager.init_config()
+        return result.model_dump()
+
+    async def _handle_init_model_registry(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Initialize model registry."""
+        result = await self.component_manager.init_model_registry()
         return result.model_dump()
 
     async def _handle_init_python_sandbox(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:

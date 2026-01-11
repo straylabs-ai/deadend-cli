@@ -621,6 +621,25 @@ export interface InitResult {
   details: Record<string, unknown>;
 }
 
+/**
+ * Result of component initialization.
+ *
+ * Returned by init_* RPC methods to report initialization status.
+ *
+ * @property success - Whether initialization succeeded
+ * @property components - List component that worked
+ * @property failed_components - List the components that failed to initialize
+ * @property timestamp - ISO 8601 timestamp of the health check;e
+
+ */
+export interface AllInitResult {
+  success: boolean;
+  components: string[];
+  failed_components: string[];
+  timestamp: string;
+  
+}
+
 // =============================================================================
 // Control Types
 // =============================================================================

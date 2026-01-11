@@ -124,3 +124,36 @@ def start_python_sandbox(
         stderr=subprocess.DEVNULL,
     )
     return process
+
+def stop_python_sandbox(
+    process: subprocess.Popen[bytes],
+    timeout: float = 5.0,
+) -> None:
+    """Stop the Python sandbox process gracefully, then forcefully if needed.
+    
+    Args:
+        process: The subprocess handle to stop.
+        timeout: Seconds to wait for graceful termination before killing.
+                 Defaults to 5.0 seconds.
+    
+    The function:
+    1. Checks if process is still running (poll() is None)
+    2. Sends SIGTERM for graceful shutdown
+    3. Waits up to `timeout` seconds for process to exit
+    4. If still running, sends SIGKILL and waits for completion
+    """
+    if process.poll() is not None:
+        # Process already dead
+        return
+    
+    try:
+        process.terminate()
+        try:
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            # Process didn't terminate gracefully, force kill
+            process.kill()
+            process.wait()  # Wait for kill to complete
+    except (ProcessLookupError, ValueError):
+        # Process already dead or invalid handle
+        pass
