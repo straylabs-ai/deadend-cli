@@ -46,6 +46,7 @@ NOT_STARTED=0
 SUCCESS_NUMS=()
 FAILED_NUMS=()
 NOT_STARTED_NUMS=()
+TIMES=()
 
 printf "Checking benchmarks from %d to %d\n" "$START_NUM" "$END_NUM"
 printf "Results directory: %s\n" "$RESULTS_DIR"
@@ -91,7 +92,20 @@ for (( num=START_NUM; num<=END_NUM; num++ )); do
     found=false
     for f in "${candidate_files[@]}"; do
         if grep -qF "$solution" "$f"; then
-            printf "[SUCCESS] %s -> %s\n" "$BENCH_SLUG" "$(basename "$f")"
+            # Extract time from the log file (format: | Time (s) | 4349.969 |)
+            time_line=$(grep -E '\| Time \(s\) \|' "$f" | tail -1 || true)
+            if [[ -n "$time_line" ]]; then
+                time_value=$(echo "$time_line" | awk -F'|' '{print $3}' | xargs)
+                # Validate that time_value is a number (using awk to check)
+                if [[ -n "$time_value" ]] && awk "BEGIN {exit !($time_value >= 0)}" 2>/dev/null; then
+                    TIMES+=("$time_value")
+                    printf "[SUCCESS] %s -> %s (Time: %s s)\n" "$BENCH_SLUG" "$(basename "$f")" "$time_value"
+                else
+                    printf "[SUCCESS] %s -> %s\n" "$BENCH_SLUG" "$(basename "$f")"
+                fi
+            else
+                printf "[SUCCESS] %s -> %s\n" "$BENCH_SLUG" "$(basename "$f")"
+            fi
             SUCCESS=$((SUCCESS + 1))
             SUCCESS_NUMS+=("$num")
             found=true
@@ -138,4 +152,28 @@ if (( NOT_STARTED > 0 )); then
     printf "Not started benchmarks    : %s\n" "${NOT_STARTED_NUMS[*]}"
 fi
 echo "============================================================"
+
+# Calculate average, minimum, and maximum time for successful benchmarks
+if (( SUCCESS > 0 && ${#TIMES[@]} > 0 )); then
+    total_time=0
+    min_time=""
+    max_time=""
+    for time_val in "${TIMES[@]}"; do
+        total_time=$(awk "BEGIN { printf \"%.3f\", $total_time + $time_val }")
+        if [[ -z "$min_time" ]] || awk "BEGIN { exit !($time_val < $min_time) }" 2>/dev/null; then
+            min_time="$time_val"
+        fi
+        if [[ -z "$max_time" ]] || awk "BEGIN { exit !($time_val > $max_time) }" 2>/dev/null; then
+            max_time="$time_val"
+        fi
+    done
+    avg_time_sec=$(awk "BEGIN { printf \"%.3f\", $total_time / ${#TIMES[@]} }")
+    avg_time_min=$(awk "BEGIN { printf \"%.3f\", $avg_time_sec / 60 }")
+    min_time_min=$(awk "BEGIN { printf \"%.3f\", $min_time / 60 }")
+    max_time_min=$(awk "BEGIN { printf \"%.3f\", $max_time / 60 }")
+    printf "Average time (successful) : %.3f seconds (%.3f minutes)\n" "$avg_time_sec" "$avg_time_min"
+    printf "Minimum time (successful) : %.3f seconds (%.3f minutes)\n" "$min_time" "$min_time_min"
+    printf "Maximum time (successful) : %.3f seconds (%.3f minutes)\n" "$max_time" "$max_time_min"
+    echo "============================================================"
+fi
 

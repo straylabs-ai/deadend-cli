@@ -457,7 +457,9 @@ class AgentRunner:
             "https://openrouter.ai/api/v1"
         ]:
             # Custom endpoint - prefix with "openai/" for litellm
-            if not model_name.startswith("openai/"):
+            # But only if the model doesn't already have a provider prefix
+            known_prefixes = ("openai/", "azure_ai/", "anthropic/", "gemini/", "openrouter/", "bedrock/", "vertex_ai/")
+            if not any(model_name.startswith(prefix) for prefix in known_prefixes):
                 model_name = f"openai/{model_name}"
 
         # Debug logging

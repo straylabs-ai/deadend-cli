@@ -4,7 +4,7 @@ from pydantic_ai import RunContext
 from deadend_agent.utils.structures import RequesterDeps
 from deadend_agent.utils.functions import truncate_string
 
-from .http_parser import is_valid_request_detailed, extract_host_port
+from .http_parser import is_valid_request_detailed, extract_host_port, autocorrect_http_request
 from .auth_handler import replace_credential_placeholders
 from .pw_requester import PlaywrightRequester
 from .pw_session_manager import PlaywrightSessionManager
@@ -24,21 +24,40 @@ async def pw_send_payload(
 ):
     """
     Send HTTP payload using Playwright with enhanced capabilities and session persistence.
-    
+
     This function provides the same interface as the original send_payload()
     but uses Playwright for improved functionality with persistent sessions
     that maintain cookies between requests.
-    
+
+    Auto-corrects common HTTP request malformations before sending:
+    - Line endings (\\n -> \\r\\n)
+    - Missing Host header (derived from target)
+    - Malformed request line
+    - Missing HTTP version
+
     Args:
         target_host (str): Target host in format "host:port" or URL
         raw_request (str): Raw HTTP request string
         proxy (bool): Whether to route through localhost:8080 proxy
         verify_ssl (bool): Whether to verify SSL certificates
-        
+
     Returns:
         Union[str, bytes]: HTTP response or error message
     """
     host, port = extract_host_port(target_host=ctx.deps.target)
+
+    # Auto-correct malformed HTTP requests before processing
+    try:
+        corrected_request, corrections = autocorrect_http_request(
+            raw_request=raw_request,
+            target_host=ctx.deps.target
+        )
+        if corrections:
+            print(f"Auto-corrected HTTP request: {', '.join(corrections)}")
+        raw_request = corrected_request
+    except ValueError as e:
+        return f"Error: Cannot auto-correct request - {str(e)}"
+
     # Anonymisation process
     # the function detects the dummy credentials given and replaces them with the right one
     # So that the LLM will never see the true credentials
