@@ -2,6 +2,7 @@ from typing import Dict, Any
 import json
 from pathlib import Path
 from pydantic import BaseModel
+from deadend_agent.logging import logger
 
 
 class AuthInfo(BaseModel):
@@ -33,7 +34,7 @@ def load_reusable_credentials() -> Dict[str, Any]:
             creds = f.read()
             return json.loads(creds)
     except (FileNotFoundError, json.JSONDecodeError) as e:
-        print(f"Warning: Could not load reusable credentials: {e}")
+        logger.warning("Could not load reusable credentials: %s", e)
         return {"accounts": []}
 
 def replace_credential_placeholders(request_data: str, account_index: int = 0) -> str:
@@ -52,7 +53,7 @@ def replace_credential_placeholders(request_data: str, account_index: int = 0) -
     accounts = credentials.get("accounts", [])
 
     if not accounts or account_index >= len(accounts):
-        print(f"Warning: No account found at index {account_index}")
+        logger.warning("No account found at index %d", account_index)
         return request_data
 
     account = accounts[account_index]

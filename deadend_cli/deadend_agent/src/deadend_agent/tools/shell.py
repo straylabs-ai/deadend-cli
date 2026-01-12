@@ -14,6 +14,7 @@ from rich import print as console_printer
 from deadend_agent.sandbox.sandbox import SandboxStatus
 from deadend_agent.utils.structures import WebappreconDeps, CmdLog
 from deadend_agent.tools.tool_wrappers import with_tool_events
+from deadend_agent.logging import logger
 
 
 @with_tool_events("sandboxed_shell")
@@ -40,7 +41,7 @@ def sandboxed_shell_tool(
                 {result.get('execution_time', 0):.2f}s"
             )
         if result.get('timed_out', False):
-            print(f"⚠️  Command timed out after {timeout_seconds} seconds")
+            logger.warning("Command timed out after %d seconds", timeout_seconds)
         return ctx.deps.shell_runner.get_cmd_log()
     else:
         console_printer("Sandbox is not running")

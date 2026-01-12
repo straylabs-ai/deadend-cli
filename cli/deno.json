@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "commander": "npm:commander@^14.0.2"
+  }
+}

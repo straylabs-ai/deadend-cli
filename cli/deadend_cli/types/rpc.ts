@@ -215,11 +215,13 @@ export interface RpcService {
  * The phases of task execution.
  *
  * Tasks progress through these phases in order:
- * 1. **recon**: Reconnaissance and threat modeling
- * 2. **exploit**: Active security testing
- * 3. **done**: Task completion
+ * 1. **init**: Initialization and setup progress
+ * 2. **recon**: Reconnaissance and threat modeling
+ * 3. **exploit**: Active security testing
+ * 4. **done**: Task completion
+ * 5. **error**: Error occurred during execution
  */
-export type TaskPhase = "recon" | "exploit" | "done";
+export type TaskPhase = "init" | "recon" | "exploit" | "done" | "error";
 
 /**
  * Parameters for running a security testing task.

@@ -7,8 +7,9 @@
     "jsr:@std/path@^1.1.3": "1.1.3",
     "npm:@types/react-dom@^19.2.3": "19.2.3_@types+react@19.2.7",
     "npm:@types/react@^19.2.7": "19.2.7",
-    "npm:ink-text-input@5": "5.0.1_ink@6.5.1__react@19.2.1__@types+react@19.2.7_react@19.2.1_@types+react@19.2.7",
-    "npm:ink@^6.5.1": "6.5.1_react@19.2.1_@types+react@19.2.7",
+    "npm:commander@^14.0.2": "14.0.2",
+    "npm:ink-text-input@5": "5.0.1_ink@6.5.1__@types+react@19.2.7__react@19.2.1_react@19.2.1_@types+react@19.2.7",
+    "npm:ink@^6.5.1": "6.5.1_@types+react@19.2.7_react@19.2.1",
     "npm:react@^19.2.1": "19.2.1"
   },
   "jsr": {
@@ -95,6 +96,9 @@
         "convert-to-spaces"
       ]
     },
+    "commander@14.0.2": {
+      "integrity": "sha512-TywoWNNRbhoD0BXs1P3ZEScW8W5iKrnbithIl0YH+uCmBd0QpPOA8yc82DS3BIE5Ma6FnBVUsJ7wVUDz4dvOWQ=="
+    },
     "convert-to-spaces@2.0.1": {
       "integrity": "sha512-rcQ1bsQO9799wq24uE5AM2tAILy4gXGIK/njFWcVQkGNZ96edlpY+A7bjwvzjYvLDyzmG1MmMLZhpcsb+klNMQ=="
     },
@@ -119,45 +123,16 @@
     "indent-string@5.0.0": {
       "integrity": "sha512-m6FAo/spmsW2Ab2fU35JTYwtOKa2yAwXSwgjSv1TJzh4Mh7mC3lzAOVLBprb72XsTrgkEIsl7YrFNAiDiRhIGg=="
     },
-    "ink-text-input@5.0.1_ink@6.5.1__react@19.2.1__@types+react@19.2.7_react@19.2.1_@types+react@19.2.7": {
+    "ink-text-input@5.0.1_ink@6.5.1__@types+react@19.2.7__react@19.2.1_react@19.2.1_@types+react@19.2.7": {
       "integrity": "sha512-crnsYJalG4EhneOFnr/q+Kzw1RgmXI2KsBaLFE6mpiIKxAtJLUnvygOF2IUKO8z4nwkSkveGRBMd81RoYdRSag==",
       "dependencies": [
         "chalk",
-        "ink@6.5.1_react@19.2.1_@types+react@19.2.7",
+        "ink",
         "react",
         "type-fest@3.13.1"
       ]
     },
-    "ink@6.5.1_react@19.2.1": {
-      "integrity": "sha512-wF3j/DmkM8q5E+OtfdQhCRw8/0ahkc8CUTgEddxZzpEWPslu7YPL3t64MWRoI9m6upVGpfAg4ms2BBvxCdKRLQ==",
-      "dependencies": [
-        "@alcalzone/ansi-tokenize",
-        "ansi-escapes",
-        "ansi-styles",
-        "auto-bind",
-        "chalk",
-        "cli-boxes",
-        "cli-cursor",
-        "cli-truncate",
-        "code-excerpt",
-        "es-toolkit",
-        "indent-string",
-        "is-in-ci",
-        "patch-console",
-        "react",
-        "react-reconciler",
-        "signal-exit",
-        "slice-ansi",
-        "stack-utils",
-        "string-width@8.1.0",
-        "type-fest@4.41.0",
-        "widest-line",
-        "wrap-ansi",
-        "ws",
-        "yoga-layout"
-      ]
-    },
-    "ink@6.5.1_react@19.2.1_@types+react@19.2.7": {
+    "ink@6.5.1_@types+react@19.2.7_react@19.2.1": {
       "integrity": "sha512-wF3j/DmkM8q5E+OtfdQhCRw8/0ahkc8CUTgEddxZzpEWPslu7YPL3t64MWRoI9m6upVGpfAg4ms2BBvxCdKRLQ==",
       "dependencies": [
         "@alcalzone/ansi-tokenize",
@@ -302,6 +277,7 @@
       "jsr:@std/fs@1",
       "npm:@types/react-dom@^19.2.3",
       "npm:@types/react@^19.2.7",
+      "npm:commander@^14.0.2",
       "npm:ink-text-input@5",
       "npm:ink@^6.5.1",
       "npm:react@^19.2.1"

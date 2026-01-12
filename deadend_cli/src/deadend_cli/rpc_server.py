@@ -13,17 +13,15 @@ This server supports:
 """
 
 from __future__ import annotations
-
+from typing import Any, AsyncGenerator, Callable, Dict, Optional
 import asyncio
 import json
 import logging
+import os
 import signal
 import sys
+import uuid
 from dataclasses import asdict, is_dataclass
-from typing import Any, Callable, Coroutine, Dict, Optional
-
-# Centralized logging
-from .logging import logger, setup_logging
 
 from deadend_agent import DeadEndAgent, Sandbox
 from deadend_agent.hooks import set_event_hooks
@@ -38,7 +36,35 @@ from deadend_agent.utils.network import check_target_alive
 from .component_manager import ComponentManager
 from .event_bus import event_bus
 from .hooks_adapter import EventBusHooksAdapter
-from .rpc_models import RPCErrorCode
+from .logging import logger, setup_logging
+
+
+# JSON-RPC 2.0 error codes
+class JSONRPCErrorCode:
+    """JSON-RPC 2.0 standard error codes."""
+    PARSE_ERROR = -32700
+    INVALID_REQUEST = -32600
+    METHOD_NOT_FOUND = -32601
+    INVALID_PARAMS = -32602
+    INTERNAL_ERROR = -32603
+
+
+def _make_jsonrpc_response(request_id: Any, result: Any = None, error: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Create a JSON-RPC 2.0 response."""
+    response: Dict[str, Any] = {"jsonrpc": "2.0", "id": request_id}
+    if error is not None:
+        response["error"] = error
+    else:
+        response["result"] = result
+    return response
+
+
+def _make_jsonrpc_error(request_id: Any, code: int, message: str, data: Optional[Any] = None) -> Dict[str, Any]:
+    """Create a JSON-RPC 2.0 error response."""
+    error: Dict[str, Any] = {"code": code, "message": message}
+    if data is not None:
+        error["data"] = data
+    return _make_jsonrpc_response(request_id, error=error)
 
 
 class RPCServer:
@@ -54,6 +80,21 @@ class RPCServer:
         logger.info("RPC Server initializing...")
         if debug:
             logger.debug("Debug logging enabled")
+
+        # Force stdout to be line-buffered for immediate streaming
+        # This is critical when running as a subprocess (not attached to TTY)
+        if not sys.stdout.isatty():
+            try:
+                # Python 3.7+ - reconfigure to line buffering
+                sys.stdout.reconfigure(line_buffering=True)
+            except (AttributeError, OSError):
+                # Fallback for older Python versions or when reconfigure fails
+                try:
+                    # Reopen stdout in line-buffered mode
+                    sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', buffering=1)
+                except (OSError, AttributeError):
+                    # If that fails, at least ensure we flush aggressively
+                    logger.warning("Could not configure stdout buffering, will flush aggressively")
 
         self.llm_provider = llm_provider
 
@@ -76,7 +117,7 @@ class RPCServer:
         self._shutdown_requested = False
 
         # Method dispatch table
-        self._method_handlers: Dict[str, Callable[..., Coroutine[Any, Any, Any]]] = {
+        self._method_handlers: Dict[str, Callable[..., AsyncGenerator[Any, Any]]] = {
             # Lifecycle
             "ping": self._handle_ping,
             "shutdown": self._handle_shutdown,
@@ -119,96 +160,171 @@ class RPCServer:
         target: str,
         mode: str = "yolo",
     ):
-        # Verify all required components are initialized
-        is_ready, missing = self.component_manager.is_ready_for_tasks()
-        if not is_ready:
-            raise RuntimeError(
-                f"Components not initialized: {', '.join(missing)}. "
-                "Call init_all or initialize individual components first."
-            )
-
-        # Get pre-initialized components (use current provider from component manager)
-        model = self.component_manager.get_model()
-        embedder_client = self.component_manager.get_embedder()
-        rag_db = self.component_manager.get_rag_connector()
-
-        # Create a sandbox for this task
-        sandbox: Sandbox | None = None
         try:
-            sandbox = self.component_manager.create_task_sandbox(network_name="host")
-        except Exception:
-            sandbox = None
+            # Yield initial event IMMEDIATELY to signal task has started
+            # This must be the very first thing that happens
+            yield {
+                "phase": "init",
+                "data": {"message": "Task started", "target": target, "prompt": prompt},
+            }
+            
+            # Give the event loop a chance to send the first message before heavy work
+            await asyncio.sleep(0.01)
 
-        # Check if target is reachable
-        alive, status_code, err = await check_target_alive(target)
-        if not alive:
-            raise RuntimeError(
-                f"Target not reachable (status={status_code}, error={err})"
+            yield {
+                "phase": "init",
+                "data": {"message": "Checking component readiness..."},
+            }
+
+            # Verify all required components are initialized (this might be blocking)
+            # Yield before and after to ensure streaming continues
+            await asyncio.sleep(0)  # Yield control to event loop
+            is_ready, missing = self.component_manager.is_ready_for_tasks()
+            await asyncio.sleep(0)  # Yield control again after sync call
+            
+            if not is_ready:
+                raise RuntimeError(
+                    f"Components not initialized: {', '.join(missing)}. "
+                    "Call init_all or initialize individual components first."
+                )
+
+            yield {
+                "phase": "init",
+                "data": {"message": "Verifying target reachability..."},
+            }
+            await asyncio.sleep(0)  # Yield before potentially blocking network call
+
+            # Check if target is reachable
+            alive, status_code, err = await check_target_alive(target)
+            if not alive:
+                raise RuntimeError(
+                    f"Target not reachable (status={status_code}, error={err})"
+                )
+
+            yield {
+                "phase": "init",
+                "data": {"message": "Initializing agent..."},
+            }
+            await asyncio.sleep(0)  # Yield before potentially blocking calls
+
+            # Get pre-initialized components (use current provider from component manager)
+            # These might be blocking, so yield between them
+            model = self.component_manager.get_model()
+            await asyncio.sleep(0)
+            embedder_client = self.component_manager.get_embedder()
+            await asyncio.sleep(0)
+            rag_db = self.component_manager.get_rag_connector()
+            await asyncio.sleep(0)
+
+            # Create a sandbox for this task
+            sandbox: Sandbox | None = None
+            try:
+                sandbox = self.component_manager.create_task_sandbox(network_name="host")
+            except Exception as e:
+                logger.warning("Failed to create sandbox: %s", e)
+                sandbox = None
+
+            available_agents = {
+                "requester": (
+                    "Agent specialized in fine-grained testing and sending raw request data. "
+                    "Best for gathering auth tokens, testing individual endpoints, and precise "
+                    "request manipulation."
+                ),
+                "python_interpreter": (
+                    "Agent specialized in generating code and running it safely in a sandbox. "
+                    "Best for fuzzing, parameter testing, and repetitive security testing operations."
+                ),
+                "shell": "Agent providing access to a bash shell for running Linux commands.",
+                "router_agent": "Router agent that selects the appropriate specialized agent.",
+            }
+
+            # Generate a unique session ID for this task
+            task_session_id = uuid.uuid4()
+
+            deadend_agent = DeadEndAgent(
+                session_id=task_session_id,
+                model=model,
+                available_agents=available_agents,
+                max_depth=3,
             )
 
-        available_agents = {
-            "requester": (
-                "Agent specialized in fine-grained testing and sending raw request data. "
-                "Best for gathering auth tokens, testing individual endpoints, and precise "
-                "request manipulation."
-            ),
-            "python_interpreter": (
-                "Agent specialized in generating code and running it safely in a sandbox. "
-                "Best for fuzzing, parameter testing, and repetitive security testing operations."
-            ),
-            "shell": "Agent providing access to a bash shell for running Linux commands.",
-            "router_agent": "Router agent that selects the appropriate specialized agent.",
-        }
+            async def approval_callback() -> str:
+                return "yes"
 
-        deadend_agent = DeadEndAgent(
-            session_id=model.session_id if hasattr(model, "session_id") else model.model_id,
-            model=model,
-            available_agents=available_agents,
-            max_depth=3,
-        )
+            deadend_agent.set_approval_callback(approval_callback)
 
-        async def approval_callback() -> str:
-            return "yes"
-
-        deadend_agent.set_approval_callback(approval_callback)
-
-        deadend_agent.init_webtarget_indexer(target=target)
-        await deadend_agent.crawl_target()
-        code_chunks = await deadend_agent.embed_target(embedder_client=embedder_client)
-
-        config = self.component_manager.config
-        if rag_db is not None and config.openai_api_key and config.embedding_model:
-            await rag_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
-
-        deadend_agent.prepare_dependencies(
-            embedder_client=embedder_client,
-            rag_connector=rag_db,
-            sandbox=sandbox,
-            target=target,
-        )
-
-        threat_model_text = ""
-        async for item in deadend_agent.threat_model_stream(task=prompt):
-            threat_model_text += self._to_string(item)
             yield {
-                "phase": "recon",
-                "data": self._to_serializable(item),
+                "phase": "init",
+                "data": {"message": "Crawling target..."},
             }
 
-        async for item in deadend_agent.start_testing_stream(
-            task=prompt,
-            threat_model=threat_model_text,
-        ):
+            deadend_agent.init_webtarget_indexer(target=target)
+            await deadend_agent.crawl_target()
+
             yield {
-                "phase": "exploit",
-                "data": self._to_serializable(item),
+                "phase": "init",
+                "data": {"message": "Embedding target code..."},
             }
 
-        yield {
-            "phase": "done",
-            "mode": mode,
-            "target": target,
-        }
+            code_chunks = await deadend_agent.embed_target(embedder_client=embedder_client)
+
+            config = self.component_manager.config
+            if rag_db is not None and config.openai_api_key and config.embedding_model:
+                yield {
+                    "phase": "init",
+                    "data": {"message": "Storing embeddings in database..."},
+                }
+                await rag_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
+
+            deadend_agent.prepare_dependencies(
+                embedder_client=embedder_client,
+                rag_connector=rag_db,
+                sandbox=sandbox,
+                target=target,
+            )
+
+            yield {
+                "phase": "init",
+                "data": {"message": "Starting threat modeling..."},
+            }
+
+            threat_model_text = ""
+            async for item in deadend_agent.threat_model_stream(task=prompt):
+                threat_model_text += self._to_string(item)
+                yield {
+                    "phase": "recon",
+                    "data": self._to_serializable(item),
+                }
+
+            yield {
+                "phase": "init",
+                "data": {"message": "Starting exploitation phase..."},
+            }
+
+            async for item in deadend_agent.start_testing_stream(
+                task=prompt,
+                threat_model=threat_model_text,
+            ):
+                yield {
+                    "phase": "exploit",
+                    "data": self._to_serializable(item),
+                }
+
+            yield {
+                "phase": "done",
+                "mode": mode,
+                "target": target,
+            }
+        except Exception as exc:
+            logger.exception(f"Error in _run_task_stream: {exc}")
+            yield {
+                "phase": "error",
+                "data": {
+                    "message": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            }
+            raise
 
     def serve(self) -> None:
         """Start the RPC server with signal handling."""
@@ -237,14 +353,21 @@ class RPCServer:
             lambda: protocol, sys.stdin
         )
 
+        # Track active request handlers for concurrent processing
+        active_tasks: set[asyncio.Task] = set()
+
         while not self._shutdown_requested:
             try:
                 line = await asyncio.wait_for(reader.readline(), timeout=0.1)
             except asyncio.TimeoutError:
+                # Clean up completed tasks
+                active_tasks = {t for t in active_tasks if not t.done()}
                 continue
 
             if not line:
-                # EOF
+                # EOF - wait for all tasks to complete
+                if active_tasks:
+                    await asyncio.gather(*active_tasks, return_exceptions=True)
                 break
 
             line_str = line.decode("utf-8").strip()
@@ -256,74 +379,118 @@ class RPCServer:
             except json.JSONDecodeError:
                 continue
 
+            # Process request in a task to allow concurrent handling
+            task = asyncio.create_task(self._handle_request_and_write(request))
+            active_tasks.add(task)
+            task.add_done_callback(active_tasks.discard)
+
+        # Graceful shutdown
+        await self.component_manager.shutdown()
+
+    async def _handle_request_and_write(self, request: Dict[str, Any]) -> None:
+        """Handle a request and write all streaming responses."""
+        try:
             async for response in self._handle_request_stream(request):
                 # Ensure all responses are JSON serializable (e.g. datetimes) and
                 # never emit non-JSON text on stdout, as the CLI expects NDJSON.
                 serializable = self._to_serializable(response)
-                sys.stdout.write(json.dumps(serializable, default=str) + "\n")
+                json_str = json.dumps(serializable, default=str)
+                sys.stdout.write(json_str + "\n")
                 sys.stdout.flush()
-
-        # Graceful shutdown
-        await self.component_manager.shutdown()
+                # Force immediate write for streaming (fsync if possible)
+                try:
+                    if hasattr(sys.stdout, 'fileno'):
+                        os.fsync(sys.stdout.fileno())
+                except (OSError, AttributeError):
+                    # Not all file descriptors support fsync, that's okay
+                    pass
+        except Exception as e:
+            logger.exception("Error handling request: %s", e)
 
     async def _handle_request_stream(
         self,
         request: Dict[str, Any],
     ):
         """Handle a JSON-RPC request and yield responses."""
-        jsonrpc = request.get("jsonrpc")
+        # Validate JSON-RPC request format
+        if not isinstance(request, dict):
+            yield _make_jsonrpc_error(
+                request_id=request.get("id") if isinstance(request, dict) else None,
+                code=JSONRPCErrorCode.INVALID_REQUEST,
+                message="Invalid JSON-RPC request: must be an object",
+            )
+            return
+
+        # Check for required fields
+        if "jsonrpc" not in request or request.get("jsonrpc") != "2.0":
+            yield _make_jsonrpc_error(
+                request_id=request.get("id"),
+                code=JSONRPCErrorCode.INVALID_REQUEST,
+                message="Invalid JSON-RPC request: missing or invalid 'jsonrpc' field",
+            )
+            return
+
+        if "method" not in request:
+            yield _make_jsonrpc_error(
+                request_id=request.get("id"),
+                code=JSONRPCErrorCode.INVALID_REQUEST,
+                message="Invalid JSON-RPC request: missing 'method' field",
+            )
+            return
+
         method = request.get("method")
         request_id = request.get("id")
         params = request.get("params") or {}
 
-        if jsonrpc != "2.0":
-            yield {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": RPCErrorCode.INVALID_REQUEST,
-                    "message": "Invalid JSON-RPC version",
-                },
-            }
+        if not isinstance(method, str):
+            yield _make_jsonrpc_error(
+                request_id=request_id,
+                code=JSONRPCErrorCode.INVALID_REQUEST,
+                message="Invalid JSON-RPC request: 'method' must be a string",
+            )
             return
 
         handler = self._method_handlers.get(method)
         if handler is None:
-            yield {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": RPCErrorCode.METHOD_NOT_FOUND,
-                    "message": f"Unknown method: {method}",
-                },
-            }
+            yield _make_jsonrpc_error(
+                request_id=request_id,
+                code=JSONRPCErrorCode.METHOD_NOT_FOUND,
+                message=f"Unknown method: {method}",
+            )
             return
 
         try:
-            result = await handler(request_id, params)
-            # Check if result is an async generator (for streaming methods)
-            if hasattr(result, "__aiter__"):
-                async for item in result:
-                    yield {
-                        "jsonrpc": "2.0",
-                        "id": request_id,
-                        "result": item,
-                    }
+            # Call the handler - it might return a coroutine or an async generator
+            handler_result = handler(request_id, params)
+            
+            # Check if handler returned an async generator (async generator functions return generators immediately)
+            if hasattr(handler_result, "__aiter__"):
+                # Handler returned an async generator - iterate over it directly
+                async for item in handler_result:
+                    yield _make_jsonrpc_response(request_id=request_id, result=item)
+            elif asyncio.iscoroutine(handler_result):
+                # Handler returned a coroutine - await it
+                result = await handler_result
+                # Check if the awaited result is an async generator
+                if hasattr(result, "__aiter__"):
+                    async for item in result:
+                        yield _make_jsonrpc_response(request_id=request_id, result=item)
+                else:
+                    yield _make_jsonrpc_response(request_id=request_id, result=result)
             else:
-                yield {
-                    "jsonrpc": "2.0",
-                    "id": request_id,
-                    "result": result,
-                }
+                # Handler returned a regular value
+                yield _make_jsonrpc_response(request_id=request_id, result=handler_result)
         except Exception as exc:
-            yield {
-                "jsonrpc": "2.0",
-                "id": request_id,
-                "error": {
-                    "code": RPCErrorCode.INTERNAL_ERROR,
-                    "message": str(exc),
-                },
-            }
+            # Map custom error codes to JSON-RPC error codes
+            error_code = JSONRPCErrorCode.INTERNAL_ERROR
+            if isinstance(exc, ValueError):
+                error_code = JSONRPCErrorCode.INVALID_PARAMS
+            
+            yield _make_jsonrpc_error(
+                request_id=request_id,
+                code=error_code,
+                message=str(exc),
+            )
 
     # =========================================================================
     # Handler methods

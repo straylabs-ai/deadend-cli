@@ -10,7 +10,8 @@
     "ink-text-input": "npm:ink-text-input@^5.0.0",
     "react": "npm:react@^19.2.1",
     "react/jsx-runtime": "npm:react@^19.2.1/jsx-runtime",
-    "@types/react": "npm:@types/react@^19.2.7"
+    "@types/react": "npm:@types/react@^19.2.7",
+    "commander": "npm:commander@^14.0.2"
   },
   "compilerOptions": {
     "jsx": "react-jsx",

@@ -3,6 +3,7 @@ from anyio import Path
 from pydantic_ai import RunContext
 from deadend_agent.utils.structures import RequesterDeps
 from deadend_agent.utils.functions import truncate_string
+from deadend_agent.logging import logger
 
 from .http_parser import is_valid_request_detailed, extract_host_port, autocorrect_http_request
 from .auth_handler import replace_credential_placeholders
@@ -53,7 +54,7 @@ async def pw_send_payload(
             target_host=ctx.deps.target
         )
         if corrections:
-            print(f"Auto-corrected HTTP request: {', '.join(corrections)}")
+            logger.debug("Auto-corrected HTTP request: %s", ', '.join(corrections))
         raw_request = corrected_request
     except ValueError as e:
         return f"Error: Cannot auto-correct request - {str(e)}"
@@ -152,7 +153,7 @@ async def _save_responses_to_file(session_key: str, responses: list):
                 json_line = json.dumps(response_data, ensure_ascii=False, indent=2)
                 f.write(json_line + "\n")
     except Exception as e:
-        print(f"Warning: Could not save responses to file: {e}")
+        logger.warning("Could not save responses to file: %s", e)
 
 
 async def cleanup_playwright_session_for_target(target_host: str, proxy: bool = False, verify_ssl: bool = False):

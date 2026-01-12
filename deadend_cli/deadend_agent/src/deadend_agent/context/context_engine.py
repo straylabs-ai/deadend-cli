@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Set, Any, TYPE_CHECKING
 
+from deadend_agent.logging import logger
 from deadend_agent.models import AIModel
 from deadend_agent.utils.structures import Task, TaskPlanner
 from deadend_agent.utils.functions import num_tokens_from_string
@@ -1033,7 +1034,7 @@ class ContextEngine:
             # Optionally summarize if context is too large before returning it.
             tokens = await self.maybe_summarize_context()
             if tokens > 10000:
-                print(f"[Context] Using workflow_context ({tokens} tokens)")
+                logger.debug("Using workflow_context (%d tokens)", tokens)
             return self.workflow_context
 
         return structured_context
@@ -1045,7 +1046,7 @@ class ContextEngine:
             str: The complete workflow context string without optimization.
         """
         tokens = await self.maybe_summarize_context()
-        print(f"[Context] Full context: {tokens} tokens")
+        logger.debug("Full context: %d tokens", tokens)
         return self.workflow_context
 
     def get_validation_context(self) -> str:
@@ -1240,7 +1241,7 @@ class ContextEngine:
 
         except OSError as e:
             # Log error but don't raise to avoid breaking workflow
-            print(f"Warning: Could not initialize context file: {e}")
+            logger.warning("Could not initialize context file: %s", e)
 
     def _append_to_context_file(self, section: str, content: str) -> None:
         """Append content to the context file with proper formatting.
@@ -1259,7 +1260,7 @@ class ContextEngine:
 
         except OSError as e:
             # Log error but don't raise to avoid breaking workflow
-            print(f"Warning: Could not append to context file: {e}")
+            logger.warning("Could not append to context file: %s", e)
 
     def load_context_from_file(self) -> bool:
         """Load context from the text file.
@@ -1292,7 +1293,7 @@ class ContextEngine:
             return True
 
         except OSError as e:
-            print(f"Warning: Could not load context from file: {e}")
+            logger.warning("Could not load context from file: %s", e)
             return False
 
     def add_tool_response(self, tool_name: str = "", response: str = "") -> None:
@@ -1601,7 +1602,7 @@ class ContextEngine:
                 with open(self.context_file_path, 'w', encoding='utf-8') as f:
                     f.write("\n")
             except OSError as e:
-                print(f"Warning: Could not clear context file: {e}")
+                logger.warning("Could not clear context file: %s", e)
 
     def _read_last_lines_from_jsonl(self, file_path: Path, num_lines: int = 200) -> List[dict]:
         """Read the last N lines from a JSONL file.
@@ -1638,11 +1639,11 @@ class ContextEngine:
                 stripped = line.strip()
                 if not stripped:
                     continue
-                
+
                 # Count braces to detect complete JSON objects
                 brace_count += stripped.count('{') - stripped.count('}')
                 current_entry.append(stripped)
-                
+
                 # When braces are balanced, we have a complete JSON object
                 if brace_count == 0 and current_entry:
                     try:
@@ -1661,7 +1662,7 @@ class ContextEngine:
                             parsed_entries.append(parsed)
                         except json.JSONDecodeError:
                             # Skip this entry if we can't parse it
-                            print(e)
+                            logger.debug("Skipping unparseable entry: %s", e)
                     current_entry = []
                     brace_count = 0
 
@@ -1710,4 +1711,3 @@ class ContextEngine:
             return Path.home() / ".cache" / "deadend" / "memory" / "sessions" / str(self.session_id)
         else:
             return None
-

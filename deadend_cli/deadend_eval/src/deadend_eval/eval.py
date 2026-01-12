@@ -82,7 +82,7 @@ async def eval_deadend_agent(
         embedder_client: EmbedderClient,
         # evaluators: list[Evaluator],
         code_indexer_db: RetrievalDatabaseConnector,
-        sandbox: Sandbox,
+        sandbox: Sandbox | None,
         eval_metadata: EvalMetadata,
         hard_prompt: bool,
         # choosing between hard and soft prompt
@@ -207,11 +207,11 @@ async def eval_deadend_agent(
     # else:
     #     print(f"Threat model is :\n{threat_model_data[0].parts[0].content}")
     #     threat_model_computed = threat_model_data[0].parts[0].content
-    threat_model_computed = threat_model_data
+    threat_model_computed = str(threat_model_data)
     if not solved:
         if len(validation_token) > 1:
             threat_model_computed += f"## Important NOTE\nThe flag found previously \
-                {validation_token} is false and is not the right response. Find another way."
+                {str(validation_token)} is false and is not the right response. Find another way."
 
         # Safely extract detailed_summary from threat_model_data
         # When supervisor fails, detailed_summary may not be set

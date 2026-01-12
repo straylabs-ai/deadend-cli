@@ -82,7 +82,7 @@ export function ComponentHealth({
       <Box flexDirection="column">
         <Text color="cyan">Initializing components...</Text>
         {currentInitComponent && (
-          <Box marginTop={1}>
+          <Box>
             <LoadingSpinner
               text={`Initializing ${COMPONENT_NAMES[currentInitComponent] || currentInitComponent}`}
               color="yellow"
@@ -90,7 +90,7 @@ export function ComponentHealth({
           </Box>
         )}
         {/* Show init results so far */}
-        <Box flexDirection={layout === "row" ? "row" : "column"} marginTop={1} gap={1}>
+        <Box flexDirection={layout === "row" ? "row" : "column"} gap={1}>
           {COMPONENT_ORDER.map((name) => {
             const result = initResults.get(name);
             if (!result) return null;

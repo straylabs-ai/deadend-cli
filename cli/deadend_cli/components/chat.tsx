@@ -25,7 +25,8 @@ import { NormalView } from "./NormalView.tsx";
 import { START_RUN } from "../lib/commands/handlers/run.ts";
 import { setLlmRpcClient, INFO_MESSAGE_PREFIX, OPEN_LLM_SELECTOR } from "../lib/commands/handlers/llm.ts";
 import { LlmSelector } from "./LlmSelector.tsx";
-import { getCurrentTarget } from "../lib/commands/handlers/target.ts";
+import { getCurrentTarget, setTarget } from "../lib/commands/handlers/target.ts";
+import type { CliArgs } from "../lib/cli-args.ts";
 import type { DeadEndRpcClient, DoneEvent } from "../lib/deadend-rpc-client.ts";
 
 /**
@@ -46,9 +47,10 @@ interface ViewParams {
 interface ChatProps {
   rpcClient: RpcClient | DeadEndRpcClient;
   onExit?: () => void;
+  cliArgs?: CliArgs;
 }
 
-export function Chat({ rpcClient, onExit }: ChatProps) {
+export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -106,6 +108,38 @@ export function Chat({ rpcClient, onExit }: ChatProps) {
   useEffect(() => {
     fetchCurrentLlm();
   }, [fetchCurrentLlm]);
+
+  /**
+   * Handle CLI arguments on startup.
+   * Sets target and executes initial prompt if provided.
+   */
+  useEffect(() => {
+    if (cliArgs?.target) {
+      setTarget(cliArgs.target);
+      const targetMessage = createMessage(
+        "system",
+        `Target set from CLI: ${cliArgs.target}`,
+        "info"
+      );
+      addMessage(targetMessage);
+    }
+
+    // If prompt is provided, execute it after target is set
+    if (cliArgs?.prompt && cliArgs?.target) {
+      // Verify rpcClient has runTask method (is DeadEndRpcClient, not DummyRpcClient)
+      if (rpcClient && "runTask" in rpcClient) {
+        setViewParams({ target: cliArgs.target, task: cliArgs.prompt });
+        setViewMode(executionMode === "yolo" ? "yolo" : "normal");
+      } else {
+        const errorMessage = createMessage(
+          "system",
+          "Cannot start task: RPC client not properly initialized. Please check the server connection.",
+          "error"
+        );
+        addMessage(errorMessage);
+      }
+    }
+  }, [rpcClient]); // Re-run when rpcClient changes
 
   /**
    * Handle keyboard shortcuts.

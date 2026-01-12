@@ -67,8 +67,8 @@ function App({ cliArgs }: AppProps) {
             }
           }
 
-          // Check for critical failures (Docker, Config, Model Registry are required)
-          const criticalComponents = ["docker", "config", "model_registry"];
+          // Check for critical failures (all components required for task execution)
+          const criticalComponents = ["docker", "config", "model_registry", "pgvector", "shell_sandbox"];
           const criticalFailures = initResult.failed_components.filter(
             (c) => criticalComponents.includes(c)
           );
@@ -137,13 +137,13 @@ function App({ cliArgs }: AppProps) {
 
   if (isChecking || !rpcClient || !initComplete) {
     return (
-      <Box flexDirection="column" padding={2}>
+      <Box flexDirection="column">
         <Box marginBottom={1}>
           <Banner />
         </Box>
-        <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1}>
+        <Box flexDirection="column"borderColor="grey">
           <Box marginBottom={1}>
-            <LoadingSpinner text={initStatus} color="cyan" />
+            <LoadingSpinner text={initStatus} color="grey" />
           </Box>
           {componentResults.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
@@ -234,6 +234,13 @@ function App({ cliArgs }: AppProps) {
                 </Text>
               </Box>
             )}
+            {cliArgs.target && (
+              <Box marginTop={0}>
+                <Text color="cyan">
+                  Target: {cliArgs.target}
+                </Text>
+              </Box>
+            )}
             {cliArgs.codebase && (
               <Box marginTop={0}>
                 <Text color="gray" dimColor>
@@ -241,11 +248,18 @@ function App({ cliArgs }: AppProps) {
                 </Text>
               </Box>
             )}
+            {cliArgs.prompt && (
+              <Box marginTop={0}>
+                <Text color="green">
+                  Initial prompt: {cliArgs.prompt}
+                </Text>
+              </Box>
+            )}
           </Box>
         </Box>
       </Box>
       <Box flexDirection="column" flexGrow={1}>
-        <Chat rpcClient={rpcClient} onExit={handleExit} />
+        <Chat rpcClient={rpcClient} onExit={handleExit} cliArgs={cliArgs} />
       </Box>
     </Box>
   );

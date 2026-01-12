@@ -19,7 +19,6 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.models.openrouter import OpenRouterModel
 from pydantic_ai.providers.openrouter import OpenRouterProvider
-from pydantic_ai.providers.azure import AzureProvider
 
 from deadend_agent.config.settings import Config
 

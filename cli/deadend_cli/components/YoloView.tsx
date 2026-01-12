@@ -5,7 +5,7 @@ import type { AgentEvent } from "../types/rpc.ts";
 import { EventStreamView } from "./EventStreamView.tsx";
 import { LoadingSpinner } from "./LoadingSpinner.tsx";
 
-export type YoloPhase = "recon" | "exploit" | "done" | "error";
+export type YoloPhase = "init" | "recon" | "exploit" | "done" | "error";
 
 export interface YoloViewProps {
   /** Target URL to test */
@@ -64,18 +64,42 @@ export function YoloView({
   // Start the YOLO workflow after health check passes
   const startWorkflow = useCallback(async () => {
     setIsRunning(true);
-    setPhase("recon");
+    setPhase("init");
     setEvents([]);
 
+    // Log the task parameters for debugging
+    console.log("[YoloView] Starting task:", { target, task, mode: "yolo" });
+
     try {
+      // Verify rpcClient has runTask method
+      if (!("runTask" in rpcClient)) {
+        throw new Error("RPC client does not support task execution. Server may not be properly initialized.");
+      }
+
       // Run the task with streaming events
       for await (const taskEvent of rpcClient.runTask({
         prompt: task,
         target: target,
         mode: "yolo",
       })) {
+        console.log("[YoloView] Received event:", taskEvent.phase);
         // Update phase based on task event
-        if (taskEvent.phase === "recon") {
+        if (taskEvent.phase === "init") {
+          setPhase("init");
+          // Show init progress messages
+          if (taskEvent.data) {
+            const dataObj = taskEvent.data as { message?: string };
+            addEvent({
+              type: "log_message",
+              timestamp: new Date().toISOString(),
+              session_id: "yolo",
+              data: {
+                message: dataObj.message ?? JSON.stringify(taskEvent.data),
+                level: "info",
+              },
+            });
+          }
+        } else if (taskEvent.phase === "recon") {
           setPhase("recon");
           // Convert task event data to agent event format for display
           if (taskEvent.data) {
@@ -106,6 +130,11 @@ export function YoloView({
               },
             });
           }
+        } else if (taskEvent.phase === "error") {
+          // Handle error event from server
+          const errorData = taskEvent.data as { message: string; error_type: string };
+          setError(`${errorData.error_type}: ${errorData.message}`);
+          setPhase("error");
         } else if (taskEvent.phase === "done") {
           setPhase("done");
           setResult(taskEvent as DoneEvent);
@@ -209,9 +238,9 @@ export function YoloView({
     );
   }
 
-  // Recon or Exploit phase (running)
-  const phaseLabel = phase === "recon" ? "Reconnaissance" : "Exploitation";
-  const phaseColor = "magenta";
+  // Init, Recon, or Exploit phase (running)
+  const phaseLabel = phase === "init" ? "Initializing" : phase === "recon" ? "Reconnaissance" : "Exploitation";
+  const phaseColor = phase === "init" ? "cyan" : "magenta";
 
   return (
     <Box flexDirection="column" padding={1}>

@@ -19,6 +19,7 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel
 from deadend_agent.core_agent import CoreAgent, AgentResult as CoreAgentResult, get_session_metrics, UsageLimitExceeded
 from deadend_agent.hooks import get_event_hooks
+from deadend_agent.logging import logger
 
 
 class AgentOutput(BaseModel):
@@ -333,7 +334,7 @@ class AgentRunner:
 
         except UsageLimitExceeded as e:
             error_msg = str(e)
-            print(f"[AgentRunner] UsageLimitExceeded: {error_msg}")
+            logger.debug("AgentRunner UsageLimitExceeded: %s", error_msg)
 
             # Create a fallback result with the correct output type
             fallback_output = self._create_fallback_output(error_msg, "Usage limit exceeded")
@@ -345,7 +346,7 @@ class AgentRunner:
 
         except Exception as e:
             error_msg = str(e)
-            print(f"[AgentRunner] Error: {error_msg}")
+            logger.debug("AgentRunner Error: %s", error_msg)
 
             # Create a fallback result with the correct output type
             fallback_output = self._create_fallback_output(error_msg, "Agent error")
@@ -463,7 +464,7 @@ class AgentRunner:
                 model_name = f"openai/{model_name}"
 
         # Debug logging
-        print(f"[AgentRunner] Extracted model info: model_name={model_name}, api_key={'***' if api_key else None}, api_base={api_base}")
+        logger.debug("AgentRunner extracted model info: model_name=%s, api_key=%s, api_base=%s", model_name, '***' if api_key else None, api_base)
 
         return model_name, api_key, api_base
 

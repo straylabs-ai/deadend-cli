@@ -39,6 +39,8 @@ from typing import Optional, Union
 
 from pydantic import BaseModel, Field
 
+from deadend_agent.logging import logger
+
 
 class CommandTimeoutError(Exception):
     """Exception raised when a command execution times out."""
@@ -157,15 +159,15 @@ class Sandbox(BaseModel):
             self.status = SandboxStatus.RUNNING
             image = self._docker_client.images.get(container_image)
 
-            print(f"[INFO] Creating container on network: {network_name}")
-            
+            logger.debug("Creating container on network: %s", network_name)
+
             # Add host.docker.internal for host access when using non-host networks
             extra_hosts = None
             if network_name != "host":
                 extra_hosts = {
                     "host.docker.internal": "host-gateway"  # Maps to the host machine
                 }
-                print("[INFO] Adding host.docker.internal alias for host access")
+                logger.debug("Adding host.docker.internal alias for host access")
                 
             container = self._docker_client.containers.run(
                 image=image,
@@ -181,27 +183,27 @@ class Sandbox(BaseModel):
                 stdin_open=True
             )
             
-            print(f"[SUCCESS] Container created on network: {network_name}")
+            logger.debug("Container created on network: %s", network_name)
             if network_name == "host":
-                print("[INFO] Container has direct host network access")
+                logger.debug("Container has direct host network access")
             else:
-                print("[INFO] Use 'host.docker.internal' to access host services from within container")
-                
-            print(container)
+                logger.debug("Use 'host.docker.internal' to access host services from within container")
+
+            logger.debug("Container: %s", container)
             self.container_id = container.id 
             self.docker_image = container_image
             
             self.status = SandboxStatus.RUNNING
             return container
         except ImageNotFound as exc:
-            print(f"Error: Image not found {container_image}")
+            logger.error("Image not found %s", container_image)
             raise ImageNotFound from exc
         except NotFound as exc:
-            print(f"Error: {exc.explanation}")
+            logger.error("Docker error: %s", exc.explanation)
             raise NotFound from exc
         except Exception as exc:
             self.status = SandboxStatus.ERROR
-            print(f"Error starting container: {exc}")
+            logger.error("Error starting container: %s", exc)
             raise exc
         
     def execute_command(
@@ -264,13 +266,13 @@ class Sandbox(BaseModel):
         # Debug: Check container state and responsiveness
         try:
             container_status = container.status
-            print(f"[DEBUG] Container status: {container_status}")
-            
+            logger.debug("Container status: %s", container_status)
+
             # Test basic container responsiveness with a simple command
             health_check = container.exec_run(["/bin/bash", "-c", "echo 'health_check'"])
-            print(f"[DEBUG] Health check exit code: {health_check.exit_code}")
+            logger.debug("Health check exit code: %s", health_check.exit_code)
         except Exception as health_exc:
-            print(f"[DEBUG] Container health check failed: {health_exc}")
+            logger.debug("Container health check failed: %s", health_exc)
 
         # Prepare command for execution
         if shell_execution:
@@ -283,8 +285,8 @@ class Sandbox(BaseModel):
 
         try:
             # Debug: Log the exact command being executed
-            print(f"[DEBUG] Executing command: {' '.join(shell_command)}")
-            print(f"[DEBUG] Stream mode: {stream}, Timeout: {timeout_seconds}")
+            logger.debug("Executing command: %s", ' '.join(shell_command))
+            logger.debug("Stream mode: %s, Timeout: %s", stream, timeout_seconds)
             
             if timeout_seconds:
                 # Use threading for timeout implementation
@@ -299,7 +301,7 @@ class Sandbox(BaseModel):
                     socket=True,
                     stream=True,
                 )
-                print("[DEBUG] Streaming execution completed")
+                logger.debug("Streaming execution completed")
                 result = {
                     "command": command,
                     "streaming": True,
@@ -314,9 +316,9 @@ class Sandbox(BaseModel):
                     tty=False,  # Changed from True to False
                     demux=True
                 )
-                print(f"[DEBUG] Command executed, exit code: {command_result.exit_code}")
+                logger.debug("Command executed, exit code: %s", command_result.exit_code)
                 (stdout, stderr) = command_result.output
-                print(f"[DEBUG] Raw stdout length: {len(stdout) if stdout else 0}, stderr: {len(stderr) if stderr else 0}")
+                logger.debug("Raw stdout length: %d, stderr: %d", len(stdout) if stdout else 0, len(stderr) if stderr else 0)
                 result = {
                     "command": command,
                     "exit_code": command_result.exit_code,
@@ -326,7 +328,7 @@ class Sandbox(BaseModel):
                     "timed_out": False,
                     "execution_time": time.time() - start_time
                 }
-                print(f"[DEBUG] Decoded stdout length: {len(result['stdout'])}, stderr: {len(result['stderr'])}")
+                logger.debug("Decoded stdout length: %d, stderr: %d", len(result['stdout']), len(result['stderr']))
             
             return result
 
@@ -352,9 +354,7 @@ class Sandbox(BaseModel):
             }
         except (docker.errors.ContainerError, docker.errors.APIError, OSError) as exc:
             # Log docker and system errors but don't raise to maintain stability
-            print(f"[ERROR] Docker/System error: {exc}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Docker/System error: %s", exc, exc_info=True)
             return {
                 "exit_code": -1,
                 "stdout": "",
@@ -366,9 +366,7 @@ class Sandbox(BaseModel):
             }
         except Exception as exc:
             # Catch-all for any unexpected errors
-            print(f"[ERROR] Unexpected error: {exc}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Unexpected error: %s", exc, exc_info=True)
             return {
                 "exit_code": -1,
                 "stdout": "",
@@ -392,7 +390,7 @@ class Sandbox(BaseModel):
 
         def execute_worker():
             try:
-                print(f"[DEBUG TIMEOUT] Starting worker thread for command: {' '.join(command if isinstance(command, list) else [command])}")
+                logger.debug("Starting worker thread for command: %s", ' '.join(command if isinstance(command, list) else [command]))
                 start_time = time.time()
                 if stream:
                     command_result = container.exec_run(
@@ -402,7 +400,7 @@ class Sandbox(BaseModel):
                         socket=True,
                         stream=True,
                     )
-                    print("[DEBUG TIMEOUT] Streaming command completed")
+                    logger.debug("Streaming command completed")
 
                     result_container["result"] = {
                         "command": self.last_command,
@@ -418,9 +416,9 @@ class Sandbox(BaseModel):
                         tty=False,  # Changed from True to False
                         demux=True
                     )
-                    print(f"[DEBUG TIMEOUT] Command executed, exit code: {command_result.exit_code}")
+                    logger.debug("Command executed, exit code: %s", command_result.exit_code)
                     (stdout, stderr) = command_result.output
-                    print(f"[DEBUG TIMEOUT] Raw stdout length: {len(stdout) if stdout else 0}, stderr: {len(stderr) if stderr else 0}")
+                    logger.debug("Raw stdout length: %d, stderr: %d", len(stdout) if stdout else 0, len(stderr) if stderr else 0)
                     result_container["result"] = {
                         "command": self.last_command,
                         "exit_code": command_result.exit_code,
@@ -430,14 +428,12 @@ class Sandbox(BaseModel):
                         "timed_out": False,
                         "execution_time": time.time() - start_time
                     }
-                    print(f"[DEBUG TIMEOUT] Decoded stdout length: {len(result_container['result']['stdout'])}, stderr: {len(result_container['result']['stderr'])}")
+                    logger.debug("Decoded stdout length: %d, stderr: %d", len(result_container['result']['stdout']), len(result_container['result']['stderr']))
             except (docker.errors.ContainerError, docker.errors.APIError, OSError) as exc:
-                print(f"[DEBUG TIMEOUT] Docker/system error in worker: {exc}")
+                logger.debug("Docker/system error in worker: %s", exc)
                 exception_container["exception"] = exc
             except Exception as exc:
-                print(f"[DEBUG TIMEOUT] Unexpected error in execute_worker: {exc}")
-                import traceback
-                traceback.print_exc()
+                logger.debug("Unexpected error in execute_worker: %s", exc, exc_info=True)
                 exception_container["exception"] = exc
 
         thread = threading.Thread(target=execute_worker)
