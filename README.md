@@ -73,10 +73,10 @@ uv sync && uv build
 ### First Run
 ```bash
 # Initialize configuration
-deadend-cli init
+deadend init
 
 # Start testing
-deadend-cli chat \
+deadend chat \
   --target "http://localhost:3000" \
   --prompt "find SQL injection vulnerabilities"
 ```
@@ -90,14 +90,14 @@ deadend-cli chat \
 # Test OWASP Juice Shop
 docker run -p 3000:3000 bkimminich/juice-shop
 
-deadend-cli chat \
+deadend chat \
   --target "http://localhost:3000" \
   --prompt "test the login endpoint for SQL injection"
 ```
 
 ### API Security Testing
 ```bash
-deadend-cli chat \
+deadend chat \
   --target "https://api.example.com" \
   --prompt "test authentication endpoints"
 ```
@@ -105,7 +105,7 @@ deadend-cli chat \
 ### Autonomous Mode
 ```bash
 # Run without approval prompts (CTFs/labs only)
-deadend-cli chat \
+deadend chat \
   --target "http://ctf.example.com" \
   --mode yolo \
   --prompt "find and exploit all vulnerabilities"
@@ -115,22 +115,22 @@ deadend-cli chat \
 
 ## Commands
 
-### `deadend-cli init`
+### `deadend init`
 Initialize configuration and set up pgvector database
 
-### `deadend-cli chat`
+### `deadend chat`
 Start interactive security testing session
 - `--target`: Target URL
 - `--prompt`: Initial testing prompt
 - `--mode`: `hacker` (approval required) or `yolo` (autonomous)
 
-### `deadend-cli eval-agent`
+### `deadend eval-agent`
 Run evaluation against challenge datasets
 - `--eval-metadata-file`: Challenge dataset file
 - `--llm-providers`: AI model providers to test
 - `--guided`: Run with subtask decomposition
 
-### `deadend-cli version`
+### `deadend version`
 Display current version
 
 ---
@@ -173,12 +173,12 @@ Perfect scores: GraphQL, SSRF, NoSQL injection, HTTP method tampering (100%)
 
 **Hacker Mode (default):** Requires approval for dangerous operations
 ```bash
-deadend-cli chat --target URL --mode hacker
+deadend chat --target URL --mode hacker
 ```
 
 **YOLO Mode:** Autonomous execution (CTFs/labs only)
 ```bash
-deadend-cli chat --target URL --mode yolo
+deadend chat --target URL --mode yolo
 ```
 
 ---
@@ -196,7 +196,7 @@ deadend-cli chat --target URL --mode yolo
 
 ## Configuration
 
-Configuration is managed via `~/.cache/deadend/config.toml`. Run `deadend-cli init` to set up your configuration interactively.
+Configuration is managed via `~/.cache/deadend/config.toml`. Run `deadend init` to set up your configuration interactively.
 
 ---
 
