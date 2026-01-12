@@ -58,7 +58,23 @@ class ModelSettings(BaseSettings):
 class Config:
     """
     Configuration class that loads environment variables from a .env file or from 
-    environment variables 
+    environment variables.
+    
+    This configuration system supports multiple LLM providers through litellm:
+    - OpenAI: Uses OPENAI_API_KEY and OPENAI_MODEL
+    - Anthropic: Uses ANTHROPIC_API_KEY and ANTHROPIC_MODEL
+    - Google Gemini: Uses GEMINI_API_KEY and GEMINI_MODEL
+    - OpenRouter: Uses OPEN_ROUTER_API_KEY and OPEN_ROUTER_MODEL (supports multiple providers)
+    - Local/Self-hosted: Uses LOCAL_API_KEY, LOCAL_MODEL, and LOCAL_BASE_URL
+    
+    Configuration is loaded from ~/.cache/deadend/config.toml (preferred) or environment variables.
+    The config.toml file is created/updated via the CLI's `deadend init` command or through
+    the interactive LLM provider selector in the chat interface.
+    
+    litellm automatically handles provider-specific API formats, so you just need to provide
+    the API key and model name. For OpenRouter, use the format "provider/model-name" (e.g., 
+    "anthropic/claude-4.5-opus"). For local models, provide the base URL of your OpenAI-compatible
+    API endpoint.
     """
     # Models
     openai_api_key: str | None = _cfg("OPENAI_API_KEY")

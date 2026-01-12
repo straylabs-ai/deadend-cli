@@ -239,7 +239,6 @@ class ModelRegistry:
             ValueError: If the provider is not supported, not configured,
                 or no models have been initialized.
         """
-        print(self._models)
         if provider not in self._models:
             raise ValueError(f"Model provider {provider} not supported.")
         elif not self._models:

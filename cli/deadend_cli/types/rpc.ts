@@ -622,22 +622,20 @@ export interface InitResult {
 }
 
 /**
- * Result of component initialization.
+ * Result of initializing all components at once.
  *
- * Returned by init_* RPC methods to report initialization status.
+ * Returned by init_all RPC method to report initialization status of all components.
  *
- * @property success - Whether initialization succeeded
- * @property components - List component that worked
- * @property failed_components - List the components that failed to initialize
- * @property timestamp - ISO 8601 timestamp of the health check;e
-
+ * @property overall_success - True only if ALL components initialized successfully
+ * @property components - Individual initialization results for each component
+ * @property failed_components - Names of components that failed to initialize
+ * @property timestamp - ISO 8601 timestamp of the initialization
  */
 export interface AllInitResult {
-  success: boolean;
-  components: string[];
+  overall_success: boolean;
+  components: InitResult[];
   failed_components: string[];
   timestamp: string;
-  
 }
 
 // =============================================================================

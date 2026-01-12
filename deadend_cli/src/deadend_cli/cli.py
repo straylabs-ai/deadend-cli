@@ -13,6 +13,7 @@ import typer
 import docker
 from docker.errors import DockerException
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 import logfire
 
 from deadend_agent import config_setup
@@ -22,6 +23,7 @@ from .eval import eval_interface
 from .banner import print_banner
 from .init import init_cli_config, check_docker, \
     check_pgvector_container, stop_pgvector_container, setup_pgvector_database
+from .component_manager import ComponentManager
 
 console = Console()
 

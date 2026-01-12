@@ -19,9 +19,15 @@ Configuration via environment variables:
 from __future__ import annotations
 
 import os
+import sys
 import json
 from pathlib import Path
 from typing import Sequence
+
+
+def _log(msg: str) -> None:
+    """Log message to stderr to avoid breaking RPC communication."""
+    print(msg, file=sys.stderr)
 
 try:
     from opentelemetry import trace
@@ -99,7 +105,7 @@ class FileSpanExporter(SpanExporter):
 
             return SpanExportResult.SUCCESS
         except Exception as e:
-            print(f"FileSpanExporter error: {e}")
+            _log(f"FileSpanExporter error: {e}")
             return SpanExportResult.FAILURE
 
     def shutdown(self):
@@ -133,7 +139,7 @@ class MultiSpanExporter(SpanExporter):
                 result = exporter.export(spans)
                 results.append(result)
             except Exception as e:
-                print(f"Exporter {exporter.__class__.__name__} error: {e}")
+                _log(f"Exporter {exporter.__class__.__name__} error: {e}")
                 results.append(SpanExportResult.FAILURE)
 
         # Return success if at least one succeeded
@@ -149,7 +155,7 @@ class MultiSpanExporter(SpanExporter):
             try:
                 exporter.shutdown()
             except Exception as e:
-                print(f"Exporter shutdown error: {e}")
+                _log(f"Exporter shutdown error: {e}")
 
 
 def setup_telemetry() -> trace.Tracer | NoOpTracer:
@@ -165,7 +171,7 @@ def setup_telemetry() -> trace.Tracer | NoOpTracer:
         Configured tracer instance, or NoOpTracer if OpenTelemetry unavailable
     """
     if not OTEL_AVAILABLE:
-        print("OpenTelemetry not available, using no-op tracer")
+        _log("OpenTelemetry not available, using no-op tracer")
         return NoOpTracer()
 
     exporters = []
@@ -173,26 +179,26 @@ def setup_telemetry() -> trace.Tracer | NoOpTracer:
     # Console exporter (for development)
     if os.getenv("OTEL_CONSOLE_ENABLED", "true").lower() == "true":
         exporters.append(ConsoleSpanExporter())
-        print("OpenTelemetry: Console exporter enabled")
+        _log("OpenTelemetry: Console exporter enabled")
 
     # OTLP exporter (for production backends)
     if endpoint := os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
         try:
             exporters.append(OTLPSpanExporter(endpoint=endpoint))
-            print(f"OpenTelemetry: OTLP exporter enabled (endpoint: {endpoint})")
+            _log(f"OpenTelemetry: OTLP exporter enabled (endpoint: {endpoint})")
         except Exception as e:
-            print(f"OpenTelemetry: OTLP exporter error: {e}")
+            _log(f"OpenTelemetry: OTLP exporter error: {e}")
 
     # File exporter (for local analysis)
     if path := os.getenv("OTEL_FILE_EXPORT_PATH"):
         try:
             exporters.append(FileSpanExporter(path))
-            print(f"OpenTelemetry: File exporter enabled (path: {path})")
+            _log(f"OpenTelemetry: File exporter enabled (path: {path})")
         except Exception as e:
-            print(f"OpenTelemetry: File exporter error: {e}")
+            _log(f"OpenTelemetry: File exporter error: {e}")
 
     if not exporters:
-        print("OpenTelemetry: No exporters configured, using no-op tracer")
+        _log("OpenTelemetry: No exporters configured, using no-op tracer")
         return NoOpTracer()
 
     # Create tracer provider with service name
@@ -211,7 +217,7 @@ def setup_telemetry() -> trace.Tracer | NoOpTracer:
 
     # Return tracer
     tracer = trace.get_tracer(__name__)
-    print(f"OpenTelemetry: Tracer initialized for service '{service_name}' with {len(exporters)} exporter(s)")
+    _log(f"OpenTelemetry: Tracer initialized for service '{service_name}' with {len(exporters)} exporter(s)")
     return tracer
 
 

@@ -64,6 +64,9 @@ class ComponentManager:
         self.sandbox_manager: Any = None
         self.playwright_requester: Any = None
 
+        # Current LLM provider (defaults to first available or "openai")
+        self.current_llm_provider: str = "openai"
+
         # Shutdown event
         self._shutdown_event = asyncio.Event()
 
@@ -88,7 +91,7 @@ class ComponentManager:
             self.docker_state.metadata["version"] = version_info.get("Version", "unknown")
             self.docker_state.last_check = datetime.now()
 
-            logger.debug(f"Docker initialized successfully, version: {version_info.get('Version', 'unknown')}")
+            logger.debug("Docker initialized successfully, version: %s", version_info.get('Version', 'unknown'))
             return InitResult(
                 success=True,
                 component="docker",
@@ -97,7 +100,7 @@ class ComponentManager:
                 details={"version": version_info.get("Version", "unknown")},
             )
         except Exception as e:
-            logger.error(f"Docker initialization failed: {e}")
+            logger.error("Docker initialization failed: %s", e)
             self.docker_state.status = ComponentStatus.ERROR
             self.docker_state.error_message = str(e)
             return InitResult(
@@ -134,7 +137,7 @@ class ComponentManager:
 
             # Verify database connectivity using init_rag_database from core.py
             db_url = "postgresql://postgres:postgres@localhost:54320/codeindexerdb"
-            logger.debug(f"Connecting to database: {db_url}")
+            logger.debug("Connecting to database: %s", db_url)
 
             self.rag_connector = await init_rag_database(database_url=db_url)
 
@@ -151,7 +154,7 @@ class ComponentManager:
                 details={"db_url": db_url},
             )
         except Exception as e:
-            logger.error(f"pgvector initialization failed: {e}")
+            logger.error("pgvector initialization failed: %s", e)
             self.pgvector_state.status = ComponentStatus.ERROR
             self.pgvector_state.error_message = str(e)
             return InitResult(
@@ -189,7 +192,7 @@ class ComponentManager:
             }
             self.config_state.last_check = datetime.now()
 
-            logger.debug(f"Configuration loaded, providers: {providers}")
+            logger.debug("Configuration loaded, providers: %s", providers)
             return InitResult(
                 success=True,
                 component="config",
@@ -198,7 +201,7 @@ class ComponentManager:
                 details={"providers_configured": providers},
             )
         except Exception as e:
-            logger.error(f"Configuration loading failed: {e}")
+            logger.error("Configuration loading failed: %s", e)
             self.config_state.status = ComponentStatus.ERROR
             self.config_state.error_message = str(e)
             return InitResult(
@@ -226,12 +229,21 @@ class ComponentManager:
 
             # Check which models are available
             has_any = self.model_registry.has_any_model()
+            
+            # Set default provider to first available, or keep current if available
+            if has_any:
+                available = self.model_registry.list_configured_providers()
+                if available:
+                    # If current provider is not available, switch to first available
+                    if self.current_llm_provider not in available:
+                        self.current_llm_provider = available[0]
+                        logger.info("Defaulting to first available provider: %s", self.current_llm_provider)
 
             self.model_registry_state.status = ComponentStatus.READY
             self.model_registry_state.metadata["has_any_model"] = has_any
             self.model_registry_state.last_check = datetime.now()
 
-            logger.debug(f"Model registry initialized, has_any_model: {has_any}")
+            logger.debug("Model registry initialized, has_any_model: %s, current_provider: %s", has_any, self.current_llm_provider)
             return InitResult(
                 success=True,
                 component="model_registry",
@@ -240,7 +252,7 @@ class ComponentManager:
                 details={"has_any_model": has_any},
             )
         except Exception as e:
-            logger.error(f"Model registry initialization failed: {e}")
+            logger.error("Model registry initialization failed: %s", e)
             self.model_registry_state.status = ComponentStatus.ERROR
             self.model_registry_state.error_message = str(e)
             return InitResult(
@@ -267,7 +279,7 @@ class ComponentManager:
             self.python_sandbox_state.metadata["port"] = 45555
             self.python_sandbox_state.last_check = datetime.now()
 
-            logger.debug(f"Python sandbox started, PID: {self.python_sandbox_process.pid}")
+            logger.debug("Python sandbox started, PID: %s", self.python_sandbox_process.pid)
             return InitResult(
                 success=True,
                 component="python_sandbox",
@@ -276,7 +288,7 @@ class ComponentManager:
                 details={"pid": self.python_sandbox_process.pid, "port": 45555},
             )
         except Exception as e:
-            logger.error(f"Python sandbox initialization failed: {e}")
+            logger.error("Python sandbox initialization failed: %s", e)
             self.python_sandbox_state.status = ComponentStatus.ERROR
             self.python_sandbox_state.error_message = str(e)
             return InitResult(
@@ -319,7 +331,7 @@ class ComponentManager:
                 details={"image": "xoxruns/sandboxed_kali"},
             )
         except Exception as e:
-            logger.error(f"Shell sandbox initialization failed: {e}")
+            logger.error("Shell sandbox initialization failed: %s", e)
             self.shell_sandbox_state.status = ComponentStatus.ERROR
             self.shell_sandbox_state.error_message = str(e)
             return InitResult(
@@ -355,7 +367,7 @@ class ComponentManager:
                 details={"browser": "chromium", "headless": True},
             )
         except Exception as e:
-            logger.error(f"Playwright initialization failed: {e}")
+            logger.error("Playwright initialization failed: %s", e)
             self.playwright_state.status = ComponentStatus.ERROR
             self.playwright_state.error_message = str(e)
             return InitResult(
@@ -444,7 +456,7 @@ class ComponentManager:
         if overall_success:
             logger.info("All components initialized successfully")
         else:
-            logger.warning(f"Initialization completed with failures: {failed}")
+            logger.warning("Initialization completed with failures: %s", failed)
 
         return AllInitResult(
             overall_success=overall_success,
@@ -678,11 +690,12 @@ class ComponentManager:
     # Component Access Methods
     # ==========================================================================
 
-    def get_model(self, provider: str = "openai"):
+    def get_model(self, provider: str | None = None):
         """Get a model instance from the model registry.
 
         Args:
-            provider: The LLM provider to use (openai, anthropic, gemini)
+            provider: The LLM provider to use (openai, anthropic, gemini, openrouter, local).
+                     If None, uses the current_llm_provider.
 
         Returns:
             Model instance
@@ -698,7 +711,90 @@ class ComponentManager:
             raise RuntimeError(
                 "No LLM model configured. Run `deadend init` to initialize the model configuration."
             )
+        
+        # Use current provider if not specified
+        if provider is None:
+            provider = self.current_llm_provider
+        
         return self.model_registry.get_model(provider=provider)
+
+    def set_llm_provider(self, provider: str) -> None:
+        """Set the current LLM provider.
+
+        Args:
+            provider: The provider name (openai, anthropic, gemini, openrouter, local)
+
+        Raises:
+            ValueError: If provider is not configured or not available
+        """
+        if self.model_registry is None:
+            raise RuntimeError(
+                "Model registry not initialized. Call init_model_registry() first."
+            )
+        
+        # Check if provider is available
+        available_providers = self.model_registry.list_configured_providers()
+        if provider not in available_providers:
+            raise ValueError(
+                f"Provider '{provider}' is not configured. "
+                f"Available providers: {', '.join(available_providers)}"
+            )
+        
+        self.current_llm_provider = provider
+        logger.info("LLM provider set to: %s", provider)
+
+    def get_llm_provider(self) -> str:
+        """Get the current LLM provider.
+
+        Returns:
+            Current provider name
+        """
+        return self.current_llm_provider
+
+    def list_llm_providers(self) -> dict[str, Any]:
+        """List all available LLM providers and their configuration status.
+
+        Returns:
+            Dictionary with 'current' provider and 'providers' list containing
+            provider info (name, configured status, model name)
+        """
+        if self.model_registry is None:
+            return {
+                "current": self.current_llm_provider,
+                "providers": []
+            }
+        
+        available_providers = self.model_registry.list_configured_providers()
+        all_providers = ["openai", "anthropic", "gemini", "openrouter", "local"]
+        
+        providers_info = []
+        for provider_name in all_providers:
+            configured = provider_name in available_providers
+            model_name = None
+            
+            if configured:
+                try:
+                    model = self.model_registry.get_model(provider=provider_name)
+                    # Try to get model name from various attributes
+                    if hasattr(model, "model_name"):
+                        model_name = model.model_name
+                    elif hasattr(model, "model_id"):
+                        model_name = model.model_id
+                    elif hasattr(model, "_model_id"):
+                        model_name = model._model_id
+                except Exception:
+                    pass
+            
+            providers_info.append({
+                "name": provider_name,
+                "configured": configured,
+                "model": model_name
+            })
+        
+        return {
+            "current": self.current_llm_provider,
+            "providers": providers_info
+        }
 
     def get_embedder(self):
         """Get the embedder model from the model registry.

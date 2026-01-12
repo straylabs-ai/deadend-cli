@@ -104,6 +104,10 @@ class RPCServer:
             "enable_approval_mode": self._handle_enable_approval_mode,
             "disable_approval_mode": self._handle_disable_approval_mode,
             "get_approval_mode": self._handle_get_approval_mode,
+            # LLM provider management
+            "list_llm_providers": self._handle_list_llm_providers,
+            "get_llm_provider": self._handle_get_llm_provider,
+            "set_llm_provider": self._handle_set_llm_provider,
             # Task execution
             "run_task": self._handle_run_task,
         }
@@ -123,8 +127,8 @@ class RPCServer:
                 "Call init_all or initialize individual components first."
             )
 
-        # Get pre-initialized components
-        model = self.component_manager.get_model(provider=self.llm_provider)
+        # Get pre-initialized components (use current provider from component manager)
+        model = self.component_manager.get_model()
         embedder_client = self.component_manager.get_embedder()
         rag_db = self.component_manager.get_rag_connector()
 
@@ -253,7 +257,10 @@ class RPCServer:
                 continue
 
             async for response in self._handle_request_stream(request):
-                sys.stdout.write(json.dumps(response) + "\n")
+                # Ensure all responses are JSON serializable (e.g. datetimes) and
+                # never emit non-JSON text on stdout, as the CLI expects NDJSON.
+                serializable = self._to_serializable(response)
+                sys.stdout.write(json.dumps(serializable, default=str) + "\n")
                 sys.stdout.flush()
 
         # Graceful shutdown
@@ -322,48 +329,84 @@ class RPCServer:
     # Handler methods
     # =========================================================================
 
-    async def _handle_ping(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_ping(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle ping request."""
         return {"status": "ok"}
 
-    async def _handle_shutdown(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_shutdown(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Handle shutdown request."""
         self._shutdown_requested = True
         result = await self.component_manager.shutdown()
         return {"status": "shutdown", "components": result}
 
-    async def _handle_init_all(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_init_all(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Initialize all components in the correct order."""
         logger.info("Starting initialization of all components...")
         result = await self.component_manager.init_all()
         return result.model_dump()
 
-    async def _handle_init_docker(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_init_docker(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Initialize Docker component."""
         result = await self.component_manager.init_docker()
         return result.model_dump()
 
-    async def _handle_init_pgvector(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_init_pgvector(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Initialize pgvector database."""
         result = await self.component_manager.init_pgvector()
         return result.model_dump()
 
-    async def _handle_init_config(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_init_config(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Initialize configuration."""
         result = await self.component_manager.init_config()
         return result.model_dump()
 
-    async def _handle_init_model_registry(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_init_model_registry(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Initialize model registry."""
         result = await self.component_manager.init_model_registry()
         return result.model_dump()
 
-    async def _handle_init_python_sandbox(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_init_python_sandbox(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Initialize Python sandbox."""
         result = await self.component_manager.init_python_sandbox()
         return result.model_dump()
 
-    async def _handle_init_shell_sandbox(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_init_shell_sandbox(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Initialize shell sandbox."""
         result = await self.component_manager.init_shell_sandbox()
         return result.model_dump()
@@ -393,7 +436,9 @@ class RPCServer:
         result = await self.component_manager.health_shell_sandbox()
         return result.model_dump()
 
-    async def _handle_health_playwright(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_health_playwright(
+        self, 
+        request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
         """Check Playwright health."""
         result = await self.component_manager.health_playwright()
         return result.model_dump()
@@ -438,12 +483,20 @@ class RPCServer:
 
         return {"status": "approved" if approved else "rejected", "request_id": approval_request_id}
 
-    async def _handle_enable_approval_mode(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_enable_approval_mode(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Enable approval mode - all tool calls require user approval."""
         enable_approval_mode()
         return {"status": "enabled", "approval_mode": True}
 
-    async def _handle_disable_approval_mode(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def _handle_disable_approval_mode(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Disable approval mode - tools execute without approval."""
         disable_approval_mode()
         return {"status": "disabled", "approval_mode": False}
@@ -451,6 +504,40 @@ class RPCServer:
     async def _handle_get_approval_mode(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
         """Get current approval mode status."""
         return {"approval_mode": is_approval_mode_enabled()}
+
+    async def _handle_list_llm_providers(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """List all available LLM providers and their configuration status."""
+        result = self.component_manager.list_llm_providers()
+        return result
+
+    async def _handle_get_llm_provider(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Get the current LLM provider."""
+        provider = self.component_manager.get_llm_provider()
+        return {"provider": provider}
+
+    async def _handle_set_llm_provider(
+        self,
+        request_id: Any,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Set the current LLM provider."""
+        provider = params.get("provider")
+        if not provider:
+            raise ValueError("provider parameter is required")
+        
+        self.component_manager.set_llm_provider(provider)
+        # Update the server's llm_provider attribute for consistency
+        self.llm_provider = provider
+        
+        return {"status": "ok", "provider": provider}
 
     async def _handle_run_task(self, request_id: Any, params: Dict[str, Any]):
         """Run a task. This is a streaming method."""
@@ -479,3 +566,25 @@ class RPCServer:
 
 
 __all__ = ["RPCServer"]
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="DeadEnd RPC Server")
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--log-file", type=str, help="Log file path")
+    parser.add_argument(
+        "--llm-provider",
+        type=str,
+        default="openai",
+        help="LLM provider to use (openai, anthropic, gemini, openrouter, local)",
+    )
+    args = parser.parse_args()
+
+    server = RPCServer(
+        llm_provider=args.llm_provider,
+        debug=args.debug,
+        log_file=args.log_file,
+    )
+    server.serve()

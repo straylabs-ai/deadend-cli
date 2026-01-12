@@ -3,10 +3,12 @@ import { useState, useEffect } from "react";
 import { Banner } from "./components/Banner.tsx";
 import { Chat } from "./components/chat.tsx";
 import { Presetup } from "./components/Presetup.tsx";
+import { LoadingSpinner } from "./components/LoadingSpinner.tsx";
 import { DeadEndRpcClient } from "./lib/deadend-rpc-client.ts";
 import { DummyRpcClient } from "./lib/dummy-rpc-client.ts";
 import { configExists } from "./lib/config.ts";
 import { parseArgs, showHelp, type CliArgs } from "./lib/cli-args.ts";
+import type { InitResult } from "./types/rpc.ts";
 
 interface AppProps {
   cliArgs: CliArgs;
@@ -21,6 +23,7 @@ function App({ cliArgs }: AppProps) {
   const [useRealClient, setUseRealClient] = useState(true);
   const [initStatus, setInitStatus] = useState<string>("Connecting to RPC server...");
   const [initComplete, setInitComplete] = useState(false);
+  const [componentResults, setComponentResults] = useState<InitResult[]>([]);
 
   // Initialize RPC client and components
   useEffect(() => {
@@ -33,6 +36,7 @@ function App({ cliArgs }: AppProps) {
           const scriptDir = import.meta.dirname ?? Deno.cwd();
           const pythonPkgDir = `${scriptDir}/../../deadend_cli`;
 
+          setInitStatus("Starting RPC server...");
           const client = new DeadEndRpcClient({
             pythonCommand: "uv",
             commandArgs: ["run", "python", "-m", "deadend_cli.rpc_server"],
@@ -41,45 +45,46 @@ function App({ cliArgs }: AppProps) {
           await client.start();
 
           // Test connection with ping
+          setInitStatus("Connecting to RPC server...");
           const isAlive = await client.ping();
           if (!isAlive) {
             throw new Error("RPC server not responding");
           }
 
-          // Initialize all components
-          setInitStatus("Initializing Docker...");
-          const dockerResult = await client.initDocker();
-          if (!dockerResult.success) {
-            throw new Error(`Docker init failed: ${dockerResult.message}`);
+          // Initialize all components at once using init_all
+          setInitStatus("Initializing all components...");
+          const initResult = await client.initAll();
+
+          // Store component results for display
+          setComponentResults(initResult.components);
+
+          // Log individual component results
+          for (const component of initResult.components) {
+            if (component.success) {
+              console.log(`✓ ${component.component}: ${component.message}`);
+            } else {
+              console.error(`✗ ${component.component}: ${component.message}`);
+            }
           }
 
-          setInitStatus("Initializing pgvector database...");
-          const pgResult = await client.initPgvector();
-          if (!pgResult.success) {
-            console.error("pgvector init failed:", pgResult.message);
-            // Continue anyway - pgvector is optional for some operations
+          // Check for critical failures (Docker, Config, Model Registry are required)
+          const criticalComponents = ["docker", "config", "model_registry"];
+          const criticalFailures = initResult.failed_components.filter(
+            (c) => criticalComponents.includes(c)
+          );
+
+          if (criticalFailures.length > 0) {
+            throw new Error(
+              `Critical components failed: ${criticalFailures.join(", ")}`
+            );
           }
 
-          setInitStatus("Loading configuration...");
-          const configResult = await client.initConfig();
-          if (!configResult.success) {
-            console.error("Config init failed:", configResult.message);
+          // Warn about non-critical failures
+          if (initResult.failed_components.length > 0) {
+            console.warn(
+              `Warning: Some components failed to initialize: ${initResult.failed_components.join(", ")}`
+            );
           }
-
-          setInitStatus("Initializing shell sandbox...");
-          const shellResult = await client.initShellSandbox();
-          if (!shellResult.success) {
-            console.error("Shell sandbox init failed:", shellResult.message);
-          }
-
-          setInitStatus("Initializing Python sandbox...");
-          const pythonResult = await client.initPythonSandbox();
-          if (!pythonResult.success) {
-            console.error("Python sandbox init failed:", pythonResult.message);
-          }
-
-          // Playwright is optional and can be slow, skip for now
-          // const playwrightResult = await client.initPlaywright();
 
           setRpcClient(client);
           setInitComplete(true);
@@ -132,17 +137,35 @@ function App({ cliArgs }: AppProps) {
 
   if (isChecking || !rpcClient || !initComplete) {
     return (
-      <Box flexDirection="column" height="100%" justifyContent="center" alignItems="center">
-        <Text color="cyan">
-          {initStatus}
-        </Text>
-        {rpcError && (
-          <Box marginTop={1}>
-            <Text color="yellow" dimColor>
-              Note: Using offline mode ({rpcError})
-            </Text>
+      <Box flexDirection="column" padding={2}>
+        <Box marginBottom={1}>
+          <Banner />
+        </Box>
+        <Box flexDirection="column" borderStyle="round" borderColor="cyan" padding={1}>
+          <Box marginBottom={1}>
+            <LoadingSpinner text={initStatus} color="cyan" />
           </Box>
-        )}
+          {componentResults.length > 0 && (
+            <Box flexDirection="column" marginTop={1}>
+              <Text color="white" bold>Component Status:</Text>
+              {componentResults.map((result) => (
+                <Box key={result.component}>
+                  <Text color={result.success ? "green" : "red"}>
+                    {result.success ? "✓" : "✗"} {result.component}
+                  </Text>
+                  <Text color="gray" dimColor> - {result.message}</Text>
+                </Box>
+              ))}
+            </Box>
+          )}
+          {rpcError && (
+            <Box marginTop={1}>
+              <Text color="yellow" dimColor>
+                Note: Using offline mode ({rpcError})
+              </Text>
+            </Box>
+          )}
+        </Box>
       </Box>
     );
   }
