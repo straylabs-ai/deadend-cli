@@ -21,6 +21,44 @@ class UsageLimitExceeded(Exception):
     pass
 
 
+class LLMError(Exception):
+    """Base class for LLM-related errors."""
+    def __init__(self, message: str, original_error: Exception | None = None):
+        self.message = message
+        self.original_error = original_error
+        super().__init__(message)
+
+
+class RateLimitError(LLMError):
+    """Raised when API rate limit is hit."""
+    pass
+
+
+class QuotaExceededError(LLMError):
+    """Raised when API quota/billing limit is exceeded."""
+    pass
+
+
+class AuthenticationError(LLMError):
+    """Raised when API authentication fails."""
+    pass
+
+
+class ConnectionError(LLMError):
+    """Raised when connection to API fails."""
+    pass
+
+
+class ModelNotFoundError(LLMError):
+    """Raised when the requested model is not available."""
+    pass
+
+
+class InvalidRequestError(LLMError):
+    """Raised when the request to the API is invalid."""
+    pass
+
+
 # Import main classes
 from .core_agent import CoreAgent, AgentResult, TokenUsageInfo
 from .session_metrics import SessionMetrics, get_session_metrics, TokenUsage
@@ -33,4 +71,11 @@ __all__ = [
     "TokenUsage",
     "get_session_metrics",
     "UsageLimitExceeded",
+    "LLMError",
+    "RateLimitError",
+    "QuotaExceededError",
+    "AuthenticationError",
+    "ConnectionError",
+    "ModelNotFoundError",
+    "InvalidRequestError",
 ]

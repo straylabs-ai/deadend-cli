@@ -12,8 +12,8 @@ import json
 from pathlib import Path
 from typing import Any
 from pydantic_ai import RunContext
-from rich.pretty import pprint
 
+from deadend_agent.logging import logger
 from deadend_agent.utils.functions import truncate_string
 from .python_interpreter import PythonInterpreter
 from deadend_agent.tools.tool_wrappers import with_tool_events
@@ -46,11 +46,11 @@ async def read_auth_storage(ctx: str) -> str:
         / ctx
         / "storage.json"
     )
-    print(f"storage file in read_auth_storage {storage_file}")
+    logger.debug("storage file in read_auth_storage %s", storage_file)
 
     if not storage_file.exists():
         # Return informative empty response instead of raising error
-        print(f"[INFO] storage.json not found for session {ctx}, proceeding without auth context")
+        logger.info("storage.json not found for session %s, proceeding without auth context", ctx)
         return json.dumps({
             "note": f"No auth storage found for session {ctx}",
             "cookies": [],
@@ -60,13 +60,13 @@ async def read_auth_storage(ctx: str) -> str:
 
     try:
         data = storage_file.read_text(encoding="utf-8")
-        print(f"data storage file : {data}")
+        logger.debug("data storage file: %s", data)
         # Validate JSON before returning so callers always receive valid dumps
         json.loads(data)
         return data
     except json.JSONDecodeError as exc:
         # Return error info instead of raising - let agent handle it
-        print(f"[WARNING] storage.json for {ctx} is not valid JSON: {exc}")
+        logger.warning("storage.json for %s is not valid JSON: %s", ctx, exc)
         return json.dumps({
             "error": f"Invalid JSON in storage.json: {str(exc)}",
             "cookies": [],

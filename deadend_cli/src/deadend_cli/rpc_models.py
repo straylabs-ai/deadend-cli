@@ -655,6 +655,15 @@ class RPCErrorCode:
     APPROVAL_ERROR = -32006
     INTERRUPT_ERROR = -32007
 
+    # LLM-related error codes
+    LLM_ERROR = -32010
+    LLM_RATE_LIMIT = -32011
+    LLM_QUOTA_EXCEEDED = -32012
+    LLM_AUTH_ERROR = -32013
+    LLM_CONNECTION_ERROR = -32014
+    LLM_MODEL_NOT_FOUND = -32015
+    LLM_INVALID_REQUEST = -32016
+
 
 __all__ = [
     # Component models

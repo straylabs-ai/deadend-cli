@@ -34,7 +34,6 @@ try:
     from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
     from opentelemetry.sdk.trace.export import (
         BatchSpanProcessor,
-        ConsoleSpanExporter,
         SpanExporter,
         SpanExportResult,
     )
@@ -54,6 +53,46 @@ except ImportError:
     class NoOpTracer:
         def start_as_current_span(self, name, **kwargs):
             return NoOpSpan()
+
+
+class StderrSpanExporter(SpanExporter):
+    """Exports spans to stderr instead of stdout.
+
+    This is critical for RPC-based applications where stdout is used for
+    JSON-RPC communication. The standard ConsoleSpanExporter writes to stdout
+    which breaks the RPC protocol.
+    """
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        """Export spans to stderr.
+
+        Args:
+            spans: Sequence of spans to export
+
+        Returns:
+            SpanExportResult indicating success
+        """
+        for span in spans:
+            trace_id = format(span.context.trace_id, '032x')
+            span_id = format(span.context.span_id, '016x')
+            status = span.status.status_code.name if span.status else "UNSET"
+
+            # Simple one-line format for stderr
+            _log(f"[SPAN] {span.name} trace={trace_id[:8]} span={span_id[:8]} status={status}")
+
+            # Log attributes if any (but not the full stacktrace)
+            if span.attributes:
+                for key, value in span.attributes.items():
+                    # Skip exception stacktrace to avoid cluttering output
+                    if key == "exception.stacktrace":
+                        continue
+                    _log(f"  {key}={value}")
+
+        return SpanExportResult.SUCCESS
+
+    def shutdown(self):
+        """Shutdown exporter."""
+        pass
 
 
 class FileSpanExporter(SpanExporter):
@@ -176,10 +215,10 @@ def setup_telemetry() -> trace.Tracer | NoOpTracer:
 
     exporters = []
 
-    # Console exporter (for development)
+    # Console exporter (for development) - uses stderr to avoid breaking RPC
     if os.getenv("OTEL_CONSOLE_ENABLED", "true").lower() == "true":
-        exporters.append(ConsoleSpanExporter())
-        _log("OpenTelemetry: Console exporter enabled")
+        exporters.append(StderrSpanExporter())
+        _log("OpenTelemetry: Stderr exporter enabled")
 
     # OTLP exporter (for production backends)
     if endpoint := os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):

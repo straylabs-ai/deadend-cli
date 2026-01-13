@@ -22,17 +22,22 @@ from contextlib import contextmanager
 
 from pydantic import BaseModel, Field
 from pydantic_ai import RunUsage
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
+
+from deadend_agent.logging import get_module_logger
+
+logger = get_module_logger(__name__)
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 
-# Rich console for colored output - force_terminal ensures colors work in scripts/pipes
-console = Console(force_terminal=True)
+# Rich console for colored output - uses stderr to avoid breaking RPC communication
+console = Console(force_terminal=True, stderr=True)
 
 try:
     import litellm
     from litellm import acompletion
+    # Suppress litellm debug info
+    litellm.suppress_debug_info = True
     LITELLM_AVAILABLE = True
 except ImportError:
     LITELLM_AVAILABLE = False
@@ -49,7 +54,16 @@ try:
 except ImportError:
     AIOLIMITER_AVAILABLE = False
 
-from . import UsageLimitExceeded
+from . import (
+    UsageLimitExceeded,
+    LLMError,
+    RateLimitError as CoreRateLimitError,
+    QuotaExceededError,
+    AuthenticationError,
+    ConnectionError as CoreConnectionError,
+    ModelNotFoundError,
+    InvalidRequestError,
+)
 from .telemetry import tracer
 
 
@@ -138,7 +152,7 @@ class CoreAgent:
             self.rate_limiter = AsyncLimiter(rate_limit_rpm, 60)
         else:
             self.rate_limiter = None
-            print("Warning: aiolimiter not available, rate limiting disabled")
+            logger.warning("aiolimiter not available, rate limiting disabled")
 
         # Usage counters - simple ints
         self.request_count = 0
@@ -153,7 +167,7 @@ class CoreAgent:
         else:
             self.instructor_client = None
             if output_schema and not INSTRUCTOR_AVAILABLE:
-                print("Warning: instructor not available, structured output disabled")
+                logger.warning("instructor not available, structured output disabled")
 
     def tool(self, func: Callable) -> Callable:
         """Decorator to register a tool function.
@@ -533,6 +547,7 @@ class CoreAgent:
         - RateLimitError (rate limiting)
         - ServiceUnavailableError (503)
         - Timeout errors
+        - Connection errors
 
         Args:
             messages: List of messages
@@ -542,16 +557,49 @@ class CoreAgent:
             LiteLLM response object
 
         Raises:
-            Various LiteLLM exceptions on permanent failures
+            CoreRateLimitError: When rate limited and retries exhausted
+            QuotaExceededError: When API quota/billing limit exceeded
+            AuthenticationError: When API authentication fails
+            CoreConnectionError: When connection to API fails
+            ModelNotFoundError: When requested model not available
+            InvalidRequestError: When request is invalid
+            LLMError: For other LLM-related errors
         """
+        # Get litellm exception types (they're in litellm.exceptions)
+        try:
+            from litellm.exceptions import (
+                RateLimitError as LiteLLMRateLimitError,
+                ServiceUnavailableError,
+                Timeout as LiteLLMTimeout,
+                APIConnectionError as LiteLLMConnectionError,
+            )
+            retryable_exceptions = (
+                LiteLLMRateLimitError,
+                ServiceUnavailableError,
+                LiteLLMTimeout,
+                LiteLLMConnectionError,
+            )
+        except ImportError:
+            # Fallback for older litellm versions
+            retryable_exceptions = (Exception,)
+
+        def log_retry(retry_state):
+            """Log retry attempts."""
+            attempt = retry_state.attempt_number
+            exception = retry_state.outcome.exception() if retry_state.outcome else None
+            exc_name = type(exception).__name__ if exception else "Unknown"
+            wait_time = retry_state.next_action.sleep if retry_state.next_action else 0
+            logger.warning(
+                "Retry %d/5 for %s - waiting %.1fs before next attempt",
+                attempt, exc_name, wait_time
+            )
+
         @retry(
-            stop=stop_after_attempt(3),
-            wait=wait_exponential(multiplier=1, min=1, max=10),
-            retry=retry_if_exception_type((
-                getattr(litellm, 'RateLimitError', Exception),
-                getattr(litellm, 'ServiceUnavailableError', Exception),
-                getattr(litellm, 'Timeout', Exception),
-            ))
+            stop=stop_after_attempt(5),
+            wait=wait_exponential(multiplier=2, min=2, max=60),
+            retry=retry_if_exception_type(retryable_exceptions),
+            reraise=True,
+            before_sleep=log_retry,
         )
         async def _call():
             kwargs = {
@@ -576,7 +624,80 @@ class CoreAgent:
 
             return await acompletion(**kwargs)
 
-        return await _call()
+        try:
+            return await _call()
+        except RetryError as e:
+            # Extract the original exception from RetryError
+            original = e.last_attempt.exception() if e.last_attempt else None
+            self._handle_llm_error(original or e)
+        except Exception as e:
+            self._handle_llm_error(e)
+
+    def _handle_llm_error(self, error: Exception) -> None:
+        """Convert LLM errors to user-friendly exceptions.
+
+        Args:
+            error: The original exception
+
+        Raises:
+            Appropriate CoreAgent exception type
+        """
+        error_str = str(error).lower()
+        error_msg = str(error)
+
+        # Log the error
+        logger.error("LLM error: %s", error_msg[:500])
+
+        # Check for quota exceeded (billing issue - don't retry)
+        if "insufficient_quota" in error_str or "exceeded your current quota" in error_str:
+            raise QuotaExceededError(
+                "API quota exceeded. Please check your plan and billing details at "
+                "https://platform.openai.com/account/billing",
+                original_error=error
+            )
+
+        # Check for rate limit (temporary - already retried)
+        if "rate_limit" in error_str or "rate limit" in error_str or "429" in error_str:
+            raise CoreRateLimitError(
+                "Rate limit exceeded after multiple retries. "
+                "Consider reducing request frequency or upgrading your plan.",
+                original_error=error
+            )
+
+        # Check for authentication errors
+        if "auth" in error_str or "api_key" in error_str or "401" in error_str or "invalid_api_key" in error_str:
+            raise AuthenticationError(
+                "API authentication failed. Please check your API key configuration.",
+                original_error=error
+            )
+
+        # Check for model not found
+        if "model" in error_str and ("not found" in error_str or "does not exist" in error_str or "404" in error_str):
+            raise ModelNotFoundError(
+                f"Model '{self.model}' not found. Please verify the model name is correct.",
+                original_error=error
+            )
+
+        # Check for connection errors
+        if "connection" in error_str or "connect" in error_str or "timeout" in error_str or "unreachable" in error_str:
+            raise CoreConnectionError(
+                "Failed to connect to the API after multiple retries. "
+                "Please check your internet connection and API endpoint.",
+                original_error=error
+            )
+
+        # Check for bad request
+        if "bad request" in error_str or "invalid" in error_str or "400" in error_str:
+            raise InvalidRequestError(
+                f"Invalid request to the API: {error_msg[:200]}",
+                original_error=error
+            )
+
+        # Generic LLM error
+        raise LLMError(
+            f"LLM request failed: {error_msg[:300]}",
+            original_error=error
+        )
 
     async def _execute_tools(self, tool_calls: list, deps: Any) -> list[dict]:
         """Execute tool calls with dependency injection.

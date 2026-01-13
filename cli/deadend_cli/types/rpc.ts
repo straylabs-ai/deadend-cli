@@ -116,6 +116,75 @@ export interface JsonRpcError {
   data?: unknown;
 }
 
+/**
+ * JSON-RPC 2.0 error codes.
+ *
+ * Standard and custom error codes used by the RPC server.
+ * These mirror the Python RPCErrorCode class in rpc_models.py.
+ */
+export const RpcErrorCode = {
+  // Standard JSON-RPC errors
+  PARSE_ERROR: -32700,
+  INVALID_REQUEST: -32600,
+  METHOD_NOT_FOUND: -32601,
+  INVALID_PARAMS: -32602,
+  INTERNAL_ERROR: -32603,
+
+  // Custom error codes (reserved range: -32000 to -32099)
+  COMPONENT_ERROR: -32001,
+  INITIALIZATION_FAILED: -32002,
+  HEALTH_CHECK_FAILED: -32003,
+  SHUTDOWN_ERROR: -32004,
+  EVENT_STREAM_ERROR: -32005,
+  APPROVAL_ERROR: -32006,
+  INTERRUPT_ERROR: -32007,
+
+  // LLM-related error codes
+  LLM_ERROR: -32010,
+  LLM_RATE_LIMIT: -32011,
+  LLM_QUOTA_EXCEEDED: -32012,
+  LLM_AUTH_ERROR: -32013,
+  LLM_CONNECTION_ERROR: -32014,
+  LLM_MODEL_NOT_FOUND: -32015,
+  LLM_INVALID_REQUEST: -32016,
+} as const;
+
+/**
+ * Type for RPC error code values.
+ */
+export type RpcErrorCodeValue = (typeof RpcErrorCode)[keyof typeof RpcErrorCode];
+
+/**
+ * Check if an error code is an LLM-related error.
+ */
+export function isLlmError(code: number): boolean {
+  return code >= -32019 && code <= -32010;
+}
+
+/**
+ * Get a user-friendly message for an LLM error code.
+ */
+export function getLlmErrorMessage(code: number): string {
+  switch (code) {
+    case RpcErrorCode.LLM_QUOTA_EXCEEDED:
+      return "API quota exceeded. Please check your plan and billing details.";
+    case RpcErrorCode.LLM_RATE_LIMIT:
+      return "Rate limit exceeded. Please wait and try again.";
+    case RpcErrorCode.LLM_AUTH_ERROR:
+      return "API authentication failed. Please check your API key.";
+    case RpcErrorCode.LLM_CONNECTION_ERROR:
+      return "Failed to connect to the API. Please check your internet connection.";
+    case RpcErrorCode.LLM_MODEL_NOT_FOUND:
+      return "The requested model was not found. Please verify the model name.";
+    case RpcErrorCode.LLM_INVALID_REQUEST:
+      return "Invalid request to the API.";
+    case RpcErrorCode.LLM_ERROR:
+      return "An error occurred with the LLM service.";
+    default:
+      return "An unknown error occurred.";
+  }
+}
+
 // =============================================================================
 // RPC Client Interfaces
 // =============================================================================

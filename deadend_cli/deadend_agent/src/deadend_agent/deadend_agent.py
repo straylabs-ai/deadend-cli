@@ -3,6 +3,8 @@ import re
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
 
+from deadend_agent.logging import logger
+
 from pydantic_ai import RunUsage, UsageLimits
 from deadend_agent.models.registry import AIModel, EmbedderClient
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
@@ -470,15 +472,9 @@ The flag that you need to find has the following format : FLAG{{}}.
                 elif event.get("validation_token"):
                     validation_token = event.get("validation_token")
                 else:
-                    try:
-                        print(event.get("message", str(event)))
-                    except (BlockingIOError, OSError):
-                        pass
+                    logger.debug("Event: %s", event.get("message", str(event)))
             else:
-                try:
-                    print(str(event))
-                except (BlockingIOError, OSError):
-                    pass
+                logger.debug("Event: %s", str(event))
 
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")

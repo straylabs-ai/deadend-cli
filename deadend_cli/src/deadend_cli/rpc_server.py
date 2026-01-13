@@ -32,14 +32,24 @@ from deadend_agent.tools.tool_wrappers import (
     is_approval_mode_enabled,
 )
 from deadend_agent.utils.network import check_target_alive
+from deadend_agent.core_agent import (
+    LLMError,
+    RateLimitError,
+    QuotaExceededError,
+    AuthenticationError,
+    ConnectionError as LLMConnectionError,
+    ModelNotFoundError,
+    InvalidRequestError,
+)
 
 from .component_manager import ComponentManager
 from .event_bus import event_bus
 from .hooks_adapter import EventBusHooksAdapter
 from .logging import logger, setup_logging
+from .rpc_models import RPCErrorCode
 
 
-# JSON-RPC 2.0 error codes
+# JSON-RPC 2.0 error codes (use RPCErrorCode from rpc_models for custom codes)
 class JSONRPCErrorCode:
     """JSON-RPC 2.0 standard error codes."""
     PARSE_ERROR = -32700
@@ -81,17 +91,24 @@ class RPCServer:
         if debug:
             logger.debug("Debug logging enabled")
 
-        # Force stdout to be line-buffered for immediate streaming
+        # CRITICAL: Save original stdout for RPC communication, then redirect
+        # sys.stdout to stderr. This ensures all print() statements from any
+        # module go to stderr instead of polluting the JSON-RPC communication.
+        self._rpc_stdout = sys.stdout
+        sys.stdout = sys.stderr
+        logger.debug("Redirected sys.stdout to stderr for clean RPC communication")
+
+        # Force RPC stdout to be line-buffered for immediate streaming
         # This is critical when running as a subprocess (not attached to TTY)
-        if not sys.stdout.isatty():
+        if not self._rpc_stdout.isatty():
             try:
                 # Python 3.7+ - reconfigure to line buffering
-                sys.stdout.reconfigure(line_buffering=True)
+                self._rpc_stdout.reconfigure(line_buffering=True)
             except (AttributeError, OSError):
                 # Fallback for older Python versions or when reconfigure fails
                 try:
                     # Reopen stdout in line-buffered mode
-                    sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', buffering=1)
+                    self._rpc_stdout = os.fdopen(self._rpc_stdout.fileno(), 'w', buffering=1)
                 except (OSError, AttributeError):
                     # If that fails, at least ensure we flush aggressively
                     logger.warning("Could not configure stdout buffering, will flush aggressively")
@@ -395,12 +412,12 @@ class RPCServer:
                 # never emit non-JSON text on stdout, as the CLI expects NDJSON.
                 serializable = self._to_serializable(response)
                 json_str = json.dumps(serializable, default=str)
-                sys.stdout.write(json_str + "\n")
-                sys.stdout.flush()
+                self._rpc_stdout.write(json_str + "\n")
+                self._rpc_stdout.flush()
                 # Force immediate write for streaming (fsync if possible)
                 try:
-                    if hasattr(sys.stdout, 'fileno'):
-                        os.fsync(sys.stdout.fileno())
+                    if hasattr(self._rpc_stdout, 'fileno'):
+                        os.fsync(self._rpc_stdout.fileno())
                 except (OSError, AttributeError):
                     # Not all file descriptors support fsync, that's okay
                     pass
@@ -481,15 +498,31 @@ class RPCServer:
                 # Handler returned a regular value
                 yield _make_jsonrpc_response(request_id=request_id, result=handler_result)
         except Exception as exc:
-            # Map custom error codes to JSON-RPC error codes
+            # Map exceptions to JSON-RPC error codes
             error_code = JSONRPCErrorCode.INTERNAL_ERROR
+            error_message = str(exc)
+
             if isinstance(exc, ValueError):
                 error_code = JSONRPCErrorCode.INVALID_PARAMS
-            
+            elif isinstance(exc, QuotaExceededError):
+                error_code = RPCErrorCode.LLM_QUOTA_EXCEEDED
+            elif isinstance(exc, RateLimitError):
+                error_code = RPCErrorCode.LLM_RATE_LIMIT
+            elif isinstance(exc, AuthenticationError):
+                error_code = RPCErrorCode.LLM_AUTH_ERROR
+            elif isinstance(exc, LLMConnectionError):
+                error_code = RPCErrorCode.LLM_CONNECTION_ERROR
+            elif isinstance(exc, ModelNotFoundError):
+                error_code = RPCErrorCode.LLM_MODEL_NOT_FOUND
+            elif isinstance(exc, InvalidRequestError):
+                error_code = RPCErrorCode.LLM_INVALID_REQUEST
+            elif isinstance(exc, LLMError):
+                error_code = RPCErrorCode.LLM_ERROR
+
             yield _make_jsonrpc_error(
                 request_id=request_id,
                 code=error_code,
-                message=str(exc),
+                message=error_message,
             )
 
     # =========================================================================
