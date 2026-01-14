@@ -14,7 +14,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
 import toml
-
+from deadend_agent.logging import logger
 # Load cached CLI configuration first (if present), then environment variables
 _CACHE_TOML_PATH = Path.home() / ".cache" / "deadend" / "config.toml"
 _CACHE_CONFIG: dict[str, str] = {}
@@ -29,6 +29,7 @@ def _load_cache_toml() -> dict[str, str]:
         return {}
 
 _CACHE_CONFIG = _load_cache_toml()
+logger.info("Logging is : %s", _CACHE_CONFIG)
 
 def _cfg(key: str, default: str | None = None) -> str | None:
     """Return config value preferring cache TOML, then environment, else default."""

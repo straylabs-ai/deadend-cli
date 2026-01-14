@@ -176,6 +176,8 @@ class RPCServer:
         prompt: str,
         target: str,
         mode: str = "yolo",
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
     ):
         try:
             # Yield initial event IMMEDIATELY to signal task has started
@@ -184,9 +186,18 @@ class RPCServer:
                 "phase": "init",
                 "data": {"message": "Task started", "target": target, "prompt": prompt},
             }
-            
+
             # Give the event loop a chance to send the first message before heavy work
             await asyncio.sleep(0.01)
+
+            # If provider is specified, switch to it
+            if provider:
+                yield {
+                    "phase": "init",
+                    "data": {"message": f"Setting LLM provider to {provider}..."},
+                }
+                self.component_manager.set_llm_provider(provider)
+                self.llm_provider = provider
 
             yield {
                 "phase": "init",

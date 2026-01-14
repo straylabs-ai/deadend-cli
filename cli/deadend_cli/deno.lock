@@ -2,9 +2,12 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@1": "1.0.16",
+    "jsr:@std/collections@^1.1.3": "1.1.3",
     "jsr:@std/fs@*": "1.0.20",
+    "jsr:@std/fs@1": "1.0.20",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@^1.1.3": "1.1.3",
+    "jsr:@std/toml@^1.0.11": "1.0.11",
     "npm:@types/react-dom@^19.2.3": "19.2.3_@types+react@19.2.7",
     "npm:@types/react@^19.2.7": "19.2.7",
     "npm:commander@^14.0.2": "14.0.2",
@@ -18,6 +21,9 @@
       "dependencies": [
         "jsr:@std/internal"
       ]
+    },
+    "@std/collections@1.1.3": {
+      "integrity": "bf8b0818886df6a32b64c7d3b037a425111f28278d69fd0995aeb62777c986b0"
     },
     "@std/fs@1.0.20": {
       "integrity": "e953206aae48d46ee65e8783ded459f23bec7dd1f3879512911c35e5484ea187",
@@ -33,6 +39,12 @@
       "integrity": "b015962d82a5e6daea980c32b82d2c40142149639968549c649031a230b1afb3",
       "dependencies": [
         "jsr:@std/internal"
+      ]
+    },
+    "@std/toml@1.0.11": {
+      "integrity": "e084988b872ca4bad6aedfb7350f6eeed0e8ba88e9ee5e1590621c5b5bb8f715",
+      "dependencies": [
+        "jsr:@std/collections"
       ]
     }
   },
@@ -275,6 +287,7 @@
     "dependencies": [
       "jsr:@std/assert@1",
       "jsr:@std/fs@1",
+      "jsr:@std/toml@^1.0.11",
       "npm:@types/react-dom@^19.2.3",
       "npm:@types/react@^19.2.7",
       "npm:commander@^14.0.2",

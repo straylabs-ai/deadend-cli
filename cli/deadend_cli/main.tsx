@@ -1,11 +1,10 @@
 import { render, Box, Text } from "ink";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Banner } from "./components/Banner.tsx";
 import { Chat } from "./components/chat.tsx";
 import { Presetup } from "./components/Presetup.tsx";
 import { LoadingSpinner } from "./components/LoadingSpinner.tsx";
 import { DeadEndRpcClient } from "./lib/deadend-rpc-client.ts";
-import { DummyRpcClient } from "./lib/dummy-rpc-client.ts";
 import { configExists } from "./lib/config.ts";
 import { parseArgs, showHelp, type CliArgs } from "./lib/cli-args.ts";
 import type { InitResult } from "./types/rpc.ts";
@@ -18,85 +17,95 @@ function App({ cliArgs }: AppProps) {
   const [shouldExit, setShouldExit] = useState(false);
   const [showPresetup, setShowPresetup] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
-  const [rpcClient, setRpcClient] = useState<DeadEndRpcClient | DummyRpcClient | null>(null);
+  const [rpcClient, setRpcClient] = useState<DeadEndRpcClient | null>(null);
   const [rpcError, setRpcError] = useState<string | null>(null);
-  const [useRealClient, setUseRealClient] = useState(true);
   const [initStatus, setInitStatus] = useState<string>("Connecting to RPC server...");
   const [initComplete, setInitComplete] = useState(false);
   const [componentResults, setComponentResults] = useState<InitResult[]>([]);
 
+  // Ref to track rpcClient for cleanup (avoids stale closure in signal handler)
+  const rpcClientRef = useRef<DeadEndRpcClient | null>(null);
+
+  // Shutdown helper 
+  const cleanupClient = async () => {
+    if (!rpcClientRef.current) return;
+
+    try {
+      await rpcClientRef.current.shutdown();
+    } catch (err) {
+      console.error("Failed to shutdown RPC server gracefully:", err);
+    } finally {
+      rpcClientRef.current.close();
+      rpcClientRef.current = null;
+    }
+  }
+
   // Initialize RPC client and components
   useEffect(() => {
     const initClient = async () => {
-      if (useRealClient) {
-        try {
-          // Try to create and start the real RPC client
-          // Use uv to run the Python RPC server module
-          // The Python package is in ../../deadend_cli relative to this file
-          const scriptDir = import.meta.dirname ?? Deno.cwd();
-          const pythonPkgDir = `${scriptDir}/../../deadend_cli`;
+      try {
+        // Try to create and start the real RPC client
+        // Use uv to run the Python RPC server module
+        // The Python package is in ../../deadend_cli relative to this file
+        const scriptDir = import.meta.dirname ?? Deno.cwd();
+        const pythonPkgDir = `${scriptDir}/../../deadend_cli`;
 
-          setInitStatus("Starting RPC server...");
-          const client = new DeadEndRpcClient({
-            pythonCommand: "uv",
-            commandArgs: ["run", "python", "-m", "deadend_cli.rpc_server"],
-            cwd: pythonPkgDir,
-          });
-          await client.start();
+        setInitStatus("Starting RPC server...");
+        const client = new DeadEndRpcClient({
+          pythonCommand: "uv",
+          commandArgs: ["run", "python", "-m", "deadend_cli.rpc_server"],
+          cwd: pythonPkgDir,
+        });
+        await client.start();
 
-          // Test connection with ping
-          setInitStatus("Connecting to RPC server...");
-          const isAlive = await client.ping();
-          if (!isAlive) {
-            throw new Error("RPC server not responding");
-          }
-
-          // Initialize all components at once using init_all
-          setInitStatus("Initializing all components...");
-          const initResult = await client.initAll();
-
-          // Store component results for display
-          setComponentResults(initResult.components);
-
-          // Log individual component results
-          for (const component of initResult.components) {
-            if (component.success) {
-              console.log(`✓ ${component.component}: ${component.message}`);
-            } else {
-              console.error(`✗ ${component.component}: ${component.message}`);
-            }
-          }
-
-          // Check for critical failures (all components required for task execution)
-          const criticalComponents = ["docker", "config", "model_registry", "pgvector", "shell_sandbox"];
-          const criticalFailures = initResult.failed_components.filter(
-            (c) => criticalComponents.includes(c)
-          );
-
-          if (criticalFailures.length > 0) {
-            throw new Error(
-              `Critical components failed: ${criticalFailures.join(", ")}`
-            );
-          }
-
-          // Warn about non-critical failures
-          if (initResult.failed_components.length > 0) {
-            console.warn(
-              `Warning: Some components failed to initialize: ${initResult.failed_components.join(", ")}`
-            );
-          }
-
-          setRpcClient(client);
-          setInitComplete(true);
-        } catch (err) {
-          // Fall back to dummy client
-          console.error("Failed to initialize:", err);
-          setRpcError(err instanceof Error ? err.message : String(err));
-          setRpcClient(new DummyRpcClient(500));
-          setInitComplete(true);
+        // Test connection with ping
+        setInitStatus("Connecting to RPC server...");
+        const isAlive = await client.ping();
+        if (!isAlive) {
+          throw new Error("RPC server not responding");
         }
-      } else {
-        setRpcClient(new DummyRpcClient(500));
+
+        // Initialize all components at once using init_all
+        setInitStatus("Initializing all components...");
+        const initResult = await client.initAll();
+
+        // Store component results for display
+        setComponentResults(initResult.components);
+
+        // Log individual component results
+        for (const component of initResult.components) {
+          if (component.success) {
+            console.log(`✓ ${component.component}: ${component.message}`);
+          } else {
+            console.error(`✗ ${component.component}: ${component.message}`);
+          }
+        }
+
+        // Check for critical failures (all components required for task execution)
+        const criticalComponents = ["docker", "config", "model_registry", "pgvector", "shell_sandbox"];
+        const criticalFailures = initResult.failed_components.filter(
+          (c) => criticalComponents.includes(c)
+        );
+
+        if (criticalFailures.length > 0) {
+          throw new Error(
+            `Critical components failed: ${criticalFailures.join(", ")}`
+          );
+        }
+
+        // Warn about non-critical failures
+        if (initResult.failed_components.length > 0) {
+          console.warn(
+            `Warning: Some components failed to initialize: ${initResult.failed_components.join(", ")}`
+          );
+        }
+
+        rpcClientRef.current = client;
+        setRpcClient(client);
+        setInitComplete(true);
+      } catch (err) {
+        console.error("Failed to initialize:", err);
+        setRpcError(err instanceof Error ? err.message : String(err));
         setInitComplete(true);
       }
     };
@@ -105,11 +114,25 @@ function App({ cliArgs }: AppProps) {
 
     // Cleanup on unmount
     return () => {
-      if (rpcClient && "close" in rpcClient) {
-        (rpcClient as DeadEndRpcClient).close();
-      }
+      void cleanupClient();
     };
-  }, [useRealClient]);
+  }, []);
+
+  // Set up signal handler for SIGINT (Ctrl+C) to cleanup RPC server
+  useEffect(() => {
+    const signalHandler = () => {
+      void ( async () => {
+        await cleanupClient();
+        Deno.exit(0);
+      })();
+    };
+
+    Deno.addSignalListener("SIGINT", signalHandler);
+
+    return () => {
+      Deno.removeSignalListener("SIGINT", signalHandler);
+    };
+  }, []);
 
   // Check if config exists on mount
   useEffect(() => {
@@ -160,8 +183,8 @@ function App({ cliArgs }: AppProps) {
           )}
           {rpcError && (
             <Box marginTop={1}>
-              <Text color="yellow" dimColor>
-                Note: Using offline mode ({rpcError})
+              <Text color="red" bold>
+                Error: Failed to initialize RPC client: {rpcError}
               </Text>
             </Box>
           )}
@@ -259,7 +282,7 @@ function App({ cliArgs }: AppProps) {
         </Box>
       </Box>
       <Box flexDirection="column" flexGrow={1}>
-        <Chat rpcClient={rpcClient} onExit={handleExit} cliArgs={cliArgs} />
+        <Chat rpcClient={rpcClient} onExit={handleExit} cliArgs={cliArgs} componentResults={componentResults} />
       </Box>
     </Box>
   );

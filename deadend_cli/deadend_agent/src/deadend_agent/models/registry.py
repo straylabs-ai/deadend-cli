@@ -113,7 +113,8 @@ class EmbedderClient:
                 raise ValueError(f"Embedding API error: {error_msg}")
             else:
                 # Try to find embeddings in the response
-                error_msg = f"Unexpected response structure: {list(data.keys()) if isinstance(data, dict) else type(data)}"
+                error_msg = f"Unexpected response structure: \
+                    {list(data.keys()) if isinstance(data, dict) else type(data)}"
                 raise ValueError(error_msg)
 
         return embeddings if embeddings else []
@@ -222,7 +223,7 @@ class ModelRegistry:
                 api_key=config.open_router_key,
                 base_url="https://openrouter.ai/api/v1/embeddings"
             )
-        
+
     def get_model(self, provider: str = 'openai') -> AIModel:
         """Retrieve a model instance for the specified provider.
         
@@ -241,7 +242,8 @@ class ModelRegistry:
         if provider not in self._models:
             raise ValueError(f"Model provider {provider} not supported.")
         elif not self._models:
-            raise ValueError("No model was instantiated. Have you tried supplying an API key for the Model?")
+            raise ValueError("No model was instantiated. \
+                Have you tried supplying an API key for the Model?")
         return self._models[provider]
 
     def get_embedder_model(self) -> EmbedderClient:

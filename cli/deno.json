@@ -1,5 +1,6 @@
 {
   "imports": {
+    "@std/toml": "jsr:@std/toml@^1.0.11",
     "commander": "npm:commander@^14.0.2"
   }
 }

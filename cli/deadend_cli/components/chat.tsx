@@ -3,31 +3,35 @@
  * @description Main chat component for the DeadEnd CLI.
  *
  * This component provides:
+ * - Unified chat interface with inline streaming events
  * - Command input and parsing
  * - Mode switching between YOLO (autonomous) and Supervisor modes
  * - Keyboard shortcut (Shift+Tab) for mode toggling
- * - View switching for task execution
  */
 
-import { useState, useCallback, useMemo, useEffect } from "react";
-import { Box, Text, useInput } from "ink";
-import TextInput from "ink-text-input";
+import { useState, useCallback, useEffect } from "react";
+import { Box, useInput } from "ink";
 import type { Message } from "../types/message.ts";
 import { createMessage } from "../types/message.ts";
 import { parseCommand, isCommand } from "../lib/commands/command-parser.ts";
 import { executeCommand } from "../lib/commands/command-handler.ts";
-import type { RpcClient, StreamingRpcClient } from "../types/rpc.ts";
-import { COMMANDS } from "../types/command.ts";
-import { LoadingSpinner } from "./LoadingSpinner.tsx";
+import type { RpcClient, InitResult } from "../types/rpc.ts";
 import { ConfigSetup } from "./ConfigSetup.tsx";
-import { YoloView } from "./YoloView.tsx";
-import { NormalView } from "./NormalView.tsx";
 import { START_RUN } from "../lib/commands/handlers/run.ts";
-import { setLlmRpcClient, INFO_MESSAGE_PREFIX, OPEN_LLM_SELECTOR } from "../lib/commands/handlers/llm.ts";
+import {
+  setLlmRpcClient,
+  INFO_MESSAGE_PREFIX,
+  OPEN_LLM_SELECTOR,
+} from "../lib/commands/handlers/llm.ts";
 import { LlmSelector } from "./LlmSelector.tsx";
 import { getCurrentTarget, setTarget } from "../lib/commands/handlers/target.ts";
 import type { CliArgs } from "../lib/cli-args.ts";
-import type { DeadEndRpcClient, DoneEvent } from "../lib/deadend-rpc-client.ts";
+import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
+import { StatusArea, type StatusNotification } from "./StatusArea.tsx";
+import { ChatHistory } from "./ChatHistory.tsx";
+import { InputArea } from "./InputArea.tsx";
+import { useTaskRunner } from "../hooks/useTaskRunner.ts";
+import { loadSettings, type CliSettings } from "../lib/settings.ts";
 
 /**
  * Execution mode for security testing.
@@ -36,29 +40,27 @@ import type { DeadEndRpcClient, DoneEvent } from "../lib/deadend-rpc-client.ts";
  */
 export type ExecutionMode = "yolo" | "supervisor";
 
-/** Current view state - chat input or task execution views */
-type ViewMode = "chat" | "yolo" | "normal";
-
-interface ViewParams {
-  target: string;
-  task: string;
-}
-
 interface ChatProps {
   rpcClient: RpcClient | DeadEndRpcClient;
   onExit?: () => void;
   cliArgs?: CliArgs;
+  /** Component initialization results for status display */
+  componentResults?: InitResult[];
 }
 
-export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
+export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [showConfigSetup, setShowConfigSetup] = useState(false);
   const [showLlmSelector, setShowLlmSelector] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("chat");
-  const [viewParams, setViewParams] = useState<ViewParams | null>(null);
-  const [currentLlm, setCurrentLlm] = useState<{ provider: string; model: string | null } | null>(null);
+  const [currentLlm, setCurrentLlm] = useState<{
+    provider: string;
+    model: string | null;
+  } | null>(null);
+  const [notifications, setNotifications] = useState<StatusNotification[]>([]);
+  const [showComponentStatus, setShowComponentStatus] = useState(false);
+  const [settings, setSettings] = useState<CliSettings>({});
 
   /**
    * Current execution mode (persists across task executions).
@@ -66,6 +68,30 @@ export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
    * - "supervisor": Supervised mode - runs with approval workflow
    */
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("yolo");
+
+  const addMessage = useCallback((message: Message) => {
+    setMessages((prev) => [...prev, message]);
+  }, []);
+
+  // Task runner hook for streaming task execution
+  const { taskState, runTask, cancel } = useTaskRunner(
+    rpcClient as DeadEndRpcClient,
+    {
+      onMessage: addMessage,
+      onComplete: () => {
+        // Task completed, no special action needed
+      },
+      onCancel: () => {
+        addMessage(createMessage("system", "Task cancelled.", "info"));
+      },
+      onError: (error) => {
+        setNotifications((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), type: "error", message: error },
+        ]);
+      },
+    }
+  );
 
   /**
    * Toggle between execution modes.
@@ -88,26 +114,43 @@ export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
   }, [rpcClient]);
 
   /**
-   * Fetch current LLM provider and model info.
+   * Load CLI settings on mount and set LLM display.
+   * Settings take priority over server-reported provider.
    */
-  const fetchCurrentLlm = useCallback(async () => {
-    if (rpcClient && "listLlmProviders" in rpcClient) {
-      try {
-        const result = await (rpcClient as DeadEndRpcClient).listLlmProviders();
-        const current = result.providers.find((p) => p.name === result.current);
-        setCurrentLlm({
-          provider: result.current,
-          model: current?.model || null,
-        });
-      } catch {
-        // Ignore errors
-      }
-    }
-  }, [rpcClient]);
-
   useEffect(() => {
-    fetchCurrentLlm();
-  }, [fetchCurrentLlm]);
+    const initLlm = async () => {
+      // First load settings
+      const loaded = await loadSettings();
+      setSettings(loaded);
+
+      // Apply execution mode from settings if set
+      if (loaded.executionMode) {
+        setExecutionMode(loaded.executionMode);
+      }
+
+      // If settings has provider, use it
+      if (loaded.provider) {
+        setCurrentLlm({
+          provider: loaded.provider,
+          model: loaded.model || null,
+        });
+      } else if (rpcClient && "listLlmProviders" in rpcClient) {
+        // Otherwise, fetch from server as fallback
+        try {
+          const result = await (rpcClient as DeadEndRpcClient).listLlmProviders();
+          const current = result.providers.find((p) => p.name === result.current);
+          setCurrentLlm({
+            provider: result.current,
+            model: current?.model || null,
+          });
+        } catch {
+          // Ignore errors
+        }
+      }
+    };
+
+    initLlm();
+  }, [rpcClient]);
 
   /**
    * Handle CLI arguments on startup.
@@ -126,14 +169,22 @@ export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
 
     // If prompt is provided, execute it after target is set
     if (cliArgs?.prompt && cliArgs?.target) {
-      // Verify rpcClient has runTask method (is DeadEndRpcClient, not DummyRpcClient)
       if (rpcClient && "runTask" in rpcClient) {
-        setViewParams({ target: cliArgs.target, task: cliArgs.prompt });
-        setViewMode(executionMode === "yolo" ? "yolo" : "normal");
+        // Add user message for the task
+        const userMessage = createMessage("user", cliArgs.prompt, "text");
+        addMessage(userMessage);
+        // Start the task with settings
+        runTask({
+          target: cliArgs.target,
+          task: cliArgs.prompt,
+          mode: executionMode,
+          provider: settings.provider,
+          model: settings.model,
+        });
       } else {
         const errorMessage = createMessage(
           "system",
-          "Cannot start task: RPC client not properly initialized. Please check the server connection.",
+          "Cannot start task: RPC client not properly initialized.",
           "error"
         );
         addMessage(errorMessage);
@@ -144,40 +195,24 @@ export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
   /**
    * Handle keyboard shortcuts.
    * Shift+Tab: Toggle between YOLO and Supervisor modes
+   * Ctrl+C: Cancel running task
    */
-  useInput((input, key) => {
-    // Shift+Tab to toggle mode
-    if (key.shift && key.tab) {
-      toggleMode();
-    }
-  }, { isActive: viewMode === "chat" && !showConfigSetup });
-
-  // Filter commands based on input
-  const filteredCommands = useMemo(() => {
-    if (!input.startsWith("/")) {
-      return [];
-    }
-    
-    const commandPart = input.slice(1).trim().toLowerCase();
-    if (commandPart === "") {
-      return COMMANDS;
-    }
-    
-    return COMMANDS.filter((cmd) => {
-      const nameMatch = cmd.name.toLowerCase().startsWith(commandPart);
-      const aliasMatch = cmd.aliases?.some((alias) =>
-        alias.toLowerCase().startsWith(commandPart)
-      );
-      return nameMatch || aliasMatch;
-    });
-  }, [input]);
-
-  const addMessage = useCallback((message: Message) => {
-    setMessages((prev) => [...prev, message]);
-  }, []);
+  useInput(
+    (inputChar, key) => {
+      // Shift+Tab to toggle mode
+      if (key.shift && key.tab) {
+        toggleMode();
+      }
+      // Ctrl+C to cancel running task
+      if (key.ctrl && inputChar === "c" && taskState.isRunning) {
+        cancel();
+      }
+    },
+    { isActive: !showConfigSetup && !showLlmSelector }
+  );
 
   const handleSubmit = useCallback(async () => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || taskState.isRunning) return;
 
     const trimmedInput = input.trim();
     setInput("");
@@ -247,9 +282,15 @@ export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
             setIsLoading(false);
             return;
           }
-          setViewParams({ target, task: taskArg });
-          setViewMode(executionMode === "yolo" ? "yolo" : "normal");
+          // Start the task (events will stream as messages)
           setIsLoading(false);
+          runTask({
+            target,
+            task: taskArg,
+            mode: executionMode,
+            provider: settings.provider,
+            model: settings.model,
+          });
           return;
         }
 
@@ -275,7 +316,7 @@ export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
       return;
     }
 
-    // No valid command found - call the agent with this task
+    // No valid command found - treat as task for agent
     const userMessage = createMessage("user", trimmedInput, "text");
     addMessage(userMessage);
 
@@ -293,11 +334,26 @@ export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
     }
 
     // Start agent execution with the message as the task
-    setViewParams({ target, task: trimmedInput });
-    setViewMode(executionMode === "yolo" ? "yolo" : "normal");
     setIsLoading(false);
-  }, [input, isLoading, rpcClient, addMessage, onExit, executionMode]);
+    runTask({
+      target,
+      task: trimmedInput,
+      mode: executionMode,
+      provider: settings.provider,
+      model: settings.model,
+    });
+  }, [
+    input,
+    isLoading,
+    taskState.isRunning,
+    addMessage,
+    onExit,
+    executionMode,
+    runTask,
+    settings,
+  ]);
 
+  // Config setup view
   if (showConfigSetup) {
     return (
       <Box flexDirection="column" flexGrow={1}>
@@ -326,11 +382,7 @@ export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
           onComplete={() => {
             setShowLlmSelector(false);
             fetchCurrentLlm();
-            const successMessage = createMessage(
-              "system",
-              "LLM provider updated.",
-              "info"
-            );
+            const successMessage = createMessage("system", "LLM provider updated.", "info");
             addMessage(successMessage);
           }}
           onCancel={() => {
@@ -341,191 +393,30 @@ export function Chat({ rpcClient, onExit, cliArgs }: ChatProps) {
     );
   }
 
-  // YOLO mode view
-  if (viewMode === "yolo" && viewParams) {
-    // Check if rpcClient supports streaming (DeadEndRpcClient)
-    const streamingClient = rpcClient as unknown as DeadEndRpcClient;
-    return (
-      <Box flexDirection="column" flexGrow={1}>
-        <YoloView
-          target={viewParams.target}
-          task={viewParams.task}
-          rpcClient={streamingClient}
-          onComplete={(result: DoneEvent) => {
-            // Add result as a message and return to chat
-            const resultMessage = createMessage(
-              "system",
-              `YOLO mode completed.\nTarget: ${result.target}\nMode: ${result.mode}`,
-              "text"
-            );
-            addMessage(resultMessage);
-            setViewMode("chat");
-            setViewParams(null);
-          }}
-          onCancel={() => {
-            const cancelMessage = createMessage(
-              "system",
-              "YOLO mode cancelled.",
-              "text"
-            );
-            addMessage(cancelMessage);
-            setViewMode("chat");
-            setViewParams(null);
-          }}
-        />
-      </Box>
-    );
-  }
-
-  // Normal/Supervisor mode view
-  if (viewMode === "normal" && viewParams) {
-    const streamingClient = rpcClient as unknown as DeadEndRpcClient;
-    return (
-      <Box flexDirection="column" flexGrow={1}>
-        <NormalView
-          target={viewParams.target}
-          task={viewParams.task}
-          rpcClient={streamingClient}
-          onComplete={(result: DoneEvent) => {
-            const resultMessage = createMessage(
-              "system",
-              `Supervisor mode completed.\nTarget: ${result.target}\nMode: ${result.mode}`,
-              "text"
-            );
-            addMessage(resultMessage);
-            setViewMode("chat");
-            setViewParams(null);
-          }}
-          onCancel={() => {
-            const cancelMessage = createMessage(
-              "system",
-              "Supervisor mode cancelled.",
-              "text"
-            );
-            addMessage(cancelMessage);
-            setViewMode("chat");
-            setViewParams(null);
-          }}
-        />
-      </Box>
-    );
-  }
-
   return (
     <Box flexDirection="column" flexGrow={1}>
-      {/* Messages area */}
-      <Box flexDirection="column" flexGrow={1} marginBottom={1}>
-        {messages.length === 0 ? (
-          <Text color="gray" dimColor>
-            No messages yet. Type / to see available commands...
-          </Text>
-        ) : (
-          messages.map((msg) => (
-            <Box key={msg.id} marginBottom={1} flexDirection="column">
-              {msg.role === "user" ? (
-                // User messages: show content with grey background (like Claude Code)
-                <Box flexDirection="column">
-                  <Text backgroundColor="gray" color="white">
-                    {" > "}{msg.content}{" "}
-                  </Text>
-                  <Text color="gray" dimColor>
-                    {msg.timestamp.toLocaleTimeString()}
-                  </Text>
-                </Box>
-              ) : (
-                // Assistant/System messages: show with role prefix
-                <Box flexDirection="column">
-                  <Box flexDirection="row" marginBottom={0}>
-                    <Text
-                      color={msg.role === "assistant" ? "red" : "yellow"}
-                      bold
-                    >
-                      {msg.role === "assistant" ? "AI: " : "System: "}
-                    </Text>
-                    <Text
-                      color={msg.type === "error" ? "red" : undefined}
-                      italic={msg.type === "info"}
-                    >
-                      {msg.content}
-                    </Text>
-                  </Box>
-                  <Text color="gray" dimColor>
-                    {msg.timestamp.toLocaleTimeString()}
-                  </Text>
-                </Box>
-              )}
-            </Box>
-          ))
-        )}
-        {isLoading && (
-          <LoadingSpinner text="Thinking" color="red" />
-        )}
-      </Box>
+      {/* Status area - shows component health and task status */}
+      <StatusArea
+        componentResults={componentResults}
+        taskPhase={taskState.phase}
+        taskTarget={taskState.target}
+        isRunning={taskState.isRunning}
+        notifications={notifications}
+        showComponents={showComponentStatus}
+      />
 
-      {/* Input area */}
-      <Box
-        borderStyle="round"
-        borderColor="grey"
-      >
-        <Box flexDirection="row">
-          <Text color="grey">{"> "}</Text>
-          <TextInput
-            value={input}
-            onChange={setInput}
-            onSubmit={handleSubmit}
-            placeholder="Type / to see commands..."
-          />
-        </Box>
-      </Box>
+      {/* Chat history - scrollable messages area */}
+      <ChatHistory messages={messages} />
 
-      {/* Mode and LLM indicator */}
-      <Box flexDirection="row" justifyContent="space-between" marginTop={0}>
-        <Box flexDirection="row">
-          <Text color="gray" dimColor>Running mode: </Text>
-          <Text
-            color={executionMode === "yolo" ? "red" : "yellow"}
-            bold
-          >
-            {executionMode.toUpperCase()}
-          </Text>
-          <Text color="gray" dimColor> (shift+tab to switch)</Text>
-        </Box>
-        {currentLlm && (
-          <Box flexDirection="row">
-            <Text color="gray" dimColor>LLM: </Text>
-            <Text italic>{currentLlm.provider}{currentLlm.model ? `: ${currentLlm.model}` : ""}</Text>
-          </Box>
-        )}
-      </Box>
-
-      {/* Command suggestions */}
-      {input.startsWith("/") && filteredCommands.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color="gray" dimColor>
-            Available commands:
-          </Text>
-          {filteredCommands.map((cmd) => {
-            const isSpecialCommand = ["run", "target", "llm", "report"].includes(cmd.name);
-            const specialColor = "#FFA500";
-            return (
-              <Box key={cmd.name} flexDirection="column" marginTop={0}>
-                <Box flexDirection="row">
-                  <Text color={isSpecialCommand ? specialColor : "cyan"} bold>
-                    /{cmd.name.padEnd(10)}
-                  </Text>
-                  <Text italic> - {cmd.description}</Text>
-                </Box>
-                {cmd.usage && (
-                  <Text color="gray" dimColor>
-                    {"           "}Usage: {cmd.usage}
-                  </Text>
-                )}
-              </Box>
-            );
-          })}
-        </Box>
-      )}
+      {/* Input area - text input with mode indicator */}
+      <InputArea
+        value={input}
+        onChange={setInput}
+        onSubmit={handleSubmit}
+        isLoading={taskState.isRunning}
+        executionMode={executionMode}
+        currentLlm={currentLlm}
+      />
     </Box>
   );
 }
-

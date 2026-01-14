@@ -16,8 +16,6 @@ import docker
 
 
 from deadend_agent.core import init_rag_database, sandbox_setup, setup_model_registry, start_python_sandbox, stop_python_sandbox
-from deadend_agent.config.settings import Config
-from deadend_agent.models.registry import ModelRegistry
 from deadend_agent.tools.browser_automation import PlaywrightRequester
 from .rpc_models import (
     ComponentStatus,

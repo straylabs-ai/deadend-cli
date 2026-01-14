@@ -312,6 +312,10 @@ export interface RunTaskParams {
   openapi_spec?: unknown;
   knowledge_base?: string;
   mode?: "yolo" | "safe" | "supervisor";
+  /** LLM provider to use (openai, anthropic, gemini, openrouter, local) */
+  provider?: string;
+  /** Model name to use (overrides default for provider) */
+  model?: string;
 }
 
 /**
