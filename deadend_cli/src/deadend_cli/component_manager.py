@@ -688,12 +688,14 @@ class ComponentManager:
     # Component Access Methods
     # ==========================================================================
 
-    def get_model(self, provider: str | None = None):
+    def get_model(self, provider: str | None = None, model_name: str | None = None):
         """Get a model instance from the model registry.
 
         Args:
             provider: The LLM provider to use (openai, anthropic, gemini, openrouter, local).
                      If None, uses the current_llm_provider.
+            model_name: Optional model name override. If provided, creates a model
+                       instance with this specific model name.
 
         Returns:
             Model instance
@@ -709,12 +711,12 @@ class ComponentManager:
             raise RuntimeError(
                 "No LLM model configured. Run `deadend init` to initialize the model configuration."
             )
-        
+
         # Use current provider if not specified
         if provider is None:
             provider = self.current_llm_provider
-        
-        return self.model_registry.get_model(provider=provider)
+
+        return self.model_registry.get_model(provider=provider, model_name=model_name)
 
     def set_llm_provider(self, provider: str) -> None:
         """Set the current LLM provider.

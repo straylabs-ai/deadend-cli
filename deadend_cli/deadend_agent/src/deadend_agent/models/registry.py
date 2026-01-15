@@ -134,16 +134,17 @@ class ModelRegistry:
 
     def __init__(self, config: Config):
         """Initialize the ModelRegistry with configuration.
-        
+
         Reads model settings from the provided configuration and initializes
         model instances for all configured providers. Also sets up the
         embedding client based on the first available provider configuration.
-        
+
         Args:
             config: Configuration object containing API keys and model settings
                 for various providers.
         """
         self._models: Dict[str, AIModel] = {}
+        self._config = config  # Store config for runtime model creation
         self._initialize_models(config=config)
 
     def _initialize_models(self, config: Config):
@@ -224,17 +225,19 @@ class ModelRegistry:
                 base_url="https://openrouter.ai/api/v1/embeddings"
             )
 
-    def get_model(self, provider: str = 'openai') -> AIModel:
+    def get_model(self, provider: str = 'openai', model_name: str | None = None) -> AIModel:
         """Retrieve a model instance for the specified provider.
-        
+
         Args:
             provider: Name of the provider to retrieve. Must be one of:
-                'openai', 'anthropic', 'gemini', or 'openrouter'.
+                'openai', 'anthropic', 'gemini', 'openrouter', or 'local'.
                 Defaults to 'openai'.
-        
+            model_name: Optional model name override. If provided, creates a new
+                model instance with this name instead of using the default.
+
         Returns:
             AIModel instance for the requested provider.
-        
+
         Raises:
             ValueError: If the provider is not supported, not configured,
                 or no models have been initialized.
@@ -244,7 +247,69 @@ class ModelRegistry:
         elif not self._models:
             raise ValueError("No model was instantiated. \
                 Have you tried supplying an API key for the Model?")
-        return self._models[provider]
+
+        # If no model_name override, return the default model
+        if model_name is None:
+            return self._models[provider]
+
+        # Create a new model instance with the override name
+        return self._create_model_with_name(provider, model_name)
+
+    def _create_model_with_name(self, provider: str, model_name: str) -> AIModel:
+        """Create a new model instance with a specific model name.
+
+        Args:
+            provider: The provider to create the model for.
+            model_name: The model name to use.
+
+        Returns:
+            A new AIModel instance with the specified model name.
+
+        Raises:
+            ValueError: If the provider is not configured.
+        """
+        models_settings = self._config.get_models_settings()
+
+        if provider == 'openai':
+            if not models_settings.openai:
+                raise ValueError("OpenAI provider not configured")
+            return OpenAIChatModel(
+                model_name=model_name,
+                provider=OpenAIProvider(api_key=models_settings.openai.api_key)
+            )
+        elif provider == 'anthropic':
+            if not models_settings.anthropic:
+                raise ValueError("Anthropic provider not configured")
+            return AnthropicModel(
+                model_name=model_name,
+                provider=AnthropicProvider(api_key=models_settings.anthropic.api_key)
+            )
+        elif provider == 'gemini':
+            if not models_settings.gemini:
+                raise ValueError("Gemini provider not configured")
+            return GoogleModel(
+                model_name=model_name,
+                provider=GoogleProvider(api_key=models_settings.gemini.api_key)
+            )
+        elif provider == 'openrouter':
+            if not models_settings.openrouter:
+                raise ValueError("OpenRouter provider not configured")
+            return OpenRouterModel(
+                model_name=model_name,
+                provider=OpenRouterProvider(api_key=models_settings.openrouter.api_key)
+            )
+        elif provider == 'local':
+            if not models_settings.local:
+                raise ValueError("Local provider not configured")
+            return OpenAIChatModel(
+                model_name=model_name,
+                provider=OpenAIProvider(
+                    base_url=models_settings.local.base_url,
+                    api_key=models_settings.local.api_key
+                )
+            )
+        else:
+            raise ValueError(f"Unknown provider: {provider}")
 
     def get_embedder_model(self) -> EmbedderClient:
         """Retrieve the embedding client instance.

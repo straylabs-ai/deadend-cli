@@ -65,6 +65,7 @@ from . import (
     InvalidRequestError,
 )
 from .telemetry import tracer
+from deadend_agent.hooks import get_event_hooks
 
 
 class TokenUsageInfo(BaseModel):
@@ -230,6 +231,10 @@ class CoreAgent:
             if self.tool_call_count >= usage_limits.get("tools", float('inf')):
                 raise UsageLimitExceeded(f"Tool call limit reached: {usage_limits['tools']}")
 
+        # Get event hooks for streaming to CLI
+        hooks = get_event_hooks()
+        session_id = self._get_session_id(deps)
+
         # Build messages
         messages = self._build_messages(prompt, message_history)
 
@@ -289,6 +294,15 @@ class CoreAgent:
                 except BlockingIOError:
                     pass
 
+                # Emit event for CLI
+                hooks.emit_log_message(
+                    session_id=session_id,
+                    message=f"LLM Request: iteration {iteration}, {len(messages)} messages",
+                    level="info",
+                    source="llm",
+                    agent_name=self.name,
+                )
+
                 # Rate limit check
                 if self.rate_limiter:
                     async with self.rate_limiter:
@@ -331,6 +345,15 @@ class CoreAgent:
                     except BlockingIOError:
                         pass
 
+                    # Emit agent thought event for CLI
+                    hooks.emit_agent_thought(
+                        session_id=session_id,
+                        agent_name=self.name,
+                        thought=self._truncate_for_event(content, 3000),
+                        summary=self._truncate_for_event(content, 500),
+                        relevance=0.5,
+                    )
+
                 # Add tool calls if present
                 if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
                     tool_names = [tc.function.name for tc in choice.message.tool_calls]
@@ -363,6 +386,15 @@ class CoreAgent:
                         )
                     except BlockingIOError:
                         pass
+
+                    # Emit completion event for CLI
+                    hooks.emit_log_message(
+                        session_id=session_id,
+                        message=f"LLM completed after {iteration} iterations",
+                        level="info",
+                        source="llm",
+                        agent_name=self.name,
+                    )
                     break
 
                 # Execute tool calls if present
@@ -740,6 +772,9 @@ class CoreAgent:
                     ))
                 except BlockingIOError:
                     pass
+
+                # NOTE: Tool call events are handled by @with_tool_events decorator
+                # on tools that use it, so we don't emit them here to avoid duplicates
 
                 # Get function signature to check for special parameters
                 sig = inspect.signature(func)
@@ -1136,3 +1171,32 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
                 def set_attribute(self, _key, _value): pass
 
             yield NoOpSpan()
+
+    def _get_session_id(self, deps: Any) -> str:
+        """Extract session_id from deps.
+
+        Args:
+            deps: Dependencies (dict or object)
+
+        Returns:
+            Session ID string, or "unknown" if not found
+        """
+        if deps is None:
+            return "unknown"
+        if isinstance(deps, dict):
+            return str(deps.get("session_id", "unknown"))
+        return str(getattr(deps, "session_id", "unknown"))
+
+    def _truncate_for_event(self, text: str, max_length: int = 500) -> str:
+        """Truncate text for event emission.
+
+        Args:
+            text: Text to truncate
+            max_length: Maximum length (default 500)
+
+        Returns:
+            Truncated text with ellipsis if needed
+        """
+        if len(text) > max_length:
+            return text[:max_length] + "..."
+        return text

@@ -59,7 +59,11 @@ class JSONRPCErrorCode:
     INTERNAL_ERROR = -32603
 
 
-def _make_jsonrpc_response(request_id: Any, result: Any = None, error: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _make_jsonrpc_response(
+    request_id: Any,
+    result: Any = None,
+    error: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """Create a JSON-RPC 2.0 response."""
     response: Dict[str, Any] = {"jsonrpc": "2.0", "id": request_id}
     if error is not None:
@@ -209,7 +213,7 @@ class RPCServer:
             await asyncio.sleep(0)  # Yield control to event loop
             is_ready, missing = self.component_manager.is_ready_for_tasks()
             await asyncio.sleep(0)  # Yield control again after sync call
-            
+
             if not is_ready:
                 raise RuntimeError(
                     f"Components not initialized: {', '.join(missing)}. "
@@ -237,7 +241,8 @@ class RPCServer:
 
             # Get pre-initialized components (use current provider from component manager)
             # These might be blocking, so yield between them
-            model = self.component_manager.get_model()
+            # Pass model_name if specified in settings to override the default
+            llm_model = self.component_manager.get_model(model_name=model)
             await asyncio.sleep(0)
             embedder_client = self.component_manager.get_embedder()
             await asyncio.sleep(0)
@@ -271,7 +276,7 @@ class RPCServer:
 
             deadend_agent = DeadEndAgent(
                 session_id=task_session_id,
-                model=model,
+                model=llm_model,
                 available_agents=available_agents,
                 max_depth=3,
             )

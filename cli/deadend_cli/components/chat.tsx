@@ -61,6 +61,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
   const [notifications, setNotifications] = useState<StatusNotification[]>([]);
   const [showComponentStatus, setShowComponentStatus] = useState(false);
   const [settings, setSettings] = useState<CliSettings>({});
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   /**
    * Current execution mode (persists across task executions).
@@ -114,13 +115,44 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
   }, [rpcClient]);
 
   /**
-   * Load CLI settings on mount and set LLM display.
+   * Refresh LLM display from settings or server.
    * Settings take priority over server-reported provider.
    */
+  const refreshLlm = useCallback(async () => {
+    // First load settings
+    const loaded = await loadSettings();
+    console.log("[Task settings] Task settings :", loaded)
+    setSettings(loaded);
+
+    // If settings has provider, use it
+    if (loaded.provider) {
+      setCurrentLlm({
+        provider: loaded.provider,
+        model: loaded.model || null,
+      });
+    } else if (rpcClient && "listLlmProviders" in rpcClient) {
+      // Otherwise, fetch from server as fallback
+      try {
+        const result = await (rpcClient as DeadEndRpcClient).listLlmProviders();
+        const current = result.providers.find((p) => p.name === result.current);
+        setCurrentLlm({
+          provider: result.current,
+          model: current?.model || null,
+        });
+      } catch {
+        // Ignore errors
+      }
+    }
+  }, [rpcClient]);
+
+  /**
+   * Load CLI settings on mount and set LLM display.
+   * This runs first and sets settingsLoaded=true when complete.
+   */
   useEffect(() => {
-    const initLlm = async () => {
-      // First load settings
+    const initSettings = async () => {
       const loaded = await loadSettings();
+      console.log("[Settings] Loaded settings:", loaded);
       setSettings(loaded);
 
       // Apply execution mode from settings if set
@@ -128,35 +160,32 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
         setExecutionMode(loaded.executionMode);
       }
 
-      // If settings has provider, use it
+      // Set LLM display from settings
       if (loaded.provider) {
         setCurrentLlm({
           provider: loaded.provider,
           model: loaded.model || null,
         });
-      } else if (rpcClient && "listLlmProviders" in rpcClient) {
-        // Otherwise, fetch from server as fallback
-        try {
-          const result = await (rpcClient as DeadEndRpcClient).listLlmProviders();
-          const current = result.providers.find((p) => p.name === result.current);
-          setCurrentLlm({
-            provider: result.current,
-            model: current?.model || null,
-          });
-        } catch {
-          // Ignore errors
-        }
       }
+
+      // Mark settings as loaded - this gates CLI args execution
+      setSettingsLoaded(true);
     };
 
-    initLlm();
-  }, [rpcClient]);
+    initSettings();
+  }, []); // Run only once on mount
 
   /**
    * Handle CLI arguments on startup.
    * Sets target and executes initial prompt if provided.
+   * Waits for both rpcClient and settings to be loaded.
    */
   useEffect(() => {
+    // Wait for settings to be loaded before executing tasks
+    if (!settingsLoaded) {
+      return;
+    }
+
     if (cliArgs?.target) {
       setTarget(cliArgs.target);
       const targetMessage = createMessage(
@@ -167,12 +196,19 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
       addMessage(targetMessage);
     }
 
-    // If prompt is provided, execute it after target is set
+    // If prompt is provided, execute it after target is set and settings are loaded
     if (cliArgs?.prompt && cliArgs?.target) {
       if (rpcClient && "runTask" in rpcClient) {
         // Add user message for the task
         const userMessage = createMessage("user", cliArgs.prompt, "text");
         addMessage(userMessage);
+        console.log("[Task Start] Model settings:", {
+          provider: settings.provider,
+          model: settings.model,
+          mode: executionMode,
+          target: cliArgs.target,
+          task: cliArgs.prompt,
+        });
         // Start the task with settings
         runTask({
           target: cliArgs.target,
@@ -190,7 +226,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
         addMessage(errorMessage);
       }
     }
-  }, [rpcClient]); // Re-run when rpcClient changes
+  }, [rpcClient, settingsLoaded]); // Re-run when rpcClient is ready AND settings are loaded
 
   /**
    * Handle keyboard shortcuts.
@@ -381,7 +417,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
           rpcClient={streamingClient}
           onComplete={() => {
             setShowLlmSelector(false);
-            fetchCurrentLlm();
+            refreshLlm();
             const successMessage = createMessage("system", "LLM provider updated.", "info");
             addMessage(successMessage);
           }}

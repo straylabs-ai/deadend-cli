@@ -45,10 +45,22 @@ export function createMessage(
  * Convert an AgentEvent to a Message for display in chat history.
  */
 export function agentEventToMessage(event: AgentEvent): Message {
+  // Handle timestamp - use current time if invalid
+  let timestamp: Date;
+  try {
+    timestamp = event.timestamp ? new Date(event.timestamp) : new Date();
+    // Check if date is valid
+    if (isNaN(timestamp.getTime())) {
+      timestamp = new Date();
+    }
+  } catch {
+    timestamp = new Date();
+  }
+
   const baseMessage = {
     id: crypto.randomUUID(),
     role: "system" as MessageRole,
-    timestamp: new Date(event.timestamp),
+    timestamp,
     eventData: event,
   };
 

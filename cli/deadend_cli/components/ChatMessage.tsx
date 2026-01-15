@@ -15,6 +15,30 @@ function truncate(str: string, maxLen: number): string {
   return str.slice(0, maxLen - 3) + "...";
 }
 
+// Helper to wrap long text into multiple lines
+function wrapText(str: string, maxLineLen: number, maxLines: number = 10): string {
+  const lines: string[] = [];
+  let remaining = str;
+
+  while (remaining.length > 0 && lines.length < maxLines) {
+    if (remaining.length <= maxLineLen) {
+      lines.push(remaining);
+      break;
+    }
+    // Try to break at a space
+    let breakPoint = remaining.lastIndexOf(' ', maxLineLen);
+    if (breakPoint <= 0) breakPoint = maxLineLen;
+    lines.push(remaining.slice(0, breakPoint));
+    remaining = remaining.slice(breakPoint).trimStart();
+  }
+
+  if (remaining.length > 0 && lines.length >= maxLines) {
+    lines[lines.length - 1] += "...";
+  }
+
+  return lines.join('\n');
+}
+
 // Format timestamp as HH:MM:SS
 function formatTime(date: Date): string {
   return date.toLocaleTimeString("en-US", {
@@ -150,6 +174,8 @@ function ToolCallMessage({ message, time }: { message: Message; time: string }) 
 
   if (event.type === "tool_call_start") {
     const data = event.data as unknown as ToolCallStartData;
+    // Show args (up to 12 lines of 100 chars)
+    const argsDisplay = data.args ? wrapText(data.args, 100, 12) : "";
     return (
       <Box flexDirection="column" marginBottom={1}>
         <Box>
@@ -160,9 +186,9 @@ function ToolCallMessage({ message, time }: { message: Message; time: string }) 
             {"⚡ "}{data.tool_name}
           </Text>
         </Box>
-        {data.args && (
+        {argsDisplay && (
           <Box marginLeft={10}>
-            <Text color="gray">{truncate(data.args, 70)}</Text>
+            <Text color="gray">{argsDisplay}</Text>
           </Box>
         )}
       </Box>
@@ -175,9 +201,10 @@ function ToolCallMessage({ message, time }: { message: Message; time: string }) 
     const statusIcon = data.success ? "✓" : "✗";
     const duration = data.duration_ms ? ` (${data.duration_ms.toFixed(0)}ms)` : "";
 
+    // Show result (up to 15 lines of 100 chars)
     let resultText = data.error || "";
     if (!resultText && data.result) {
-      resultText = truncate(data.result, 60);
+      resultText = wrapText(data.result, 100, 15);
     }
 
     return (
@@ -202,19 +229,25 @@ function ToolCallMessage({ message, time }: { message: Message; time: string }) 
   return null;
 }
 
-// Agent thought message
+// Agent thought message - shows LLM response content
 function AgentThoughtMessage({ message, time }: { message: Message; time: string }) {
   const data = message.eventData?.data as unknown as AgentThoughtData | undefined;
-  const displayText = data?.summary || data?.thought || message.content;
+  // Prefer the full thought over summary for better visibility
+  const displayText = data?.thought || data?.summary || message.content;
+  // Wrap across multiple lines (up to 25 lines of 100 chars)
+  const wrappedText = wrapText(displayText, 100, 25);
 
   return (
-    <Box marginBottom={1}>
-      <Text color="gray" dimColor>
-        [{time}]{" "}
-      </Text>
-      <Text color="gray" dimColor>
-        {"💭 "}{truncate(displayText, 70)}
-      </Text>
+    <Box flexDirection="column" marginBottom={1}>
+      <Box>
+        <Text color="gray" dimColor>
+          [{time}]{" "}
+        </Text>
+        <Text color="magenta">{"💭 LLM Response:"}</Text>
+      </Box>
+      <Box marginLeft={10}>
+        <Text color="white">{wrappedText}</Text>
+      </Box>
     </Box>
   );
 }
@@ -248,7 +281,7 @@ function AgentEndMessage({ message, time }: { message: Message; time: string }) 
         )}
         {data?.notes && (
           <Box marginLeft={10}>
-            <Text color="white">{truncate(data.notes, 60)}</Text>
+            <Text color="white">{wrapText(data.notes, 80, 5)}</Text>
           </Box>
         )}
       </Box>
@@ -274,7 +307,7 @@ function AgentErrorMessage({ message, time }: { message: Message; time: string }
           </Text>
         </Box>
         <Box marginLeft={10}>
-          <Text color="red">{truncate(data?.error_message || message.content, 60)}</Text>
+          <Text color="red">{wrapText(data?.error_message || message.content, 80, 5)}</Text>
         </Box>
       </Box>
       <Text color="red">{"─".repeat(50)}</Text>
