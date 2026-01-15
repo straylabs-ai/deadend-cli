@@ -9,9 +9,11 @@
  * - Keyboard shortcut (Shift+Tab) for mode toggling
  */
 
-import { useState, useCallback, useEffect } from "react";
-import { Box, useInput } from "ink";
+import { useState, useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { logger } from "../lib/logger.ts";
+import { Box, useInput, Static } from "ink";
 import type { Message } from "../types/message.ts";
+import { ChatMessage } from "./ChatMessage.tsx";
 import { createMessage } from "../types/message.ts";
 import { parseCommand, isCommand } from "../lib/commands/command-parser.ts";
 import { executeCommand } from "../lib/commands/command-handler.ts";
@@ -46,9 +48,11 @@ interface ChatProps {
   cliArgs?: CliArgs;
   /** Component initialization results for status display */
   componentResults?: InitResult[];
+  /** Banner element to render at the very top (inside Static) */
+  banner?: ReactNode;
 }
 
-export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: ChatProps) {
+export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -73,6 +77,24 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
   const addMessage = useCallback((message: Message) => {
     setMessages((prev) => [...prev, message]);
   }, []);
+
+  // Split messages into static and dynamic for Static component usage
+  // Keep last 5 messages dynamic (they might still be updating)
+  const DYNAMIC_MESSAGES_COUNT = 5;
+  
+  const { staticMessages, dynamicMessages } = useMemo(() => {
+    if (messages.length <= DYNAMIC_MESSAGES_COUNT) {
+      return { staticMessages: [], dynamicMessages: messages };
+    }
+    return {
+      staticMessages: messages.slice(0, messages.length - DYNAMIC_MESSAGES_COUNT),
+      dynamicMessages: messages.slice(-DYNAMIC_MESSAGES_COUNT)
+    };
+  }, [
+    messages.length,
+    messages.length > DYNAMIC_MESSAGES_COUNT ? messages.length - DYNAMIC_MESSAGES_COUNT : 0,
+    messages.length > DYNAMIC_MESSAGES_COUNT ? messages[messages.length - DYNAMIC_MESSAGES_COUNT - 1]?.id : null
+  ]);
 
   // Task runner hook for streaming task execution
   const { taskState, runTask, cancel } = useTaskRunner(
@@ -121,7 +143,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
   const refreshLlm = useCallback(async () => {
     // First load settings
     const loaded = await loadSettings();
-    console.log("[Task settings] Task settings :", loaded)
+    logger.log("[Task settings] Task settings :", loaded);
     setSettings(loaded);
 
     // If settings has provider, use it
@@ -152,7 +174,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
   useEffect(() => {
     const initSettings = async () => {
       const loaded = await loadSettings();
-      console.log("[Settings] Loaded settings:", loaded);
+      logger.log("[Settings] Loaded settings:", loaded);
       setSettings(loaded);
 
       // Apply execution mode from settings if set
@@ -202,7 +224,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
         // Add user message for the task
         const userMessage = createMessage("user", cliArgs.prompt, "text");
         addMessage(userMessage);
-        console.log("[Task Start] Model settings:", {
+        logger.log("[Task Start] Model settings:", {
           provider: settings.provider,
           model: settings.model,
           mode: executionMode,
@@ -429,8 +451,39 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
     );
   }
 
+  // Combine banner and static messages for Static component
+  // Banner comes first, then old messages - all rendered once and never re-render
+  const staticItems = useMemo(() => {
+    const items: Array<{ type: 'banner'; id: string } | { type: 'message'; id: string; message: Message }> = [];
+
+    // Add banner as first item (always)
+    if (banner) {
+      items.push({ type: 'banner', id: 'banner' });
+    }
+
+    // Add static messages
+    for (const msg of staticMessages) {
+      items.push({ type: 'message', id: msg.id, message: msg });
+    }
+
+    return items;
+  }, [banner, staticMessages]);
+
   return (
-    <Box flexDirection="column" flexGrow={1}>
+    <Box flexDirection="column">
+      {/* Static content - banner first, then old messages. Rendered once, never re-render */}
+      {staticItems.length > 0 && (
+        <Static items={staticItems}>
+          {(item) => {
+            if (item.type === 'banner') {
+              // Banner is already a Box component, no need to wrap it in another Box
+              return banner;
+            }
+            return <ChatMessage key={item.id} message={item.message} />;
+          }}
+        </Static>
+      )}
+
       {/* Status area - shows component health and task status */}
       <StatusArea
         componentResults={componentResults}
@@ -442,7 +495,12 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [] }: Chat
       />
 
       {/* Chat history - scrollable messages area */}
-      <ChatHistory messages={messages} />
+      {/* No flexGrow constraint - allows terminal to scroll naturally */}
+      <ChatHistory 
+        messages={messages} 
+        staticMessages={staticMessages}
+        dynamicMessages={dynamicMessages}
+      />
 
       {/* Input area - text input with mode indicator */}
       <InputArea

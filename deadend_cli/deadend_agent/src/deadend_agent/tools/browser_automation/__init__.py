@@ -45,13 +45,18 @@ async def pw_send_payload(
     Returns:
         Union[str, bytes]: HTTP response or error message
     """
-    host, port = extract_host_port(target_host=ctx.deps.target)
+    # Use the target_host parameter passed by the LLM, fallback to ctx.deps.target if empty
+    effective_target = target_host if target_host and target_host.strip() else ctx.deps.target
+    if not effective_target:
+        return "Error: target_host must be provided either as parameter or in context"
+    
+    host, port = extract_host_port(target_host=effective_target)
 
     # Auto-correct malformed HTTP requests before processing
     try:
         corrected_request, corrections = autocorrect_http_request(
             raw_request=raw_request,
-            target_host=ctx.deps.target
+            target_host=effective_target
         )
         if corrections:
             logger.debug("Auto-corrected HTTP request: %s", ', '.join(corrections))
@@ -63,7 +68,7 @@ async def pw_send_payload(
     # the function detects the dummy credentials given and replaces them with the right one
     # So that the LLM will never see the true credentials
     raw_request_anon = replace_credential_placeholders(raw_request)
-    is_tls = port == 443 or ctx.deps.target.startswith('https://')
+    is_tls = port == 443 or effective_target.startswith('https://')
     session_key = f"{host}_{port}"
     proxy_url = "http://localhost:8080" if proxy else None
 
@@ -78,7 +83,7 @@ async def pw_send_payload(
         async for response in pw_session.send_raw_data(
             host=host,
             port=port,
-            target_host=ctx.deps.target,
+            target_host=effective_target,
             request_data=raw_request_anon,
             is_tls=is_tls,
             via_proxy=proxy

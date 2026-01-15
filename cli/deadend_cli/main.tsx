@@ -1,5 +1,6 @@
 import { render, Box, Text } from "ink";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { logger } from "./lib/logger.ts";
 import { Banner } from "./components/Banner.tsx";
 import { Chat } from "./components/chat.tsx";
 import { Presetup } from "./components/Presetup.tsx";
@@ -33,7 +34,7 @@ function App({ cliArgs }: AppProps) {
     try {
       await rpcClientRef.current.shutdown();
     } catch (err) {
-      console.error("Failed to shutdown RPC server gracefully:", err);
+      logger.error("Failed to shutdown RPC server gracefully:", err);
     } finally {
       rpcClientRef.current.close();
       rpcClientRef.current = null;
@@ -51,10 +52,17 @@ function App({ cliArgs }: AppProps) {
         const pythonPkgDir = `${scriptDir}/../../deadend_cli`;
 
         setInitStatus("Starting RPC server...");
+        
+        // Set up log file path for RPC server stderr output
+        const homeDir = Deno.env.get("HOME") || Deno.env.get("USERPROFILE") || "~";
+        const logDir = `${homeDir}/.cache/deadend/logs`;
+        const logFile = `${logDir}/rpc-server-${Date.now()}.log`;
+        
         const client = new DeadEndRpcClient({
           pythonCommand: "uv",
           commandArgs: ["run", "python", "-m", "deadend_cli.rpc_server"],
           cwd: pythonPkgDir,
+          logFile: logFile,
         });
         await client.start();
 
@@ -75,9 +83,9 @@ function App({ cliArgs }: AppProps) {
         // Log individual component results
         for (const component of initResult.components) {
           if (component.success) {
-            console.log(`✓ ${component.component}: ${component.message}`);
+            logger.log(`✓ ${component.component}: ${component.message}`);
           } else {
-            console.error(`✗ ${component.component}: ${component.message}`);
+            logger.error(`✗ ${component.component}: ${component.message}`);
           }
         }
 
@@ -95,7 +103,7 @@ function App({ cliArgs }: AppProps) {
 
         // Warn about non-critical failures
         if (initResult.failed_components.length > 0) {
-          console.warn(
+          logger.warn(
             `Warning: Some components failed to initialize: ${initResult.failed_components.join(", ")}`
           );
         }
@@ -104,7 +112,7 @@ function App({ cliArgs }: AppProps) {
         setRpcClient(client);
         setInitComplete(true);
       } catch (err) {
-        console.error("Failed to initialize:", err);
+        logger.error("Failed to initialize:", err);
         setRpcError(err instanceof Error ? err.message : String(err));
         setInitComplete(true);
       }
@@ -154,6 +162,37 @@ function App({ cliArgs }: AppProps) {
     setShowPresetup(false);
   };
 
+  // Static banner content - memoized to prevent re-renders
+  // MUST be called before any conditional returns to follow Rules of Hooks
+  const staticBanner = useMemo(() => (
+    <Box flexDirection="column" marginTop={1} marginBottom={1}>
+      {/* ASCII Banner */}
+      <Banner />
+
+      {/* Tagline */}
+      <Text color="gray">
+        AI-powered security testing • Type /help for commands
+      </Text>
+
+      {/* Session info on one line */}
+      <Box marginTop={1}>
+        {cliArgs.mode && (
+          <Text color="yellow">[{cliArgs.mode}] </Text>
+        )}
+        {cliArgs.target && (
+          <Text color="cyan">{cliArgs.target} </Text>
+        )}
+        {cliArgs.prompt && (
+          <Text color="green">→ {cliArgs.prompt}</Text>
+        )}
+      </Box>
+
+      {/* Separator */}
+      <Text color="gray" dimColor>{"─".repeat(60)}</Text>
+    </Box>
+  ), [cliArgs.mode, cliArgs.target, cliArgs.codebase, cliArgs.prompt]);
+
+  // All hooks must be called before any conditional returns
   if (shouldExit) {
     return null;
   }
@@ -214,76 +253,15 @@ function App({ cliArgs }: AppProps) {
   }
 
   return (
-    <Box flexDirection="column" height="100%">
-      <Box marginTop={2} />
-      <Box
-        borderStyle="round"
-        borderColor="red"
-        padding={2}
-        paddingTop={3}
-        marginBottom={3}
-      >
-        <Box flexDirection="row">
-          <Box flexShrink={0}>
-            <Banner />
-          </Box>
-          <Box flexDirection="column" marginLeft={2} flexGrow={1}>
-            <Text color="red" bold>
-              AI agent CLI for pentesting
-            </Text>
-            <Box marginTop={1}>
-              <Text color="white">
-                Explore sinks & sources, find vulnerabilities, test exploits, report everything.
-              </Text>
-            </Box>
-            <Box marginTop={1} flexDirection="column">
-              <Text color="magenta" bold>
-                How to use:
-              </Text>
-              <Box marginTop={0}>
-                <Text color="white">• Set your target, and prompt a specific task, for ex: Look for IDORs in target.</Text>
-              </Box>
-              <Box>
-                <Text color="white">• Type / to see available commands</Text>
-              </Box>
-              {/* <Box>
-                <Text color="white">• Press Enter to send messages</Text>
-              </Box> */}
-            </Box>
-            {cliArgs.mode && (
-              <Box marginTop={1}>
-                <Text color="yellow">
-                  Mode: {cliArgs.mode}
-                </Text>
-              </Box>
-            )}
-            {cliArgs.target && (
-              <Box marginTop={0}>
-                <Text color="cyan">
-                  Target: {cliArgs.target}
-                </Text>
-              </Box>
-            )}
-            {cliArgs.codebase && (
-              <Box marginTop={0}>
-                <Text color="gray" dimColor>
-                  Codebase: {cliArgs.codebase}
-                </Text>
-              </Box>
-            )}
-            {cliArgs.prompt && (
-              <Box marginTop={0}>
-                <Text color="green">
-                  Initial prompt: {cliArgs.prompt}
-                </Text>
-              </Box>
-            )}
-          </Box>
-        </Box>
-      </Box>
-      <Box flexDirection="column" flexGrow={1}>
-        <Chat rpcClient={rpcClient} onExit={handleExit} cliArgs={cliArgs} componentResults={componentResults} />
-      </Box>
+    <Box flexDirection="column">
+      {/* Chat handles all rendering including banner in its Static component */}
+      <Chat
+        rpcClient={rpcClient}
+        onExit={handleExit}
+        cliArgs={cliArgs}
+        componentResults={componentResults}
+        banner={staticBanner}
+      />
     </Box>
   );
 }

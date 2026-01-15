@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+import { memo } from "react";
 import type { Message } from "../types/message.ts";
 import type {
   ToolCallStartData,
@@ -53,7 +54,9 @@ export interface ChatMessageProps {
   message: Message;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+// Memoize ChatMessage to prevent re-rendering unchanged messages
+// This reduces flickering and helps preserve terminal scroll position
+function ChatMessageComponent({ message }: ChatMessageProps) {
   const time = formatTime(message.timestamp);
 
   // User messages
@@ -339,3 +342,22 @@ function LogMessage({ message, time }: { message: Message; time: string }) {
     </Box>
   );
 }
+
+// Export memoized version - only re-renders if message actually changed
+// Since messages are immutable (new objects when added), comparing by ID is sufficient
+// This prevents re-rendering unchanged messages, reducing flickering
+export const ChatMessage = memo(ChatMessageComponent, (prevProps, nextProps) => {
+  // Skip re-render if it's the same message (same ID and same object reference)
+  // Messages are immutable, so same ID = same message = no re-render needed
+  if (prevProps.message.id !== nextProps.message.id) {
+    return false; // Different message, re-render
+  }
+  
+  // Same ID - check if content or eventData changed (messages can be updated in rare cases)
+  const contentChanged = prevProps.message.content !== nextProps.message.content;
+  const timestampChanged = prevProps.message.timestamp.getTime() !== nextProps.message.timestamp.getTime();
+  const eventDataChanged = prevProps.message.eventData !== nextProps.message.eventData;
+  
+  // Re-render only if something actually changed
+  return !(contentChanged || timestampChanged || eventDataChanged);
+});
