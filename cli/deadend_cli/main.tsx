@@ -4,7 +4,7 @@ import { logger } from "./lib/logger.ts";
 import { Banner } from "./components/Banner.tsx";
 import { Chat } from "./components/chat.tsx";
 import { Presetup } from "./components/Presetup.tsx";
-import { LoadingSpinner } from "./components/LoadingSpinner.tsx";
+import { DirectStatusLine } from "./components/DirectStatusLine.tsx";
 import { DeadEndRpcClient } from "./lib/deadend-rpc-client.ts";
 import { configExists } from "./lib/config.ts";
 import { parseArgs, showHelp, type CliArgs } from "./lib/cli-args.ts";
@@ -171,7 +171,7 @@ function App({ cliArgs }: AppProps) {
 
       {/* Tagline */}
       <Text color="gray">
-        AI-powered security testing • Type /help for commands
+        deadend CLI v0.1.0 • Type /help for commands
       </Text>
 
       {/* Session info on one line */}
@@ -188,7 +188,7 @@ function App({ cliArgs }: AppProps) {
       </Box>
 
       {/* Separator */}
-      <Text color="gray" dimColor>{"─".repeat(60)}</Text>
+      <Text color="red" dimColor>{"─".repeat(60)}</Text>
     </Box>
   ), [cliArgs.mode, cliArgs.target, cliArgs.codebase, cliArgs.prompt]);
 
@@ -203,10 +203,14 @@ function App({ cliArgs }: AppProps) {
         <Box marginBottom={1}>
           <Banner />
         </Box>
-        <Box flexDirection="column"borderColor="grey">
-          <Box marginBottom={1}>
-            <LoadingSpinner text={initStatus} color="grey" />
-          </Box>
+        <Box flexDirection="column" borderColor="grey">
+          {/* Use DirectStatusLine for flicker-free animated loading */}
+          <DirectStatusLine
+            text={initStatus}
+            color="grey"
+            isActive={!rpcError}
+            updateInterval={100}
+          />
           {componentResults.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
               <Text color="white" bold>Component Status:</Text>

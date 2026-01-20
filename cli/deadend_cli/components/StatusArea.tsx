@@ -1,6 +1,6 @@
 import { Box, Text } from "ink";
 import type { InitResult } from "../types/rpc.ts";
-import { LoadingSpinner } from "./LoadingSpinner.tsx";
+import { DirectStatusLine } from "./DirectStatusLine.tsx";
 
 export type TaskPhase = "init" | "recon" | "exploit" | "done" | "error";
 
@@ -49,9 +49,16 @@ export function StatusArea({
   notifications = [],
   showComponents = false,
 }: StatusAreaProps) {
-  const hasContent = showComponents || isRunning || notifications.length > 0;
+  const hasStaticContent = showComponents || notifications.length > 0;
+  const hasAnimatedContent = isRunning && taskPhase;
 
-  if (!hasContent) {
+  // Build status text for the direct status line
+  const statusText = taskPhase
+    ? `${phaseLabels[taskPhase]}${taskTarget ? ` (${taskTarget})` : ""}`
+    : "";
+  const statusColor = taskPhase ? phaseColors[taskPhase] : "magenta";
+
+  if (!hasStaticContent && !hasAnimatedContent) {
     return null;
   }
 
@@ -75,15 +82,14 @@ export function StatusArea({
         </Box>
       )}
 
-      {/* Current task status */}
-      {isRunning && taskPhase && (
-        <Box marginBottom={1}>
-          <LoadingSpinner
-            text={`${phaseLabels[taskPhase]}${taskTarget ? ` (${taskTarget})` : ""}`}
-            color={phaseColors[taskPhase]}
-          />
-        </Box>
-      )}
+      {/* Current task status - uses DirectStatusLine to avoid flickering */}
+      {/* This renders directly to stdout, bypassing Ink's render cycle */}
+      <DirectStatusLine
+        text={statusText}
+        color={statusColor}
+        isActive={Boolean(hasAnimatedContent)}
+        updateInterval={100}
+      />
 
       {/* Notifications */}
       {notifications.map((notification) => {

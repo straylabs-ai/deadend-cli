@@ -476,8 +476,8 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
         <Static items={staticItems}>
           {(item) => {
             if (item.type === 'banner') {
-              // Banner is already a Box component, no need to wrap it in another Box
-              return banner;
+              // Banner is already a Box component, wrap in fragment with key
+              return <Box key={item.id}>{banner}</Box>;
             }
             return <ChatMessage key={item.id} message={item.message} />;
           }}
