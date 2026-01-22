@@ -9,15 +9,16 @@ import subprocess
 import time
 from datetime import datetime
 from typing import Any, Optional
-
 import docker
-
-# Use centralized logger
-
-
-from deadend_agent.core import init_rag_database, sandbox_setup, setup_model_registry, start_python_sandbox, stop_python_sandbox
+from deadend_agent.core import (
+    init_rag_database,
+    sandbox_setup,
+    setup_model_registry,
+    start_python_sandbox,
+    stop_python_sandbox
+)
 from deadend_agent.tools.browser_automation import PlaywrightRequester
-from .rpc_models import (
+from .jsonrpc.rpc_models import (
     ComponentStatus,
     ComponentState,
     InitResult,
@@ -82,14 +83,20 @@ class ComponentManager:
             self.docker_client = docker.from_env()
 
             if not check_docker(self.docker_client):
-                raise RuntimeError("Docker daemon not available, Docker might needs to be installed")
+                raise RuntimeError(
+                    "Docker daemon not available, \
+                    Please install Docker from: https://docs.docker.com/get-docker/"
+                )
 
             version_info = self.docker_client.version()
             self.docker_state.status = ComponentStatus.READY
             self.docker_state.metadata["version"] = version_info.get("Version", "unknown")
             self.docker_state.last_check = datetime.now()
 
-            logger.debug("Docker initialized successfully, version: %s", version_info.get('Version', 'unknown'))
+            logger.debug(
+                "Docker initialized successfully, version: %s", 
+                version_info.get('Version', 'unknown')
+            )
             return InitResult(
                 success=True,
                 component="docker",

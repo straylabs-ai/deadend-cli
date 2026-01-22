@@ -13,7 +13,7 @@ This server supports:
 """
 
 from __future__ import annotations
-from typing import Any, AsyncGenerator, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 import asyncio
 import json
 import logging
@@ -42,10 +42,10 @@ from deadend_agent.core_agent import (
     InvalidRequestError,
 )
 
-from .component_manager import ComponentManager
+from ..component_manager import ComponentManager
 from .event_bus import event_bus
 from .hooks_adapter import EventBusHooksAdapter
-from .logging import logger, setup_logging
+from ..logging import logger, setup_logging
 from .rpc_models import RPCErrorCode
 
 
@@ -79,7 +79,6 @@ def _make_jsonrpc_error(request_id: Any, code: int, message: str, data: Optional
     if data is not None:
         error["data"] = data
     return _make_jsonrpc_response(request_id, error=error)
-
 
 class RPCServer:
     def __init__(
@@ -132,47 +131,31 @@ class RPCServer:
         # Component manager
         self.component_manager = ComponentManager()
 
-        #
-
         # Shutdown flag
         self._shutdown_requested = False
 
-        # Method dispatch table
-        self._method_handlers: Dict[str, Callable[..., AsyncGenerator[Any, Any]]] = {
-            # Lifecycle
-            "ping": self._handle_ping,
-            "shutdown": self._handle_shutdown,
-            # Initialization
-            "init_all": self._handle_init_all,
-            "init_docker": self._handle_init_docker,
-            "init_pgvector": self._handle_init_pgvector,
-            "init_config": self._handle_init_config,
-            "init_model_registry": self._handle_init_model_registry,
-            "init_python_sandbox": self._handle_init_python_sandbox,
-            "init_shell_sandbox": self._handle_init_shell_sandbox,
-            "init_playwright": self._handle_init_playwright,
-            # Health checks
-            "health_docker": self._handle_health_docker,
-            "health_pgvector": self._handle_health_pgvector,
-            "health_python_sandbox": self._handle_health_python_sandbox,
-            "health_shell_sandbox": self._handle_health_shell_sandbox,
-            "health_playwright": self._handle_health_playwright,
-            "health_all": self._handle_health_all,
-            # Event streaming
-            "subscribe_events": self._handle_subscribe_events,
-            # Control
-            "interrupt": self._handle_interrupt,
-            "approve": self._handle_approve,
-            "enable_approval_mode": self._handle_enable_approval_mode,
-            "disable_approval_mode": self._handle_disable_approval_mode,
-            "get_approval_mode": self._handle_get_approval_mode,
-            # LLM provider management
-            "list_llm_providers": self._handle_list_llm_providers,
-            "get_llm_provider": self._handle_get_llm_provider,
-            "set_llm_provider": self._handle_set_llm_provider,
-            # Task execution
-            "run_task": self._handle_run_task,
-        }
+        # Method handler keeps track of the RPC methods used
+        self._method_handlers: Dict[str, Callable[..., Any]] = {}
+
+    def add_method(self, method_name: str):
+        """Decorator to register new methods to the rpc server.
+    
+        Usage:
+        rpc_server = RPCServer()
+        
+        @rpc_server.method("ping")
+        async def ping(request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+            return {"status": "ok"}
+        
+        rpc_server.serve()
+        """
+        def decorator(func: Callable) -> Callable:
+            # Registering the new method part of the RPC server.
+            self._method_handlers[method_name] = func
+            logger.debug("RPC method added : %s", method_name)
+            return func
+        return decorator
+
 
     async def _run_task_stream(
         self,
@@ -545,125 +528,6 @@ class RPCServer:
     # Handler methods
     # =========================================================================
 
-    async def _handle_ping(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Handle ping request."""
-        return {"status": "ok"}
-
-    async def _handle_shutdown(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Handle shutdown request."""
-        self._shutdown_requested = True
-        result = await self.component_manager.shutdown()
-        return {"status": "shutdown", "components": result}
-
-    async def _handle_init_all(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Initialize all components in the correct order."""
-        logger.info("Starting initialization of all components...")
-        result = await self.component_manager.init_all()
-        return result.model_dump()
-
-    async def _handle_init_docker(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Initialize Docker component."""
-        result = await self.component_manager.init_docker()
-        return result.model_dump()
-
-    async def _handle_init_pgvector(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Initialize pgvector database."""
-        result = await self.component_manager.init_pgvector()
-        return result.model_dump()
-
-    async def _handle_init_config(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Initialize configuration."""
-        result = await self.component_manager.init_config()
-        return result.model_dump()
-
-    async def _handle_init_model_registry(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Initialize model registry."""
-        result = await self.component_manager.init_model_registry()
-        return result.model_dump()
-
-    async def _handle_init_python_sandbox(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Initialize Python sandbox."""
-        result = await self.component_manager.init_python_sandbox()
-        return result.model_dump()
-
-    async def _handle_init_shell_sandbox(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Initialize shell sandbox."""
-        result = await self.component_manager.init_shell_sandbox()
-        return result.model_dump()
-
-    async def _handle_init_playwright(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Initialize Playwright browser."""
-        result = await self.component_manager.init_playwright()
-        return result.model_dump()
-
-    async def _handle_health_docker(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Check Docker health."""
-        result = await self.component_manager.health_docker()
-        return result.model_dump()
-
-    async def _handle_health_pgvector(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Check pgvector health."""
-        result = await self.component_manager.health_pgvector()
-        return result.model_dump()
-
-    async def _handle_health_python_sandbox(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Check Python sandbox health."""
-        result = await self.component_manager.health_python_sandbox()
-        return result.model_dump()
-
-    async def _handle_health_shell_sandbox(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Check shell sandbox health."""
-        result = await self.component_manager.health_shell_sandbox()
-        return result.model_dump()
-
-    async def _handle_health_playwright(
-        self, 
-        request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Check Playwright health."""
-        result = await self.component_manager.health_playwright()
-        return result.model_dump()
-
-    async def _handle_health_all(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Check all components health."""
-        result = await self.component_manager.health_all()
-        return result.model_dump()
-
     async def _handle_subscribe_events(self, request_id: Any, params: Dict[str, Any]):
         """Subscribe to event stream. This is a streaming method."""
         async for event in self.event_bus.subscribe():
@@ -782,25 +646,3 @@ class RPCServer:
 
 
 __all__ = ["RPCServer"]
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="DeadEnd RPC Server")
-    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
-    parser.add_argument("--log-file", type=str, help="Log file path")
-    parser.add_argument(
-        "--llm-provider",
-        type=str,
-        default="openai",
-        help="LLM provider to use (openai, anthropic, gemini, openrouter, local)",
-    )
-    args = parser.parse_args()
-
-    server = RPCServer(
-        llm_provider=args.llm_provider,
-        debug=args.debug,
-        log_file=args.log_file,
-    )
-    server.serve()

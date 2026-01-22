@@ -25,7 +25,6 @@ console = Console(file=sys.stderr)
 
 def check_docker(client: docker.DockerClient) -> bool:
     """Check if Docker daemon is running using the Docker Python API.
-    
     Args:
         client: Docker client instance
         

@@ -1,13 +1,14 @@
 """Test fixtures and helpers for sandbox testing"""
 
-import pytest
+
 import uuid
-from unittest.mock import Mock, MagicMock, patch
-from datetime import datetime, timedelta
+from unittest.mock import Mock, patch
+from datetime import datetime
 from typing import Dict, Any, List, Optional
+import pytest
 import docker
-from src.core.sandbox.sandbox import Sandbox, SandboxStatus
-from src.core.sandbox.sandbox_manager import SandboxManager
+from deadend_agent.core import SandboxManager
+from deadend_agent.sandbox import Sandbox, SandboxStatus
 
 
 class MockContainer:

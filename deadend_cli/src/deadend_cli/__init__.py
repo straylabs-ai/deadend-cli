@@ -14,10 +14,10 @@ import shutil
 from importlib.resources import files
 from pathlib import Path
 from .cli import app
-from .event_bus import EventBus, event_bus
+from .jsonrpc.event_bus import EventBus, event_bus
 from .component_manager import ComponentManager
-from .hooks_adapter import EventBusHooksAdapter
-from .rpc_models import (
+from .jsonrpc.hooks_adapter import EventBusHooksAdapter
+from .jsonrpc.rpc_models import (
     AgentEvent,
     EventType,
     ComponentStatus,
@@ -33,7 +33,7 @@ from .logging import logger, setup_logging, get_module_logger
 
 def get_rpc_server():
     """Lazy import of RPCServer to avoid circular import issues when running as module."""
-    from .rpc_server import RPCServer
+    from .jsonrpc.rpc_server import RPCServer
     return RPCServer
 
 __all__ = [
