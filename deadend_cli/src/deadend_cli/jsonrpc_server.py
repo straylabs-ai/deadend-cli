@@ -5,7 +5,7 @@
 """ JsonRPC server interface """
 from typing import Any, Dict
 import typer
-from deadend_agent import set_event_hooks
+from deadend_agent import DeadEndAgent, set_event_hooks
 from deadend_agent.tools.tool_wrappers import (
     set_approval_provider,
     enable_approval_mode,
@@ -51,6 +51,13 @@ def main(
     # Shutdown Request
     shutdown_request = False
 
+    # Agent reference instantiation keeps a reference
+    # to a agent instantiated. This is basically a workaround
+    # to keep a instance usable accross the different calls.
+    # If I find a better way to this I will change it; somehow
+    # it doesn't feel like clean code
+    deadend_agent_refs: Dict[str, DeadEndAgent] = {}
+
     # Initializing the rpc server with it's logging debug and log file
     server = RPCServer(
         debug=debug,
@@ -59,6 +66,7 @@ def main(
 
     server.add_dependency("component_manager", component_manager)
     server.add_dependency("event_bus", event_bus)
+    server.add_dependency("deadend_agent_refs", deadend_agent_refs)
 
     # # AI model
     # llm_provider = "openai"
@@ -238,7 +246,7 @@ def main(
     ) -> Dict[str, Any]:
         async for event in event_bus.subscribe():
             yield event.model_dump()
-    
+
     @server.add_method("interrupt")
     async def handle_interrupt(
         _request_id: Any,
@@ -302,7 +310,9 @@ def main(
     ) -> Dict[str, Any]:
         """Get current approval mode status."""
         return {"approval_mode": is_approval_mode_enabled()}
-    
+
+
+
     # ==========================================
     # LLM provider methods
     # ==========================================
@@ -328,7 +338,6 @@ def main(
         return {"provider": provider}
     # TODO: The set provider here, only sets up the provider and not the model itself, or the
     # API KEY nor the base url if needed, this is a problem
-    # 
     @server.add_method("set_llm_provider")
     async def set_llm_provider(
         _request_id: Any,
@@ -346,12 +355,22 @@ def main(
 
         return {"status": "ok", "provider": provider}
 
+
+
+    # ==========================================
+    # Agent methods methods
+    # ==========================================
+    # @server.add_method("instantiate_agent")
+    # async def 
+
     @server.add_method("embed_target")
     async def embed_target(
         _request_id: Any,
         params: Dict[str, Any]
     ) -> Dict[str, Any]:
         pass
+
+
 
     server.serve()
 

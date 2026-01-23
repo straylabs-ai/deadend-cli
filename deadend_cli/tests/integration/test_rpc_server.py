@@ -8,11 +8,8 @@ Note: Some linter warnings about "redefining names from outer scope" are expecte
 and safe to ignore - they're false positives related to pytest fixture usage.
 """
 import json
-import subprocess
 import pytest
 import asyncio
-import sys
-import os
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
@@ -447,6 +444,241 @@ class TestRPCServerHealthChecks:  # noqa: F811
         
         assert response["jsonrpc"] == "2.0"
         assert "result" in response
+
+
+@pytest.mark.integration
+class TestRPCServerHandlers:  # noqa: F811
+    """Test handler methods (events, interrupt, approval)."""
+    
+    @pytest.mark.asyncio
+    async def test_subscribe_events(self, rpc_client):
+        """Test subscribe_events method (streaming)."""
+        # Subscribe to events - this is a streaming method
+        await rpc_client.send_request("subscribe_events")
+        
+        # For streaming methods, we should get at least one response
+        # The method yields events, so we might get multiple responses
+        # Read with a short timeout since there may not be any events
+        try:
+            response = await rpc_client.read_response(timeout=2.0)
+            # If we get a response, it should be valid JSON-RPC
+            assert response["jsonrpc"] == "2.0"
+            # Streaming responses should have "result" field
+            assert "result" in response or "error" in response
+        except TimeoutError:
+            # No events yet, which is fine - the subscription is active
+            pass
+    
+    @pytest.mark.asyncio
+    async def test_interrupt_missing_session_id(self, rpc_client):
+        """Test interrupt method with missing session_id (should error)."""
+        await rpc_client.send_request("interrupt", params={})
+        response = await rpc_client.read_response()
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "error" in response
+        assert response["error"]["code"] == -32602  # INVALID_PARAMS
+        assert "Session ID required" in response["error"]["message"]
+    
+    @pytest.mark.asyncio
+    async def test_interrupt_with_session_id(self, rpc_client):
+        """Test interrupt method with valid session_id."""
+        session_id = "test-session-123"
+        await rpc_client.send_request("interrupt", params={"session_id": session_id})
+        response = await rpc_client.read_response()
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        assert response["result"]["status"] == "interrupted"
+        assert response["result"]["session_id"] == session_id
+    
+    @pytest.mark.asyncio
+    async def test_interrupt_with_reason(self, rpc_client):
+        """Test interrupt method with custom reason."""
+        session_id = "test-session-456"
+        reason = "Test interruption reason"
+        await rpc_client.send_request("interrupt", params={
+            "session_id": session_id,
+            "reason": reason
+        })
+        response = await rpc_client.read_response()
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        assert response["result"]["status"] == "interrupted"
+        assert response["result"]["session_id"] == session_id
+    
+    @pytest.mark.asyncio
+    async def test_approve_missing_request_id(self, rpc_client):
+        """Test approve method with missing request_id (should error)."""
+        await rpc_client.send_request("approve", params={})
+        response = await rpc_client.read_response()
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "error" in response
+        assert response["error"]["code"] == -32602  # INVALID_PARAMS
+        assert "request_id is required" in response["error"]["message"]
+    
+    @pytest.mark.asyncio
+    async def test_approve_invalid_request_id(self, rpc_client):
+        """Test approve method with non-existent request_id (should error)."""
+        await rpc_client.send_request("approve", params={
+            "request_id": "non-existent-request-id",
+            "approved": True
+        })
+        response = await rpc_client.read_response()
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "error" in response
+        # Should get an error about request not found
+        assert "error" in response
+        assert "not found" in response["error"]["message"].lower() or "already processed" in response["error"]["message"].lower()
+    
+    @pytest.mark.asyncio
+    async def test_enable_approval_mode(self, rpc_client):
+        """Test enable_approval_mode method."""
+        await rpc_client.send_request("enable_approval_mode")
+        response = await rpc_client.read_response()
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        assert response["result"]["status"] == "enabled"
+        assert response["result"]["approval_mode"] is True
+    
+    @pytest.mark.asyncio
+    async def test_disable_approval_mode(self, rpc_client):
+        """Test disable_approval_mode method."""
+        await rpc_client.send_request("disable_approval_mode")
+        response = await rpc_client.read_response()
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        assert response["result"]["status"] == "disabled"
+        assert response["result"]["approval_mode"] is False
+    
+    @pytest.mark.asyncio
+    async def test_get_approval_mode(self, rpc_client):
+        """Test get_approval method."""
+        await rpc_client.send_request("get_approval")
+        response = await rpc_client.read_response()
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        assert "approval_mode" in response["result"]
+        assert isinstance(response["result"]["approval_mode"], bool)
+    
+    @pytest.mark.asyncio
+    async def test_approval_mode_workflow(self, rpc_client):
+        """Test complete approval mode workflow."""
+        # 1. Enable approval mode
+        await rpc_client.send_request("enable_approval_mode")
+        enable_response = await rpc_client.read_response()
+        assert enable_response["result"]["approval_mode"] is True
+        
+        # 2. Verify it's enabled
+        await rpc_client.send_request("get_approval")
+        check_response = await rpc_client.read_response()
+        assert check_response["result"]["approval_mode"] is True
+        
+        # 3. Disable approval mode
+        await rpc_client.send_request("disable_approval_mode")
+        disable_response = await rpc_client.read_response()
+        assert disable_response["result"]["approval_mode"] is False
+        
+        # 4. Verify it's disabled
+        await rpc_client.send_request("get_approval")
+        final_response = await rpc_client.read_response()
+        assert final_response["result"]["approval_mode"] is False
+
+
+@pytest.mark.integration
+class TestRPCServerLLMProviders:  # noqa: F811
+    """Test LLM provider methods."""
+    
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_list_llm_provider(self, rpc_client):
+        """Test list_llm_provider method."""
+        await rpc_client.send_request("list_llm_provider")
+        response = await rpc_client.read_response(timeout=10.0)
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        # Result should be a dict or list of providers
+        result = response["result"]
+        assert isinstance(result, (dict, list))
+    
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_get_llm_provider(self, rpc_client):
+        """Test get_llm_provider method."""
+        await rpc_client.send_request("get_llm_provider")
+        response = await rpc_client.read_response(timeout=10.0)
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        assert "provider" in response["result"]
+        # Provider should be a string (or None)
+        provider = response["result"]["provider"]
+        assert provider is None or isinstance(provider, str)
+    
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_set_llm_provider_missing_provider(self, rpc_client):
+        """Test set_llm_provider method with missing provider parameter."""
+        await rpc_client.send_request("set_llm_provider", params={})
+        response = await rpc_client.read_response(timeout=10.0)
+        
+        assert response["jsonrpc"] == "2.0"
+        assert "error" in response
+        assert response["error"]["code"] == -32602  # INVALID_PARAMS
+        assert "provider parameter is required" in response["error"]["message"]
+    
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_set_llm_provider(self, rpc_client):
+        """Test set_llm_provider method."""
+        # Try to set a provider (use a common one like "openai" if available)
+        # Note: This might fail if the provider isn't configured, which is fine
+        test_provider = "openai"
+        await rpc_client.send_request("set_llm_provider", params={"provider": test_provider})
+        set_response = await rpc_client.read_response(timeout=10.0)
+        
+        # The method should return success even if provider isn't fully configured
+        assert set_response["jsonrpc"] == "2.0"
+        # Either success or error is acceptable depending on configuration
+        if "result" in set_response:
+            assert set_response["result"]["status"] == "ok"
+            assert set_response["result"]["provider"] == test_provider
+        
+        # Verify it was set (if setting succeeded)
+        if "result" in set_response:
+            await rpc_client.send_request("get_llm_provider")
+            verify_response = await rpc_client.read_response(timeout=10.0)
+            # Provider might be set or might revert, depending on implementation
+            assert "provider" in verify_response["result"]
+    
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_llm_provider_workflow(self, rpc_client):
+        """Test complete LLM provider workflow."""
+        # 1. List available providers
+        await rpc_client.send_request("list_llm_provider")
+        list_response = await rpc_client.read_response(timeout=10.0)
+        assert "result" in list_response
+        
+        # 2. Get current provider
+        await rpc_client.send_request("get_llm_provider")
+        get_response = await rpc_client.read_response(timeout=10.0)
+        assert "provider" in get_response["result"]
+        
+        # 3. Try to set a provider (may fail if not configured)
+        # This is just testing the API, not the actual provider setup
+        await rpc_client.send_request("set_llm_provider", params={"provider": "openai"})
+        set_response = await rpc_client.read_response(timeout=10.0)
+        # Should get either success or error, both are valid
+        assert set_response["jsonrpc"] == "2.0"
+        assert "result" in set_response or "error" in set_response
 
 
 # Helper function for more complex test scenarios

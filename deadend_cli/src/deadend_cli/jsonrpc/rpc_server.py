@@ -15,6 +15,7 @@ This server supports:
 from __future__ import annotations
 from typing import Any, Callable, Dict, Optional
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -157,15 +158,27 @@ class RPCServer:
         rpc_server.serve()
         """
         def decorator(func: Callable) -> Callable:
+            # Get the function signature to check which parameters it accepts
+            sig = inspect.signature(func)
+            param_names = set(sig.parameters.keys())
+            # Exclude request_id and params as they're always provided
+            param_names.discard('request_id')
+            param_names.discard('_request_id')
+            param_names.discard('params')
+            param_names.discard('_params')
+            
             async def wrapped_call(request_id: Any, params: Dict[str, Any]):
                 injected = {}
+                
+                # Add dependencies explicitly passed to the decorator
                 for dep_name, dep_value in dependencies.items():
-                    injected[dep_name] = dep_value
-
-                # Checking for dependencies explicity passed on
-                for dep_name in self._dependencies.items():
-                    if dep_name not in injected:
-                        injected[dep_name] = self._dependencies[dep_name]
+                    if dep_name in param_names:
+                        injected[dep_name] = dep_value
+                
+                # Add dependencies from registered dependencies that match function parameters
+                for dep_name, dep_value in self._dependencies.items():
+                    if dep_name not in injected and dep_name in param_names:
+                        injected[dep_name] = dep_value
 
                 if injected:
                     return await func(request_id, params, **injected)
