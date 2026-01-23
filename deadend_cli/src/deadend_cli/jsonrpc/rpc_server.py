@@ -118,18 +118,21 @@ class RPCServer:
 
         self.llm_provider = llm_provider
 
+        # Store dependencies injected in RPC calls
+        self._dependencies: Dict[str, Any] = {}
+
         # Event bus and hooks
-        self.event_bus = event_bus
-        self.hooks_adapter = EventBusHooksAdapter(self.event_bus)
+        # self.event_bus = event_bus
+        # self.hooks_adapter = EventBusHooksAdapter(self.event_bus)
 
-        # Set global hooks so agents emit events
-        set_event_hooks(self.hooks_adapter)
+        # # Set global hooks so agents emit events
+        # set_event_hooks(self.hooks_adapter)
 
-        # Set approval provider so tools can request approval via event bus
-        set_approval_provider(self.event_bus)
+        # # Set approval provider so tools can request approval via event bus
+        # set_approval_provider(self.event_bus)
 
-        # Component manager
-        self.component_manager = ComponentManager()
+        # # Component manager
+        # self.component_manager = ComponentManager()
 
         # Shutdown flag
         self._shutdown_requested = False
@@ -137,7 +140,11 @@ class RPCServer:
         # Method handler keeps track of the RPC methods used
         self._method_handlers: Dict[str, Callable[..., Any]] = {}
 
-    def add_method(self, method_name: str):
+    def add_dependency(self, name: str, value: Any) -> None:
+        """Register a new dependency used by the RPC methods"""
+        self._dependencies[name] = value
+
+    def add_method(self, method_name: str, **dependencies):
         """Decorator to register new methods to the rpc server.
     
         Usage:
@@ -150,10 +157,25 @@ class RPCServer:
         rpc_server.serve()
         """
         def decorator(func: Callable) -> Callable:
+            async def wrapped_call(request_id: Any, params: Dict[str, Any]):
+                injected = {}
+                for dep_name, dep_value in dependencies.items():
+                    injected[dep_name] = dep_value
+
+                # Checking for dependencies explicity passed on
+                for dep_name in self._dependencies.items():
+                    if dep_name not in injected:
+                        injected[dep_name] = self._dependencies[dep_name]
+
+                if injected:
+                    return await func(request_id, params, **injected)
+                else:
+                    return await func(request_id, params)
             # Registering the new method part of the RPC server.
-            self._method_handlers[method_name] = func
+
+            self._method_handlers[method_name] = wrapped_call
             logger.debug("RPC method added : %s", method_name)
-            return func
+            return wrapped_call
         return decorator
 
 
@@ -528,96 +550,128 @@ class RPCServer:
     # Handler methods
     # =========================================================================
 
-    async def _handle_subscribe_events(self, request_id: Any, params: Dict[str, Any]):
-        """Subscribe to event stream. This is a streaming method."""
-        async for event in self.event_bus.subscribe():
-            yield event.model_dump()
+    # async def _handle_subscribe_events(self, request_id: Any, params: Dict[str, Any]):
+    #     """Subscribe to event stream. This is a streaming method."""
+    #     async for event in self.event_bus.subscribe():
+    #         yield event.model_dump()
 
-    async def _handle_interrupt(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Interrupt a running workflow."""
-        session_id = params.get("session_id")
-        if not session_id:
-            raise ValueError("session_id is required")
+    # async def _handle_interrupt(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    #     """Interrupt a running workflow."""
+    #     session_id = params.get("session_id")    # async def _handle_list_llm_providers(
+    #     self,
+    #     request_id: Any,
+    #     params: Dict[str, Any]
+    # ) -> Dict[str, Any]:
+    #     """List all available LLM providers and their configuration status."""
+    #     result = self.component_manager.list_llm_providers()
+    #     return result
 
-        reason = params.get("reason", "User requested interruption")
-        self.event_bus.interrupt_session(session_id, reason)
-        return {"status": "interrupted", "session_id": session_id}
+    # async def _handle_get_llm_provider(
+    #     self,
+    #     request_id: Any,
+    #     params: Dict[str, Any]
+    # ) -> Dict[str, Any]:
+    #     """Get the current LLM provider."""
+    #     provider = self.component_manager.get_llm_provider()
+    #     return {"provider": provider}
 
-    async def _handle_approve(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Respond to an approval request."""
-        approval_request_id = params.get("request_id")
-        if not approval_request_id:
-            raise ValueError("request_id is required")
-
-        approved = params.get("approved", False)
-        modified_args = params.get("modified_args")
-
-        success = self.event_bus.respond_to_approval(
-            request_id=approval_request_id,
-            approved=approved,
-            modified_args=modified_args,
-        )
-
-        if not success:
-            raise ValueError(f"Approval request {approval_request_id} not found or already processed")
-
-        return {"status": "approved" if approved else "rejected", "request_id": approval_request_id}
-
-    async def _handle_enable_approval_mode(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Enable approval mode - all tool calls require user approval."""
-        enable_approval_mode()
-        return {"status": "enabled", "approval_mode": True}
-
-    async def _handle_disable_approval_mode(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Disable approval mode - tools execute without approval."""
-        disable_approval_mode()
-        return {"status": "disabled", "approval_mode": False}
-
-    async def _handle_get_approval_mode(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-        """Get current approval mode status."""
-        return {"approval_mode": is_approval_mode_enabled()}
-
-    async def _handle_list_llm_providers(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """List all available LLM providers and their configuration status."""
-        result = self.component_manager.list_llm_providers()
-        return result
-
-    async def _handle_get_llm_provider(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Get the current LLM provider."""
-        provider = self.component_manager.get_llm_provider()
-        return {"provider": provider}
-
-    async def _handle_set_llm_provider(
-        self,
-        request_id: Any,
-        params: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Set the current LLM provider."""
-        provider = params.get("provider")
-        if not provider:
-            raise ValueError("provider parameter is required")
+    # async def _handle_set_llm_provider(
+    #     self,
+    #     request_id: Any,
+    #     params: Dict[str, Any]
+    # ) -> Dict[str, Any]:
+    #     """Set the current LLM provider."""
+    #     provider = params.get("provider")
+    #     if not provider:
+    #         raise ValueError("provider parameter is required")
         
-        self.component_manager.set_llm_provider(provider)
-        # Update the server's llm_provider attribute for consistency
-        self.llm_provider = provider
+    #     self.component_manager.set_llm_provider(provider)
+    #     # Update the server's llm_provider attribute for consistency
+    #     self.llm_provider = provider
         
-        return {"status": "ok", "provider": provider}
+    #     return {"status": "ok", "provider": provider}
+    #     if not session_id:
+    #         raise ValueError("session_id is required")
+
+    #     reason = params.get("reason", "User requested interruption")
+    #     self.event_bus.interrupt_session(session_id, reason)
+    #     return {"status": "interrupted", "session_id": session_id}
+
+    # async def _handle_approve(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    #     """Respond to an approval request."""
+    #     approval_request_id = params.get("request_id")
+    #     if not approval_request_id:
+    #         raise ValueError("request_id is required")
+
+    #     approved = params.get("approved", False)
+    #     modified_args = params.get("modified_args")
+
+    #     success = self.event_bus.respond_to_approval(
+    #         request_id=approval_request_id,
+    #         approved=approved,
+    #         modified_args=modified_args,
+    #     )
+
+    #     if not success:
+    #         raise ValueError(f"Approval request {approval_request_id} not found or already processed")
+
+    #     return {"status": "approved" if approved else "rejected", "request_id": approval_request_id}
+
+    # async def _handle_enable_approval_mode(
+    #     self,
+    #     request_id: Any,
+    #     params: Dict[str, Any]
+    # ) -> Dict[str, Any]:
+    #     """Enable approval mode - all tool calls require user approval."""
+    #     enable_approval_mode()
+    #     return {"status": "enabled", "approval_mode": True}
+
+    # async def _handle_disable_approval_mode(
+    #     self,
+    #     request_id: Any,
+    #     params: Dict[str, Any]
+    # ) -> Dict[str, Any]:
+    #     """Disable approval mode - tools execute without approval."""
+    #     disable_approval_mode()
+    #     return {"status": "disabled", "approval_mode": False}
+
+    # async def _handle_get_approval_mode(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
+    #     """Get current approval mode status."""
+    #     return {"approval_mode": is_approval_mode_enabled()}
+
+    # async def _handle_list_llm_providers(
+    #     self,
+    #     request_id: Any,
+    #     params: Dict[str, Any]
+    # ) -> Dict[str, Any]:
+    #     """List all available LLM providers and their configuration status."""
+    #     result = self.component_manager.list_llm_providers()
+    #     return result
+
+    # async def _handle_get_llm_provider(
+    #     self,
+    #     request_id: Any,
+    #     params: Dict[str, Any]
+    # ) -> Dict[str, Any]:
+    #     """Get the current LLM provider."""
+    #     provider = self.component_manager.get_llm_provider()
+    #     return {"provider": provider}
+
+    # async def _handle_set_llm_provider(
+    #     self,
+    #     request_id: Any,
+    #     params: Dict[str, Any]
+    # ) -> Dict[str, Any]:
+    #     """Set the current LLM provider."""
+    #     provider = params.get("provider")
+    #     if not provider:
+    #         raise ValueError("provider parameter is required")
+        
+    #     self.component_manager.set_llm_provider(provider)
+    #     # Update the server's llm_provider attribute for consistency
+    #     self.llm_provider = provider
+        
+    #     return {"status": "ok", "provider": provider}
 
     async def _handle_run_task(self, request_id: Any, params: Dict[str, Any]):
         """Run a task. This is a streaming method."""
