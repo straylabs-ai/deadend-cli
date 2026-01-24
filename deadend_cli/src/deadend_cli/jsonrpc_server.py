@@ -4,8 +4,11 @@
 
 """ JsonRPC server interface """
 from typing import Any, Dict
+import json
+from dataclasses import asdict, is_dataclass
 import typer
-from deadend_agent import DeadEndAgent, set_event_hooks
+import uuid
+from deadend_agent import DeadEndAgent, Sandbox, set_event_hooks
 from deadend_agent.tools.tool_wrappers import (
     set_approval_provider,
     enable_approval_mode,
@@ -303,7 +306,7 @@ def main(
         disable_approval_mode()
         return {"status": "disabled", "approval_mode": False}
     
-    @server.add_method("get_approval")
+    @server.add_method("get_approval_mode")
     async def get_approval_mode(
         _request_id: Any,
         _params: Dict[str, Any]
@@ -360,19 +363,228 @@ def main(
     # ==========================================
     # Agent methods methods
     # ==========================================
-    # @server.add_method("instantiate_agent")
-    # async def 
+    @server.add_method("instantiate_agent")
+    async def instantiate_agent(
+        _request_id: Any,
+        params: Dict[str, Any],
+        component_manager: ComponentManager,
+        deadend_agent_refs: Dict[str, DeadEndAgent]
+    ) -> Dict[str, Any]:
+        agent_id = uuid.uuid4()
+                
+        available_agents = {
+            "requester": (
+                "Agent specialized in fine-grained testing and sending raw request data. "
+                "Best for gathering auth tokens, testing individual endpoints, and precise "
+                "request manipulation."
+            ),
+            "python_interpreter": (
+                "Agent specialized in generating code and running it safely in a sandbox. "
+                "Best for fuzzing, parameter testing, and repetitive security testing operations."
+            ),
+            "shell": "Agent providing access to a bash shell for running Linux commands.",
+            "router_agent": "Router agent that selects the appropriate specialized agent.",
+        }
+        deadend_agent = DeadEndAgent(
+            session_id=agent_id,
+            model=component_manager.get_model(),
+            available_agents=available_agents,
+            max_depth=3
+        )
+        target = params.get("target")
+        if not target:
+            return {
+                "status": "failed",
+                "reason": "Must supply a target"
+            }
+        async def approval_callback() -> str:
+                return "yes"
+
+        # Sandbox instantiation for the agent
+        sandbox: Sandbox | None = None
+        try:
+            sandbox = component_manager.create_task_sandbox(network_name="host")
+        except Exception as e:
+                logger.warning("Failed to create sandbox: %s", e)
+                sandbox = None
+
+        # components for embeddings
+        embedder_client = component_manager.get_embedder()
+        rag_db = component_manager.get_rag_connector()
+        deadend_agent.set_approval_callback(approval_callback)
+        deadend_agent_refs.update(agent_id, deadend_agent)
+        deadend_agent.prepare_dependencies(
+            embedder_client=embedder_client,
+            rag_connector=rag_db,
+            sandbox=sandbox,
+            target=target,
+        )
+
+        return {
+            "status": "ok", 
+            "agent_id": agent_id
+        }
 
     @server.add_method("embed_target")
     async def embed_target(
         _request_id: Any,
-        params: Dict[str, Any]
+        params: Dict[str, Any],
+        component_manager: ComponentManager,
+        deadend_agent_refs: Dict[str, DeadEndAgent]
     ) -> Dict[str, Any]:
+        target = params.get("target")
+        if not target:
+            return {
+                "status": "failed",
+                "reason": "Must supply a target"
+            }
+        agent_id = params.get("agent_id")
+        if not agent_id:
+            return {
+                "status": "failed",
+                "reason": "Must supply an agent_id"
+            }
+        agent = deadend_agent_refs.get(agent_id)
+        # components for embeddings
+        embedder_client = component_manager.get_embedder()
+        rag_db = component_manager.get_rag_connector()
+        config = component_manager.config
+        agent.init_webtarget_indexer(
+            target=target
+        )
+        yield {
+                "phase": "init",
+                "data": {"message": "Crawling target..."},
+        }
+        await agent.crawl_target()
+
+        yield {
+                "phase": "init",
+                "data": {"message": "Embedding target code..."},
+        }
+        code_chunks = await agent.embed_target(embedder_client)
+        if rag_db is not None and config.embedding_model:
+            yield {
+                    "phase": "init",
+                    "data": {"message": "Storing embeddings in database..."},
+            }
+            await rag_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
+
+    @server.add_method("run_agent_recursive")
+    async def run_agent_recursive(
+        _request_id: Any,
+        params: Dict[str, Any],
+        deadend_agent_refs: Dict[str, DeadEndAgent]
+    ):
+        try:
+            # run the dual phase by running
+            yield {
+                "phase": "recon",
+                "data": {"message": "Starting web app analysis and research"},
+            }
+            threat_model_text = ""
+            agent_id = params.get("agent_id")
+            if not agent_id:
+                yield {
+                    "phase": "error",
+                    "data": {
+                        "message": "Must supply an agent_id",
+                        "error_type": "ValueError",
+                    },
+                }
+                return
+
+            prompt = params.get("prompt")
+            if not prompt:
+                yield {
+                    "phase": "error",
+                    "data": {
+                        "message": "No prompt supplied",
+                        "error_type": "ValueError",
+                    },
+                }
+                return
+
+            deadend_agent = deadend_agent_refs.get(agent_id)
+            if deadend_agent is None:
+                yield {
+                    "phase": "error",
+                    "data": {
+                        "message": f"Agent with id {agent_id} not found",
+                        "error_type": "ValueError",
+                    },
+                }
+                return
+
+            async for item in deadend_agent.threat_model_stream(task=prompt):
+                threat_model_text += object_to_string(item)
+                yield {
+                    "phase": "recon",
+                    "data": to_serializable(item),
+                }
+
+            yield {
+                "phase": "exploit",
+                "data": {"message": "Starting testing and exploit"},
+            }
+
+            async for item in deadend_agent.start_testing_stream(
+                task=prompt,
+                threat_model=threat_model_text
+            ):
+                yield {
+                    "phase": "exploit",
+                    "data": to_serializable(item),
+                }
+        except Exception as exc:
+            logger.exception("Error in run_agent_recursive: %s", exc)
+            yield {
+                "phase": "error",
+                "data": {
+                    "message": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            }
+            raise
+
+    @server.add_method("run_agent_supervisor")
+    async def run_agent_supervisor(
+
+    ):
         pass
 
+    @server.add_method("run_agent_ask")
+    async def run_agent_ask(
 
+    ):
+        pass
 
     server.serve()
+
+
+def to_serializable(obj: Any) -> Any:
+    """Convert an object to a JSON-serializable format."""
+    if obj is None or isinstance(obj, (str, int, float, bool)):
+        return obj
+    elif isinstance(obj, dict):
+        return {k: to_serializable(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [to_serializable(v) for v in obj]
+    elif hasattr(obj, "model_dump"):
+        return obj.model_dump()
+    elif is_dataclass(obj):
+        return asdict(obj)
+    else:
+        return repr(obj)
+
+def object_to_string(obj: Any) -> str:
+    """Convert an object to a string representation for text concatenation."""
+    str_obj = ""
+    if hasattr(obj, "model_dump"):
+        str_obj = json.dumps(obj.model_dump(), default=str)
+    else:
+        str_obj = str(obj)
+    return str_obj
 
 if __name__ == "__main__":
     typer.run(main)

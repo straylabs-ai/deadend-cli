@@ -122,19 +122,6 @@ class RPCServer:
         # Store dependencies injected in RPC calls
         self._dependencies: Dict[str, Any] = {}
 
-        # Event bus and hooks
-        # self.event_bus = event_bus
-        # self.hooks_adapter = EventBusHooksAdapter(self.event_bus)
-
-        # # Set global hooks so agents emit events
-        # set_event_hooks(self.hooks_adapter)
-
-        # # Set approval provider so tools can request approval via event bus
-        # set_approval_provider(self.event_bus)
-
-        # # Component manager
-        # self.component_manager = ComponentManager()
-
         # Shutdown flag
         self._shutdown_requested = False
 

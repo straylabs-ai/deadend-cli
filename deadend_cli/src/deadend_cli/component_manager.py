@@ -15,7 +15,9 @@ from deadend_agent.core import (
     sandbox_setup,
     setup_model_registry,
     start_python_sandbox,
-    stop_python_sandbox
+    stop_python_sandbox,
+    Config,
+    RetrievalDatabaseConnector
 )
 from deadend_agent.tools.browser_automation import PlaywrightRequester
 from .jsonrpc.rpc_models import (
@@ -56,9 +58,9 @@ class ComponentManager:
         self.playwright_state = ComponentState(name="playwright")
 
         # Component instances
-        self.config: Any = None
+        self.config: Config | None = None
         self.model_registry: Any = None
-        self.rag_connector: Any = None
+        self.rag_connector: RetrievalDatabaseConnector | None = None
         self.python_sandbox_process: Optional[subprocess.Popen] = None
         self.sandbox_manager: Any = None
         self.playwright_requester: Any = None

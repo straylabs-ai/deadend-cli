@@ -444,7 +444,6 @@ IMPORTANT:
         # Build task with unified context from reconnaissance
         # The previous_context contains confirmed exploits and discoveries that should inform exploitation
         task_exploit = f"""
-
 ### Primary objective
 {task}
 
