@@ -1,7 +1,6 @@
 import { useState, useCallback, useRef } from "react";
-import type { DeadEndRpcClient, DoneEvent } from "../lib/deadend-rpc-client.ts";
+import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
 import type { Message } from "../types/message.ts";
-import type { AgentEvent } from "../types/rpc.ts";
 import { createMessage, agentEventToMessage } from "../types/message.ts";
 import type { TaskPhase } from "../components/StatusArea.tsx";
 
@@ -12,13 +11,17 @@ export interface TaskState {
   phase: TaskPhase | null;
   target: string | null;
   task: string | null;
+  /** Agent ID for the current session */
+  agentId: string | null;
+  /** Whether the target has been embedded */
+  isTargetEmbedded: boolean;
 }
 
 export interface UseTaskRunnerOptions {
   /** Callback when a message should be added to chat */
   onMessage: (message: Message) => void;
   /** Callback when task completes */
-  onComplete?: (result: DoneEvent) => void;
+  onComplete?: () => void;
   /** Callback when task is cancelled */
   onCancel?: () => void;
   /** Callback when an error occurs */
@@ -26,19 +29,20 @@ export interface UseTaskRunnerOptions {
 }
 
 export interface RunTaskOptions {
-  target: string;
   task: string;
   mode: ExecutionMode;
-  /** LLM provider to use */
-  provider?: string;
-  /** Model name to use */
-  model?: string;
+}
+
+export interface SetTargetOptions {
+  target: string;
 }
 
 export interface UseTaskRunnerReturn {
   /** Current task state */
   taskState: TaskState;
-  /** Start a task */
+  /** Set target and prepare agent (instantiate + embed) */
+  setTarget: (options: SetTargetOptions) => Promise<void>;
+  /** Run a task with prompt (requires target to be set first) */
   runTask: (options: RunTaskOptions) => Promise<void>;
   /** Cancel the running task */
   cancel: () => Promise<void>;
@@ -55,6 +59,8 @@ export function useTaskRunner(
     phase: null,
     target: null,
     task: null,
+    agentId: null,
+    isTargetEmbedded: false,
   });
 
   const cancelledRef = useRef(false);
@@ -78,18 +84,21 @@ export function useTaskRunner(
       }
     }
 
-    setTaskState({
+    setTaskState((prev) => ({
+      ...prev,
       isRunning: false,
       phase: null,
-      target: null,
       task: null,
-    });
+    }));
 
     onCancel?.();
   }, [rpcClient, taskState.isRunning, onCancel]);
 
-  const runTask = useCallback(
-    async ({ target, task, mode, provider, model }: RunTaskOptions) => {
+  /**
+   * Set target: instantiate agent and embed target
+   */
+  const setTarget = useCallback(
+    async ({ target }: SetTargetOptions) => {
       if (!rpcClient) {
         onError?.("RPC client not available");
         return;
@@ -97,12 +106,120 @@ export function useTaskRunner(
 
       cancelledRef.current = false;
 
-      setTaskState({
+      setTaskState((prev) => ({
+        ...prev,
         isRunning: true,
         phase: "init",
         target,
+        agentId: null,
+        isTargetEmbedded: false,
+      }));
+
+      try {
+        // Step 1: Instantiate agent
+        onMessage(createMessage("system", "Initializing agent...", "event_log"));
+
+        const agentResult = await rpcClient.instantiateAgent(target);
+        if (agentResult.status !== "ok" || !agentResult.agent_id) {
+          const reason = (agentResult as { reason?: string }).reason || "Unknown error";
+          throw new Error(`Failed to instantiate agent: ${reason}`);
+        }
+
+        const agentId = agentResult.agent_id;
+        setTaskState((prev) => ({ ...prev, agentId }));
+
+        onMessage(createMessage("system", `Agent created: ${agentId}`, "event_log"));
+
+        // Step 2: Embed target (streaming)
+        for await (const event of rpcClient.embedTarget(agentId, target)) {
+          if (cancelledRef.current) break;
+
+          if (event.data) {
+            const dataObj = event.data as { message?: string };
+            if (dataObj.message) {
+              onMessage(createMessage("system", dataObj.message, "event_log"));
+            }
+          }
+        }
+
+        if (!cancelledRef.current) {
+          setTaskState((prev) => ({
+            ...prev,
+            isRunning: false,
+            phase: null,
+            isTargetEmbedded: true,
+          }));
+
+          onMessage(createMessage("system", `Target ready: ${target}`, "info"));
+        }
+      } catch (err) {
+        if (!cancelledRef.current) {
+          // Handle different error types
+          let errorMessage: string;
+          if (err instanceof Error) {
+            errorMessage = err.message;
+          } else if (err && typeof err === "object" && "message" in err) {
+            // Handle JsonRpcError objects from RPC calls
+            const rpcError = err as { message: string; code?: number; data?: unknown };
+            errorMessage = rpcError.message;
+            // Include error code if available
+            if (rpcError.code !== undefined) {
+              errorMessage = `[${rpcError.code}] ${errorMessage}`;
+            }
+            // Include additional error details if available
+            if (rpcError.data) {
+              const dataStr = typeof rpcError.data === "string" 
+                ? rpcError.data 
+                : JSON.stringify(rpcError.data);
+              if (dataStr && dataStr !== "{}") {
+                errorMessage += ` - ${dataStr}`;
+              }
+            }
+          } else {
+            errorMessage = String(err);
+          }
+          onMessage(createMessage("system", `Error: ${errorMessage}`, "error"));
+          onError?.(errorMessage);
+
+          setTaskState((prev) => ({
+            ...prev,
+            isRunning: false,
+            phase: "error",
+          }));
+        }
+      }
+    },
+    [rpcClient, onMessage, onError]
+  );
+
+  /**
+   * Run task: execute runAgentRecursive with prompt
+   */
+  const runTask = useCallback(
+    async ({ task, mode }: RunTaskOptions) => {
+      if (!rpcClient) {
+        onError?.("RPC client not available");
+        return;
+      }
+
+      if (!taskState.agentId) {
+        onError?.("No agent initialized. Set a target first.");
+        return;
+      }
+
+      if (!taskState.isTargetEmbedded) {
+        onError?.("Target not yet embedded. Wait for target setup to complete.");
+        return;
+      }
+
+      cancelledRef.current = false;
+
+      setTaskState((prev) => ({
+        ...prev,
+        isRunning: true,
+        phase: "recon",
         task,
-      });
+      }));
 
       // Start event subscription for detailed events
       eventSubscriptionRef.current = new AbortController();
@@ -112,7 +229,6 @@ export function useTaskRunner(
             if (cancelledRef.current || eventSubscriptionRef.current?.signal.aborted) {
               break;
             }
-            // Convert event to message and add to chat
             const message = agentEventToMessage(event);
             onMessage(message);
           }
@@ -123,55 +239,38 @@ export function useTaskRunner(
       subscribeToEvents();
 
       try {
-        // Run the task with streaming events
-        for await (const taskEvent of rpcClient.runTask({
-          prompt: task,
-          target: target,
-          mode: mode,
-          provider: provider,
-          model: model,
-        })) {
-          if (cancelledRef.current) {
-            break;
-          }
+        // Run agent recursive (recon + exploit phases)
+        for await (const taskEvent of rpcClient.runAgentRecursive(
+          taskState.agentId,
+          task
+        )) {
+          if (cancelledRef.current) break;
 
-          // Update phase based on task event
-          if (taskEvent.phase === "init") {
-            setTaskState((prev) => ({ ...prev, phase: "init" }));
-            // Show init progress
-            if (taskEvent.data) {
-              const dataObj = taskEvent.data as { message?: string };
-              const message = createMessage(
-                "system",
-                dataObj.message ?? "Initializing...",
-                "event_log"
-              );
-              onMessage(message);
-            }
-          } else if (taskEvent.phase === "recon") {
+          if (taskEvent.phase === "recon") {
             setTaskState((prev) => ({ ...prev, phase: "recon" }));
           } else if (taskEvent.phase === "exploit") {
             setTaskState((prev) => ({ ...prev, phase: "exploit" }));
           } else if (taskEvent.phase === "error") {
             const errorData = taskEvent.data as { message: string; error_type: string };
-            const errorMessage = createMessage(
-              "system",
-              `${errorData.error_type}: ${errorData.message}`,
-              "error"
+            onMessage(
+              createMessage(
+                "system",
+                `${errorData.error_type}: ${errorData.message}`,
+                "error"
+              )
             );
-            onMessage(errorMessage);
             setTaskState((prev) => ({ ...prev, phase: "error" }));
             onError?.(`${errorData.error_type}: ${errorData.message}`);
-          } else if (taskEvent.phase === "done") {
-            setTaskState((prev) => ({ ...prev, phase: "done" }));
-            const doneMessage = createMessage(
-              "system",
-              `Task completed. Target: ${(taskEvent as DoneEvent).target}`,
-              "info"
-            );
-            onMessage(doneMessage);
-            onComplete?.(taskEvent as DoneEvent);
           }
+        }
+
+        // Task completed
+        if (!cancelledRef.current) {
+          setTaskState((prev) => ({ ...prev, phase: "done" }));
+          onMessage(
+            createMessage("system", `Task completed. Target: ${taskState.target}`, "info")
+          );
+          onComplete?.();
         }
       } catch (err) {
         if (!cancelledRef.current) {
@@ -179,12 +278,10 @@ export function useTaskRunner(
             err instanceof Error
               ? err.message
               : typeof err === "object" && err !== null
-              ? (err as Record<string, unknown>).message as string ||
-                JSON.stringify(err)
+              ? (err as Record<string, unknown>).message as string || JSON.stringify(err)
               : String(err);
 
-          const message = createMessage("system", `Error: ${errorMessage}`, "error");
-          onMessage(message);
+          onMessage(createMessage("system", `Error: ${errorMessage}`, "error"));
           onError?.(errorMessage);
         }
       } finally {
@@ -195,20 +292,21 @@ export function useTaskRunner(
         }
 
         if (!cancelledRef.current) {
-          setTaskState({
+          setTaskState((prev) => ({
+            ...prev,
             isRunning: false,
             phase: null,
-            target: null,
             task: null,
-          });
+          }));
         }
       }
     },
-    [rpcClient, onMessage, onComplete, onError]
+    [rpcClient, taskState.agentId, taskState.isTargetEmbedded, taskState.target, onMessage, onComplete, onError]
   );
 
   return {
     taskState,
+    setTarget,
     runTask,
     cancel,
   };

@@ -24,7 +24,7 @@ from deadend_cli.jsonrpc.hooks_adapter import EventBusHooksAdapter
 
 def main(
     debug: bool=False,
-    log_file: str = "./",
+    log_file: str | None = None,
 ):
     """Start the JSON-RPC server for communicating with front-end components.
     
@@ -34,7 +34,7 @@ def main(
     
     Args:
         debug: If True, enable debug-level logging. Defaults to False.
-        log_file: Path to the log file. Defaults to "./".
+        log_file: Path to the log file. If None, logs only to stderr. Defaults to None.
     
     Returns:
         None. The server runs until interrupted or shutdown is requested.
@@ -51,8 +51,6 @@ def main(
     set_event_hooks(hooks_adapter)
     # Approval provider giving the possibility for tools to request approval via event bus
     set_approval_provider(event_bus)
-    # Shutdown Request
-    shutdown_request = False
 
     # Agent reference instantiation keeps a reference
     # to a agent instantiated. This is basically a workaround
@@ -70,6 +68,14 @@ def main(
     server.add_dependency("component_manager", component_manager)
     server.add_dependency("event_bus", event_bus)
     server.add_dependency("deadend_agent_refs", deadend_agent_refs)
+
+    # Register shutdown callback for graceful cleanup
+    async def shutdown_callback():
+        """Gracefully shutdown all components when server exits."""
+        logger.info("Shutting down components...")
+        await component_manager.shutdown()
+
+    server.add_shutdown_callback(shutdown_callback)
 
     # # AI model
     # llm_provider = "openai"
@@ -319,7 +325,7 @@ def main(
     # ==========================================
     # LLM provider methods
     # ==========================================
-    @server.add_method("list_llm_provider")
+    @server.add_method("list_llm_providers")
     async def list_llm_providers(
         _request_id: Any,
         _params: Dict[str, Any],
@@ -370,8 +376,16 @@ def main(
         component_manager: ComponentManager,
         deadend_agent_refs: Dict[str, DeadEndAgent]
     ) -> Dict[str, Any]:
+        # Validate parameters first
+        target = params.get("target")
+        if not target:
+            return {
+                "status": "failed",
+                "reason": "Must supply a target"
+            }
+
         agent_id = uuid.uuid4()
-                
+
         available_agents = {
             "requester": (
                 "Agent specialized in fine-grained testing and sending raw request data. "
@@ -391,28 +405,23 @@ def main(
             available_agents=available_agents,
             max_depth=3
         )
-        target = params.get("target")
-        if not target:
-            return {
-                "status": "failed",
-                "reason": "Must supply a target"
-            }
         async def approval_callback() -> str:
-                return "yes"
+            return "yes"
 
         # Sandbox instantiation for the agent
         sandbox: Sandbox | None = None
         try:
             sandbox = component_manager.create_task_sandbox(network_name="host")
         except Exception as e:
-                logger.warning("Failed to create sandbox: %s", e)
-                sandbox = None
+            logger.warning("Failed to create sandbox: %s", e)
+            sandbox = None
 
         # components for embeddings
         embedder_client = component_manager.get_embedder()
         rag_db = component_manager.get_rag_connector()
         deadend_agent.set_approval_callback(approval_callback)
-        deadend_agent_refs.update(agent_id, deadend_agent)
+        deadend_agent.target = target
+        deadend_agent_refs.update({str(agent_id): deadend_agent})
         deadend_agent.prepare_dependencies(
             embedder_client=embedder_client,
             rag_connector=rag_db,
@@ -422,7 +431,7 @@ def main(
 
         return {
             "status": "ok", 
-            "agent_id": agent_id
+            "agent_id": str(agent_id)
         }
 
     @server.add_method("embed_target")
@@ -431,20 +440,32 @@ def main(
         params: Dict[str, Any],
         component_manager: ComponentManager,
         deadend_agent_refs: Dict[str, DeadEndAgent]
-    ) -> Dict[str, Any]:
+    ):
         target = params.get("target")
         if not target:
-            return {
+            yield {
                 "status": "failed",
                 "reason": "Must supply a target"
             }
+            return
         agent_id = params.get("agent_id")
         if not agent_id:
-            return {
+            yield {
                 "status": "failed",
                 "reason": "Must supply an agent_id"
             }
+            return
         agent = deadend_agent_refs.get(agent_id)
+        if agent is None:
+            yield {
+                "phase": "error",
+                "data": {
+                    "message": f"Agent with id {agent_id} not found",
+                    "error_type": "ValueError",
+                },
+            }
+            return
+
         # components for embeddings
         embedder_client = component_manager.get_embedder()
         rag_db = component_manager.get_rag_connector()
@@ -469,6 +490,12 @@ def main(
                     "data": {"message": "Storing embeddings in database..."},
             }
             await rag_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
+        
+        # Yield final completion message with "done" phase to signal stream end
+        yield {
+            "phase": "done",
+            "data": {"message": "Target embedding completed successfully"},
+        }
 
     @server.add_method("run_agent_recursive")
     async def run_agent_recursive(
@@ -477,12 +504,7 @@ def main(
         deadend_agent_refs: Dict[str, DeadEndAgent]
     ):
         try:
-            # run the dual phase by running
-            yield {
-                "phase": "recon",
-                "data": {"message": "Starting web app analysis and research"},
-            }
-            threat_model_text = ""
+            # Validate parameters first before yielding any phase
             agent_id = params.get("agent_id")
             if not agent_id:
                 yield {
@@ -515,6 +537,13 @@ def main(
                     },
                 }
                 return
+
+            # Now start the recon phase
+            yield {
+                "phase": "recon",
+                "data": {"message": "Starting web app analysis and research"},
+            }
+            threat_model_text = ""
 
             async for item in deadend_agent.threat_model_stream(task=prompt):
                 threat_model_text += object_to_string(item)
@@ -558,6 +587,7 @@ def main(
 
     ):
         pass
+
 
     server.serve()
 

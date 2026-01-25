@@ -60,7 +60,7 @@ function App({ cliArgs }: AppProps) {
         
         const client = new DeadEndRpcClient({
           pythonCommand: "uv",
-          commandArgs: ["run", "python", "-m", "deadend_cli.rpc_server"],
+          commandArgs: ["run", "python", "-m", "deadend_cli.jsonrpc_server", "--log-file", logFile],
           cwd: pythonPkgDir,
           logFile: logFile,
         });

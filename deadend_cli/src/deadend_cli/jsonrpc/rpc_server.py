@@ -24,15 +24,6 @@ import sys
 import uuid
 from dataclasses import asdict, is_dataclass
 
-from deadend_agent import DeadEndAgent, Sandbox
-from deadend_agent.hooks import set_event_hooks
-from deadend_agent.tools.tool_wrappers import (
-    set_approval_provider,
-    enable_approval_mode,
-    disable_approval_mode,
-    is_approval_mode_enabled,
-)
-from deadend_agent.utils.network import check_target_alive
 from deadend_agent.core_agent import (
     LLMError,
     RateLimitError,
@@ -43,9 +34,6 @@ from deadend_agent.core_agent import (
     InvalidRequestError,
 )
 
-from ..component_manager import ComponentManager
-from .event_bus import event_bus
-from .hooks_adapter import EventBusHooksAdapter
 from ..logging import logger, setup_logging
 from .rpc_models import RPCErrorCode
 
@@ -58,7 +46,6 @@ class JSONRPCErrorCode:
     METHOD_NOT_FOUND = -32601
     INVALID_PARAMS = -32602
     INTERNAL_ERROR = -32603
-
 
 def _make_jsonrpc_response(
     request_id: Any,
@@ -128,9 +115,20 @@ class RPCServer:
         # Method handler keeps track of the RPC methods used
         self._method_handlers: Dict[str, Callable[..., Any]] = {}
 
+        # Shutdown callbacks for graceful cleanup
+        self._shutdown_callbacks: list[Callable[[], Any]] = []
+
     def add_dependency(self, name: str, value: Any) -> None:
         """Register a new dependency used by the RPC methods"""
         self._dependencies[name] = value
+
+    def add_shutdown_callback(self, callback: Callable[[], Any]) -> None:
+        """Register a callback to be called during graceful shutdown.
+        
+        The callback should be an async function or a regular function.
+        It will be awaited if it's a coroutine.
+        """
+        self._shutdown_callbacks.append(callback)
 
     def add_method(self, method_name: str, **dependencies):
         """Decorator to register new methods to the rpc server.
@@ -154,215 +152,39 @@ class RPCServer:
             param_names.discard('params')
             param_names.discard('_params')
             
+            # Check if the function is an async generator function
+            is_async_gen = inspect.isasyncgenfunction(func)
+
             async def wrapped_call(request_id: Any, params: Dict[str, Any]):
                 injected = {}
-                
+
                 # Add dependencies explicitly passed to the decorator
                 for dep_name, dep_value in dependencies.items():
                     if dep_name in param_names:
                         injected[dep_name] = dep_value
-                
+
                 # Add dependencies from registered dependencies that match function parameters
                 for dep_name, dep_value in self._dependencies.items():
                     if dep_name not in injected and dep_name in param_names:
                         injected[dep_name] = dep_value
 
                 if injected:
-                    return await func(request_id, params, **injected)
+                    result = func(request_id, params, **injected)
                 else:
-                    return await func(request_id, params)
+                    result = func(request_id, params)
+
+                # For async generator functions, return the generator directly
+                # For regular async functions, await the coroutine
+                if is_async_gen:
+                    return result
+                else:
+                    return await result
             # Registering the new method part of the RPC server.
 
             self._method_handlers[method_name] = wrapped_call
             logger.debug("RPC method added : %s", method_name)
             return wrapped_call
         return decorator
-
-
-    async def _run_task_stream(
-        self,
-        *,
-        prompt: str,
-        target: str,
-        mode: str = "yolo",
-        provider: Optional[str] = None,
-        model: Optional[str] = None,
-    ):
-        try:
-            # Yield initial event IMMEDIATELY to signal task has started
-            # This must be the very first thing that happens
-            yield {
-                "phase": "init",
-                "data": {"message": "Task started", "target": target, "prompt": prompt},
-            }
-
-            # Give the event loop a chance to send the first message before heavy work
-            await asyncio.sleep(0.01)
-
-            # If provider is specified, switch to it
-            if provider:
-                yield {
-                    "phase": "init",
-                    "data": {"message": f"Setting LLM provider to {provider}..."},
-                }
-                self.component_manager.set_llm_provider(provider)
-                self.llm_provider = provider
-
-            yield {
-                "phase": "init",
-                "data": {"message": "Checking component readiness..."},
-            }
-
-            # Verify all required components are initialized (this might be blocking)
-            # Yield before and after to ensure streaming continues
-            await asyncio.sleep(0)  # Yield control to event loop
-            is_ready, missing = self.component_manager.is_ready_for_tasks()
-            await asyncio.sleep(0)  # Yield control again after sync call
-
-            if not is_ready:
-                raise RuntimeError(
-                    f"Components not initialized: {', '.join(missing)}. "
-                    "Call init_all or initialize individual components first."
-                )
-
-            yield {
-                "phase": "init",
-                "data": {"message": "Verifying target reachability..."},
-            }
-            await asyncio.sleep(0)  # Yield before potentially blocking network call
-
-            # Check if target is reachable
-            alive, status_code, err = await check_target_alive(target)
-            if not alive:
-                raise RuntimeError(
-                    f"Target not reachable (status={status_code}, error={err})"
-                )
-
-            yield {
-                "phase": "init",
-                "data": {"message": "Initializing agent..."},
-            }
-            await asyncio.sleep(0)  # Yield before potentially blocking calls
-
-            # Get pre-initialized components (use current provider from component manager)
-            # These might be blocking, so yield between them
-            # Pass model_name if specified in settings to override the default
-            llm_model = self.component_manager.get_model(model_name=model)
-            await asyncio.sleep(0)
-            embedder_client = self.component_manager.get_embedder()
-            await asyncio.sleep(0)
-            rag_db = self.component_manager.get_rag_connector()
-            await asyncio.sleep(0)
-
-            # Create a sandbox for this task
-            sandbox: Sandbox | None = None
-            try:
-                sandbox = self.component_manager.create_task_sandbox(network_name="host")
-            except Exception as e:
-                logger.warning("Failed to create sandbox: %s", e)
-                sandbox = None
-
-            available_agents = {
-                "requester": (
-                    "Agent specialized in fine-grained testing and sending raw request data. "
-                    "Best for gathering auth tokens, testing individual endpoints, and precise "
-                    "request manipulation."
-                ),
-                "python_interpreter": (
-                    "Agent specialized in generating code and running it safely in a sandbox. "
-                    "Best for fuzzing, parameter testing, and repetitive security testing operations."
-                ),
-                "shell": "Agent providing access to a bash shell for running Linux commands.",
-                "router_agent": "Router agent that selects the appropriate specialized agent.",
-            }
-
-            # Generate a unique session ID for this task
-            task_session_id = uuid.uuid4()
-
-            deadend_agent = DeadEndAgent(
-                session_id=task_session_id,
-                model=llm_model,
-                available_agents=available_agents,
-                max_depth=3,
-            )
-
-            async def approval_callback() -> str:
-                return "yes"
-
-            deadend_agent.set_approval_callback(approval_callback)
-
-            yield {
-                "phase": "init",
-                "data": {"message": "Crawling target..."},
-            }
-
-            deadend_agent.init_webtarget_indexer(target=target)
-            await deadend_agent.crawl_target()
-
-            yield {
-                "phase": "init",
-                "data": {"message": "Embedding target code..."},
-            }
-
-            code_chunks = await deadend_agent.embed_target(embedder_client=embedder_client)
-
-            config = self.component_manager.config
-            if rag_db is not None and config.openai_api_key and config.embedding_model:
-                yield {
-                    "phase": "init",
-                    "data": {"message": "Storing embeddings in database..."},
-                }
-                await rag_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
-
-            deadend_agent.prepare_dependencies(
-                embedder_client=embedder_client,
-                rag_connector=rag_db,
-                sandbox=sandbox,
-                target=target,
-            )
-
-            yield {
-                "phase": "init",
-                "data": {"message": "Starting threat modeling..."},
-            }
-
-            threat_model_text = ""
-            async for item in deadend_agent.threat_model_stream(task=prompt):
-                threat_model_text += self._to_string(item)
-                yield {
-                    "phase": "recon",
-                    "data": self._to_serializable(item),
-                }
-
-            yield {
-                "phase": "init",
-                "data": {"message": "Starting exploitation phase..."},
-            }
-
-            async for item in deadend_agent.start_testing_stream(
-                task=prompt,
-                threat_model=threat_model_text,
-            ):
-                yield {
-                    "phase": "exploit",
-                    "data": self._to_serializable(item),
-                }
-
-            yield {
-                "phase": "done",
-                "mode": mode,
-                "target": target,
-            }
-        except Exception as exc:
-            logger.exception(f"Error in _run_task_stream: {exc}")
-            yield {
-                "phase": "error",
-                "data": {
-                    "message": str(exc),
-                    "error_type": type(exc).__name__,
-                },
-            }
-            raise
 
     def serve(self) -> None:
         """Start the RPC server with signal handling."""
@@ -391,6 +213,8 @@ class RPCServer:
             lambda: protocol, sys.stdin
         )
 
+        logger.info("RPC Server started and listening on stdin")
+        
         # Track active request handlers for concurrent processing
         active_tasks: set[asyncio.Task] = set()
 
@@ -414,7 +238,9 @@ class RPCServer:
 
             try:
                 request = json.loads(line_str)
-            except json.JSONDecodeError:
+                logger.debug("Received JSON-RPC request: method=%s, id=%s", request.get("method"), request.get("id"))
+            except json.JSONDecodeError as e:
+                logger.warning("Failed to parse JSON-RPC request: %s %s",e, line_str[:100])
                 continue
 
             # Process request in a task to allow concurrent handling
@@ -422,8 +248,19 @@ class RPCServer:
             active_tasks.add(task)
             task.add_done_callback(active_tasks.discard)
 
-        # Graceful shutdown
-        await self.component_manager.shutdown()
+        # Graceful shutdown - call all registered shutdown callbacks
+        if self._shutdown_callbacks:
+            logger.info("Executing shutdown callbacks...")
+            for callback in self._shutdown_callbacks:
+                try:
+                    if asyncio.iscoroutinefunction(callback):
+                        await callback()
+                    else:
+                        result = callback()
+                        if asyncio.iscoroutine(result):
+                            await result
+                except Exception as e:
+                    logger.exception("Error in shutdown callback: %s", e)
 
     async def _handle_request_and_write(self, request: Dict[str, Any]) -> None:
         """Handle a request and write all streaming responses."""
@@ -545,138 +382,6 @@ class RPCServer:
                 code=error_code,
                 message=error_message,
             )
-
-    # =========================================================================
-    # Handler methods
-    # =========================================================================
-
-    # async def _handle_subscribe_events(self, request_id: Any, params: Dict[str, Any]):
-    #     """Subscribe to event stream. This is a streaming method."""
-    #     async for event in self.event_bus.subscribe():
-    #         yield event.model_dump()
-
-    # async def _handle_interrupt(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-    #     """Interrupt a running workflow."""
-    #     session_id = params.get("session_id")    # async def _handle_list_llm_providers(
-    #     self,
-    #     request_id: Any,
-    #     params: Dict[str, Any]
-    # ) -> Dict[str, Any]:
-    #     """List all available LLM providers and their configuration status."""
-    #     result = self.component_manager.list_llm_providers()
-    #     return result
-
-    # async def _handle_get_llm_provider(
-    #     self,
-    #     request_id: Any,
-    #     params: Dict[str, Any]
-    # ) -> Dict[str, Any]:
-    #     """Get the current LLM provider."""
-    #     provider = self.component_manager.get_llm_provider()
-    #     return {"provider": provider}
-
-    # async def _handle_set_llm_provider(
-    #     self,
-    #     request_id: Any,
-    #     params: Dict[str, Any]
-    # ) -> Dict[str, Any]:
-    #     """Set the current LLM provider."""
-    #     provider = params.get("provider")
-    #     if not provider:
-    #         raise ValueError("provider parameter is required")
-        
-    #     self.component_manager.set_llm_provider(provider)
-    #     # Update the server's llm_provider attribute for consistency
-    #     self.llm_provider = provider
-        
-    #     return {"status": "ok", "provider": provider}
-    #     if not session_id:
-    #         raise ValueError("session_id is required")
-
-    #     reason = params.get("reason", "User requested interruption")
-    #     self.event_bus.interrupt_session(session_id, reason)
-    #     return {"status": "interrupted", "session_id": session_id}
-
-    # async def _handle_approve(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-    #     """Respond to an approval request."""
-    #     approval_request_id = params.get("request_id")
-    #     if not approval_request_id:
-    #         raise ValueError("request_id is required")
-
-    #     approved = params.get("approved", False)
-    #     modified_args = params.get("modified_args")
-
-    #     success = self.event_bus.respond_to_approval(
-    #         request_id=approval_request_id,
-    #         approved=approved,
-    #         modified_args=modified_args,
-    #     )
-
-    #     if not success:
-    #         raise ValueError(f"Approval request {approval_request_id} not found or already processed")
-
-    #     return {"status": "approved" if approved else "rejected", "request_id": approval_request_id}
-
-    # async def _handle_enable_approval_mode(
-    #     self,
-    #     request_id: Any,
-    #     params: Dict[str, Any]
-    # ) -> Dict[str, Any]:
-    #     """Enable approval mode - all tool calls require user approval."""
-    #     enable_approval_mode()
-    #     return {"status": "enabled", "approval_mode": True}
-
-    # async def _handle_disable_approval_mode(
-    #     self,
-    #     request_id: Any,
-    #     params: Dict[str, Any]
-    # ) -> Dict[str, Any]:
-    #     """Disable approval mode - tools execute without approval."""
-    #     disable_approval_mode()
-    #     return {"status": "disabled", "approval_mode": False}
-
-    # async def _handle_get_approval_mode(self, request_id: Any, params: Dict[str, Any]) -> Dict[str, Any]:
-    #     """Get current approval mode status."""
-    #     return {"approval_mode": is_approval_mode_enabled()}
-
-    # async def _handle_list_llm_providers(
-    #     self,
-    #     request_id: Any,
-    #     params: Dict[str, Any]
-    # ) -> Dict[str, Any]:
-    #     """List all available LLM providers and their configuration status."""
-    #     result = self.component_manager.list_llm_providers()
-    #     return result
-
-    # async def _handle_get_llm_provider(
-    #     self,
-    #     request_id: Any,
-    #     params: Dict[str, Any]
-    # ) -> Dict[str, Any]:
-    #     """Get the current LLM provider."""
-    #     provider = self.component_manager.get_llm_provider()
-    #     return {"provider": provider}
-
-    # async def _handle_set_llm_provider(
-    #     self,
-    #     request_id: Any,
-    #     params: Dict[str, Any]
-    # ) -> Dict[str, Any]:
-    #     """Set the current LLM provider."""
-    #     provider = params.get("provider")
-    #     if not provider:
-    #         raise ValueError("provider parameter is required")
-        
-    #     self.component_manager.set_llm_provider(provider)
-    #     # Update the server's llm_provider attribute for consistency
-    #     self.llm_provider = provider
-        
-    #     return {"status": "ok", "provider": provider}
-
-    async def _handle_run_task(self, request_id: Any, params: Dict[str, Any]):
-        """Run a task. This is a streaming method."""
-        async for event in self._run_task_stream(**params):
-            yield event
 
     def _to_string(self, obj: Any) -> str:
         if obj is None:

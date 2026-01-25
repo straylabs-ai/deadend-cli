@@ -26,7 +26,7 @@ import {
   OPEN_LLM_SELECTOR,
 } from "../lib/commands/handlers/llm.ts";
 import { LlmSelector } from "./LlmSelector.tsx";
-import { getCurrentTarget, setTarget } from "../lib/commands/handlers/target.ts";
+import { getCurrentTarget, setTarget as setTargetLocal, TARGET_SET_PREFIX } from "../lib/commands/handlers/target.ts";
 import type { CliArgs } from "../lib/cli-args.ts";
 import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
 import { StatusArea, type StatusNotification } from "./StatusArea.tsx";
@@ -97,7 +97,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
   ]);
 
   // Task runner hook for streaming task execution
-  const { taskState, runTask, cancel } = useTaskRunner(
+  const { taskState, setTarget, runTask, cancel } = useTaskRunner(
     rpcClient as DeadEndRpcClient,
     {
       onMessage: addMessage,
@@ -208,19 +208,17 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
       return;
     }
 
-    if (cliArgs?.target) {
-      setTarget(cliArgs.target);
-      const targetMessage = createMessage(
-        "system",
-        `Target set from CLI: ${cliArgs.target}`,
-        "info"
-      );
-      addMessage(targetMessage);
-    }
+    const initFromCliArgs = async () => {
+      if (cliArgs?.target) {
+        // Store target locally for /target command checks
+        setTargetLocal(cliArgs.target);
 
-    // If prompt is provided, execute it after target is set and settings are loaded
-    if (cliArgs?.prompt && cliArgs?.target) {
-      if (rpcClient && "runTask" in rpcClient) {
+        // Initialize agent and embed target via RPC
+        await setTarget({ target: cliArgs.target });
+      }
+
+      // If prompt is provided, execute it after target is set and settings are loaded
+      if (cliArgs?.prompt && cliArgs?.target && taskState.isTargetEmbedded) {
         // Add user message for the task
         const userMessage = createMessage("user", cliArgs.prompt, "text");
         addMessage(userMessage);
@@ -231,24 +229,16 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
           target: cliArgs.target,
           task: cliArgs.prompt,
         });
-        // Start the task with settings
+        // Start the task
         runTask({
-          target: cliArgs.target,
           task: cliArgs.prompt,
           mode: executionMode,
-          provider: settings.provider,
-          model: settings.model,
         });
-      } else {
-        const errorMessage = createMessage(
-          "system",
-          "Cannot start task: RPC client not properly initialized.",
-          "error"
-        );
-        addMessage(errorMessage);
       }
-    }
-  }, [rpcClient, settingsLoaded]); // Re-run when rpcClient is ready AND settings are loaded
+    };
+
+    initFromCliArgs();
+  }, [rpcClient, settingsLoaded, taskState.isTargetEmbedded]); // Re-run when target is embedded
 
   /**
    * Handle keyboard shortcuts.
@@ -315,13 +305,22 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
           return;
         }
 
+        // Handle /target command - initialize agent for target
+        if (result.startsWith(TARGET_SET_PREFIX)) {
+          const targetUrl = result.slice(TARGET_SET_PREFIX.length);
+          addMessage(createMessage("system", `Target set to: ${targetUrl}`, "info"));
+          // Initialize agent and embed target via RPC
+          setIsLoading(false);
+          setTarget({ target: targetUrl });
+          return;
+        }
+
         // Handle /run command - start task with current mode
         if (result === START_RUN) {
-          const target = getCurrentTarget();
-          if (!target) {
+          if (!taskState.isTargetEmbedded) {
             const errorMessage = createMessage(
               "system",
-              "Error: No target set. Use /target <url> first.",
+              "Error: No target set or target not ready. Use /target <url> first and wait for initialization.",
               "error"
             );
             addMessage(errorMessage);
@@ -343,11 +342,8 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
           // Start the task (events will stream as messages)
           setIsLoading(false);
           runTask({
-            target,
             task: taskArg,
             mode: executionMode,
-            provider: settings.provider,
-            model: settings.model,
           });
           return;
         }
@@ -378,12 +374,11 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
     const userMessage = createMessage("user", trimmedInput, "text");
     addMessage(userMessage);
 
-    // Check if target is set
-    const target = getCurrentTarget();
-    if (!target) {
+    // Check if target is set and embedded
+    if (!taskState.isTargetEmbedded) {
       const errorMessage = createMessage(
         "system",
-        "No target set. Use /target <url> first.",
+        "No target set or target not ready. Use /target <url> first and wait for initialization.",
         "error"
       );
       addMessage(errorMessage);
@@ -394,21 +389,19 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
     // Start agent execution with the message as the task
     setIsLoading(false);
     runTask({
-      target,
       task: trimmedInput,
       mode: executionMode,
-      provider: settings.provider,
-      model: settings.model,
     });
   }, [
     input,
     isLoading,
     taskState.isRunning,
+    taskState.isTargetEmbedded,
     addMessage,
     onExit,
     executionMode,
     runTask,
-    settings,
+    setTarget,
   ]);
 
   // Config setup view

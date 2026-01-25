@@ -558,8 +558,8 @@ class TestRPCServerHandlers:  # noqa: F811
     
     @pytest.mark.asyncio
     async def test_get_approval_mode(self, rpc_client):
-        """Test get_approval method."""
-        await rpc_client.send_request("get_approval")
+        """Test get_approval_mode method."""
+        await rpc_client.send_request("get_approval_mode")
         response = await rpc_client.read_response()
         
         assert response["jsonrpc"] == "2.0"
@@ -576,7 +576,7 @@ class TestRPCServerHandlers:  # noqa: F811
         assert enable_response["result"]["approval_mode"] is True
         
         # 2. Verify it's enabled
-        await rpc_client.send_request("get_approval")
+        await rpc_client.send_request("get_approval_mode")
         check_response = await rpc_client.read_response()
         assert check_response["result"]["approval_mode"] is True
         
@@ -586,7 +586,7 @@ class TestRPCServerHandlers:  # noqa: F811
         assert disable_response["result"]["approval_mode"] is False
         
         # 4. Verify it's disabled
-        await rpc_client.send_request("get_approval")
+        await rpc_client.send_request("get_approval_mode")
         final_response = await rpc_client.read_response()
         assert final_response["result"]["approval_mode"] is False
 
@@ -597,9 +597,9 @@ class TestRPCServerLLMProviders:  # noqa: F811
     
     @pytest.mark.asyncio
     @pytest.mark.slow
-    async def test_list_llm_provider(self, rpc_client):
-        """Test list_llm_provider method."""
-        await rpc_client.send_request("list_llm_provider")
+    async def test_list_llm_providers(self, rpc_client):
+        """Test list_llm_providers method."""
+        await rpc_client.send_request("list_llm_providers")
         response = await rpc_client.read_response(timeout=10.0)
         
         assert response["jsonrpc"] == "2.0"
@@ -663,7 +663,7 @@ class TestRPCServerLLMProviders:  # noqa: F811
     async def test_llm_provider_workflow(self, rpc_client):
         """Test complete LLM provider workflow."""
         # 1. List available providers
-        await rpc_client.send_request("list_llm_provider")
+        await rpc_client.send_request("list_llm_providers")
         list_response = await rpc_client.read_response(timeout=10.0)
         assert "result" in list_response
         
@@ -679,6 +679,227 @@ class TestRPCServerLLMProviders:  # noqa: F811
         # Should get either success or error, both are valid
         assert set_response["jsonrpc"] == "2.0"
         assert "result" in set_response or "error" in set_response
+
+
+@pytest.mark.integration
+class TestRPCServerInitialization:  # noqa: F811
+    """Test component initialization methods."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_init_docker(self, rpc_client):
+        """Test init_docker method."""
+        await rpc_client.send_request("init_docker")
+        response = await rpc_client.read_response(timeout=30.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        # Result should have component info
+        assert "component" in result or "status" in result or "success" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_init_pgvector(self, rpc_client):
+        """Test init_pgvector method (requires Docker)."""
+        await rpc_client.send_request("init_pgvector")
+        response = await rpc_client.read_response(timeout=60.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        assert "component" in result or "status" in result or "success" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_init_model_registry(self, rpc_client):
+        """Test init_model_registry method."""
+        await rpc_client.send_request("init_model_registry")
+        response = await rpc_client.read_response(timeout=30.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        assert "component" in result or "status" in result or "success" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_init_python_sandbox(self, rpc_client):
+        """Test init_python_sandbox method (requires Docker)."""
+        await rpc_client.send_request("init_python_sandbox")
+        response = await rpc_client.read_response(timeout=60.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        assert "component" in result or "status" in result or "success" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_init_shell_sandbox(self, rpc_client):
+        """Test init_shell_sandbox method (requires Docker)."""
+        await rpc_client.send_request("init_shell_sandbox")
+        response = await rpc_client.read_response(timeout=60.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        assert "component" in result or "status" in result or "success" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_init_playwright(self, rpc_client):
+        """Test init_playwright method."""
+        await rpc_client.send_request("init_playwright")
+        response = await rpc_client.read_response(timeout=60.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        assert "component" in result or "status" in result or "success" in result
+
+
+@pytest.mark.integration
+class TestRPCServerAdditionalHealthChecks:  # noqa: F811
+    """Test additional health check methods."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_health_shell_sandbox(self, rpc_client):
+        """Test health_shell_sandbox method."""
+        await rpc_client.send_request("health_shell_sandbox")
+        response = await rpc_client.read_response(timeout=10.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    async def test_health_playwright(self, rpc_client):
+        """Test health_playwright method."""
+        await rpc_client.send_request("health_playwright")
+        response = await rpc_client.read_response(timeout=10.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+
+
+@pytest.mark.integration
+class TestRPCServerAgents:  # noqa: F811
+    """Test agent-related methods."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_instantiate_agent_missing_target(self, rpc_client):
+        """Test instantiate_agent method with missing target (should fail)."""
+        await rpc_client.send_request("instantiate_agent", params={})
+        response = await rpc_client.read_response(timeout=30.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        # Should return failed status when target is missing
+        assert result.get("status") == "failed"
+        assert "target" in result.get("reason", "").lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_instantiate_agent_with_target(self, rpc_client):
+        """Test instantiate_agent method with valid target."""
+        test_target = "https://example.com"
+        await rpc_client.send_request("instantiate_agent", params={"target": test_target})
+        response = await rpc_client.read_response(timeout=60.0)
+
+        assert response["jsonrpc"] == "2.0"
+        # Could be success or error depending on component availability
+        if "result" in response:
+            result = response["result"]
+            # If successful, should have status and agent_id
+            if result.get("status") == "ok":
+                assert "agent_id" in result
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_embed_target_missing_target(self, rpc_client):
+        """Test embed_target method with missing target (should fail)."""
+        await rpc_client.send_request("embed_target", params={"agent_id": "test-agent-123"})
+        response = await rpc_client.read_response(timeout=10.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        assert result.get("status") == "failed"
+        assert "target" in result.get("reason", "").lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_embed_target_missing_agent_id(self, rpc_client):
+        """Test embed_target method with missing agent_id (should fail)."""
+        await rpc_client.send_request("embed_target", params={"target": "https://example.com"})
+        response = await rpc_client.read_response(timeout=10.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        assert result.get("status") == "failed"
+        assert "agent_id" in result.get("reason", "").lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_run_agent_recursive_missing_agent_id(self, rpc_client):
+        """Test run_agent_recursive method with missing agent_id (should error)."""
+        await rpc_client.send_request("run_agent_recursive", params={"prompt": "test prompt"})
+        response = await rpc_client.read_response(timeout=10.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        # Should return error phase
+        assert result.get("phase") == "error"
+        assert "agent_id" in result.get("data", {}).get("message", "").lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_run_agent_recursive_missing_prompt(self, rpc_client):
+        """Test run_agent_recursive method with missing prompt (should error)."""
+        await rpc_client.send_request("run_agent_recursive", params={"agent_id": "test-agent-123"})
+        response = await rpc_client.read_response(timeout=10.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        # Should return error phase
+        assert result.get("phase") == "error"
+        assert "prompt" in result.get("data", {}).get("message", "").lower()
+
+    @pytest.mark.asyncio
+    @pytest.mark.slow
+    @pytest.mark.docker
+    async def test_run_agent_recursive_nonexistent_agent(self, rpc_client):
+        """Test run_agent_recursive method with non-existent agent_id (should error)."""
+        await rpc_client.send_request("run_agent_recursive", params={
+            "agent_id": "nonexistent-agent-id",
+            "prompt": "test prompt"
+        })
+        response = await rpc_client.read_response(timeout=10.0)
+
+        assert response["jsonrpc"] == "2.0"
+        assert "result" in response
+        result = response["result"]
+        # Should return error phase about agent not found
+        assert result.get("phase") == "error"
+        assert "not found" in result.get("data", {}).get("message", "").lower()
 
 
 # Helper function for more complex test scenarios
