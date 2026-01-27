@@ -58,6 +58,7 @@ function App({ cliArgs }: AppProps) {
         const logDir = `${homeDir}/.cache/deadend/logs`;
         const logFile = `${logDir}/rpc-server-${Date.now()}.log`;
         
+        // TODO: How the jsonrpc server is ran needs to be changed.
         const client = new DeadEndRpcClient({
           pythonCommand: "uv",
           commandArgs: ["run", "python", "-m", "deadend_cli.jsonrpc_server", "--log-file", logFile],
@@ -166,15 +167,10 @@ function App({ cliArgs }: AppProps) {
   // MUST be called before any conditional returns to follow Rules of Hooks
   const staticBanner = useMemo(() => (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
-      {/* ASCII Banner */}
       <Banner />
-
-      {/* Tagline */}
       <Text color="gray">
         deadend CLI v0.1.0 • Type /help for commands
       </Text>
-
-      {/* Session info on one line */}
       <Box marginTop={1}>
         {cliArgs.mode && (
           <Text color="yellow">[{cliArgs.mode}] </Text>
