@@ -34,7 +34,8 @@ class CodeChunk(Base):
     language = Column(String(50), nullable=False)
     # start_line = Column(Integer, nullable=True)
     # end_line = Column(Integer, nullable=True)
-    embedding = Column(Vector(4096), nullable=False)
+    # 1536 dimensions matches OpenAI text-embedding-3-small and text-embedding-ada-002
+    embedding = Column(Vector(1536), nullable=False)
     # Metadata
     created_at = Column(DateTime, default=datetime.now())
     updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now())
@@ -57,7 +58,8 @@ class CodebaseChunk(Base):
     struct_name = Column(String(200), nullable=True)
     language = Column(String(50), nullable=False)
     code_content = Column(Text, nullable=False)
-    embedding = Column(Vector(4096), nullable=False)
+    # 1536 dimensions matches OpenAI text-embedding-3-small and text-embedding-ada-002
+    embedding = Column(Vector(1536), nullable=False)
     # metadata
     created_at = Column(DateTime, default=datetime.now())
     updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now())
@@ -78,7 +80,8 @@ class KnowledgeBase(Base):
     file_path = Column(String(500), nullable=False)
     content_metadata = Column(Text, nullable=False)
     content  = Column(Text, nullable=False)
-    embedding = Column(Vector(4096), nullable=False)
+    # 1536 dimensions matches OpenAI text-embedding-3-small and text-embedding-ada-002
+    embedding = Column(Vector(1536), nullable=False)
     # metadata
     created_at = Column(DateTime, default=datetime.now())
     updated_at = Column(DateTime, default=datetime.now(), onupdate=datetime.now())

@@ -74,12 +74,12 @@ class RagDeps:
 @dataclass
 class CodeSection:
     """Represents a code section with metadata and embeddings.
-    
+
     Attributes:
         url_path: URL or file path where the code section is located.
         title: Descriptive title for the code section.
         content: Dictionary containing the actual code content.
-        embeddings: Vector embeddings for semantic search (4096 dimensions).
+        embeddings: Vector embeddings for semantic search (1536 dimensions for OpenAI models).
     """
     url_path: str
     title: str
@@ -137,8 +137,8 @@ CREATE TABLE IF NOT EXISTS code_sections (
     url text NOT NULL,
     title text NOT NULL,
     content text NOT NULL,
-    --  returns a vector of 4096 floats
-    embedding vector(4096) NOT NULL
+    -- 1536 dimensions matches OpenAI text-embedding-3-small and text-embedding-ada-002
+    embedding vector(1536) NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_code_sections_embedding ON code_sections USING hnsw (embedding vector_l2_ops);
 """
