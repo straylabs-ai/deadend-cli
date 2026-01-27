@@ -18,7 +18,7 @@ Thank you for your interest in contributing to Deadend CLI! This document provid
 
 - **Python 3.11+** required
 - **Docker** - Required for running the pgvector database and sandbox execution
-- **uv >= 0.5.30** - Package manager for dependency management (older versions may fail to parse `uv.lock`; run `uv self update`)
+- **uv >= 0.5.30** - Package manager for dependency management
 - **Playwright** - For browser automation
 
 ### Setting Up Your Development Environment
