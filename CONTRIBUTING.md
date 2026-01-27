@@ -18,23 +18,26 @@ Thank you for your interest in contributing to Deadend CLI! This document provid
 
 - **Python 3.11+** required
 - **Docker** - Required for running the pgvector database and sandbox execution
-- **uv** - Package manager for dependency management
+- **uv >= 0.5.30** - Package manager for dependency management (older versions may fail to parse `uv.lock`; run `uv self update`)
 - **Playwright** - For browser automation
 
 ### Setting Up Your Development Environment
 
 1. **Fork and clone the repository**:
+
    ```bash
    git clone https://github.com/<your-username>/deadend-cli.git
    cd deadend-cli
    ```
 
 2. **Install dependencies**:
+
    ```bash
    uv sync
    ```
 
 3. **Install Playwright browsers**:
+
    ```bash
    pipx install pytest-playwright
    playwright install
@@ -140,7 +143,6 @@ class AgentOutput(BaseModel):
     updated_state: dict[str, Any] | None = None
 ```
 
-
 ### Conventions Summary
 
 - **Confidence scores**: Always 0.0 to 1.0 (float), not percentages
@@ -204,6 +206,7 @@ async def test_my_async_function():
 ### Pull Request Process
 
 1. **Create a branch**:
+
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -211,6 +214,7 @@ async def test_my_async_function():
 2. **Make your changes** following the code style guidelines
 
 3. **Run tests and formatting**:
+
    ```bash
    black .
    isort .
@@ -219,12 +223,14 @@ async def test_my_async_function():
    ```
 
 4. **Commit your changes**:
+
    ```bash
    git add .
    git commit -m "Add: brief description of changes"
    ```
 
 5. **Push and create a PR**:
+
    ```bash
    git push origin feature/your-feature-name
    ```
