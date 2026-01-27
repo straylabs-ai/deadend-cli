@@ -15,6 +15,7 @@ Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic a
 Deadend CLI is an autonomous web application penetration testing agent that uses feedback-driven iteration to adapt exploitation strategies. When standard tools fail, it generates custom Python payloads, observes responses, and iteratively refines its approach until breakthrough.
 
 **Key features:**
+
 - Fully local execution (no cloud dependencies, zero data exfiltration)
 - Model-agnostic design (works with any deployable LLM)
 - Custom sandboxed tools (Playwright, Docker, WebAssembly)
@@ -51,11 +52,14 @@ The framework focuses on **intelligent security analysis** through:
 ## Quick Start
 
 ### Prerequisites
+
 - Docker (required)
 - Python 3.11+
+- uv >= 0.5.30
 - Playwright: `playwright install`
 
 ### Installation
+
 ```bash
 # Install via pipx (recommended)
 pipx install deadend_cli
@@ -67,6 +71,7 @@ uv sync && uv build
 ```
 
 ### First Run
+
 ```bash
 # Initialize configuration
 deadend-cli init
@@ -82,6 +87,7 @@ deadend-cli chat \
 ## Usage Examples
 
 ### Basic Vulnerability Testing
+
 ```bash
 # Test OWASP Juice Shop
 docker run -p 3000:3000 bkimminich/juice-shop
@@ -92,6 +98,7 @@ deadend-cli chat \
 ```
 
 ### API Security Testing
+
 ```bash
 deadend-cli chat \
   --target "https://api.example.com" \
@@ -99,6 +106,7 @@ deadend-cli chat \
 ```
 
 ### Autonomous Mode
+
 ```bash
 # Run without approval prompts (CTFs/labs only)
 deadend-cli chat \
@@ -112,21 +120,27 @@ deadend-cli chat \
 ## Commands
 
 ### `deadend-cli init`
+
 Initialize configuration and set up pgvector database
 
 ### `deadend-cli chat`
+
 Start interactive security testing session
+
 - `--target`: Target URL
 - `--prompt`: Initial testing prompt
 - `--mode`: `hacker` (approval required) or `yolo` (autonomous)
 
 ### `deadend-cli eval-agent`
+
 Run evaluation against challenge datasets
+
 - `--eval-metadata-file`: Challenge dataset file
 - `--llm-providers`: AI model providers to test
 - `--guided`: Run with subtask decomposition
 
 ### `deadend-cli version`
+
 Display current version
 
 ---
@@ -149,12 +163,12 @@ The agent uses a two-phase approach (reconnaissance → exploitation) with a sup
 
 Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026):
 
-| Agent | Success Rate | Infrastructure | Blind SQLi |
-|-------|-------------|----------------|------------|
-| XBOW (proprietary) | 85% | Proprietary | ? |
-| Cyber-AutoAgent | 81% | AWS Bedrock | 0% |
-| **Deadend CLI** | **78%** | **Fully local** | **33%** |
-| MAPTA | 76.9% | External APIs | 0% |
+| Agent              | Success Rate | Infrastructure  | Blind SQLi |
+| ------------------ | ------------ | --------------- | ---------- |
+| XBOW (proprietary) | 85%          | Proprietary     | ?          |
+| Cyber-AutoAgent    | 81%          | AWS Bedrock     | 0%         |
+| **Deadend CLI**    | **78%**      | **Fully local** | **33%**    |
+| MAPTA              | 76.9%        | External APIs   | 0%         |
 
 **Models tested:** Claude Sonnet 4.5 (~78%), Kimi K2 Thinking (~69%)
 
@@ -166,11 +180,13 @@ Perfect scores: GraphQL, SSRF, NoSQL injection, HTTP method tampering (100%)
 ## Operating Modes
 
 **Hacker Mode (default):** Requires approval for dangerous operations
+
 ```bash
 deadend-cli chat --target URL --mode hacker
 ```
 
 **YOLO Mode:** Autonomous execution (CTFs/labs only)
+
 ```bash
 deadend-cli chat --target URL --mode yolo
 ```
@@ -197,6 +213,7 @@ Configuration is managed via `~/.cache/deadend/config.toml`. Run `deadend-cli in
 ## Current Status & Roadmap
 
 ### Stable (v0.0.15)
+
 ✅ New architecture
 ✅ XBOW benchmark evaluation (78%)
 ✅ Custom sandboxed tools
@@ -204,7 +221,9 @@ Configuration is managed via `~/.cache/deadend/config.toml`. Run `deadend-cli in
 ✅ Two-phase execution (recon + exploitation)
 
 ### In Progress (v0.1.0)
+
 🚧 **CLI Redesign** with enhanced workflows:
+
 - Plan mode (review strategies before execution)
 - Preset configuration workflows (API testing, web apps, auth bypass)
 - Workflow automation (save/replay attack chains)
@@ -212,8 +231,8 @@ Configuration is managed via `~/.cache/deadend/config.toml`. Run `deadend-cli in
 🚧 Context optimization (reduce redundant tool calls)
 🚧 Secrets management improvements
 
-
 ### Future roadmap
+
 The current architecture proves competitive autonomous pentesting (78%) is achievable without cloud dependencies. Next challenges:
 
 - **Open-Source Models**: Achieve 75%+ with Llama/Qwen (eliminate proprietary dependencies)
@@ -229,6 +248,7 @@ Goal: Make autonomous pentesting accessible (open models), comprehensive (hybrid
 ## Contributing
 
 Contributions welcome in:
+
 - Context optimization algorithms
 - Vulnerability test cases
 - Open-weight model fine-tuning
@@ -239,6 +259,7 @@ See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines on how to contribute.
 ---
 
 ## Citation
+
 ```bibtex
 @software{deadend_cli_2026,
   author = {Yassine Bargach},
