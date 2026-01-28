@@ -361,6 +361,7 @@ async def chat_interface(
     ):
     """Chat Interface for the CLI"""
     model_registry = ModelRegistry(config=config)
+    await model_registry.initialize()
     if not model_registry.has_any_model():
         raise RuntimeError(f"No LM model configured. You can run `deadend init` to \
             initialize the required Model configuration for {llm_provider}")

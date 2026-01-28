@@ -67,6 +67,7 @@ async def eval_interface(
     eval_metadata = EvalMetadata(**data)
 
     model_registry = ModelRegistry(config=config)
+    await model_registry.initialize()
     if not model_registry.has_any_model():
         raise RuntimeError(f"No LM model configured. You can run `deadend init` to \
             initialize the required Model configuration for {providers[0]}")
