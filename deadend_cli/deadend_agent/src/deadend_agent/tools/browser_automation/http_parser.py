@@ -215,25 +215,20 @@ def analyze_http_request_text(raw_request_text: str) -> tuple[bool, dict]:
 
 def extract_host_port(target_host: str) -> Tuple[str, int]:
     """Extract host and port from a URL string using urllib.parse.urlparse"""
-    if target_host.startswith("http://"):
-        default_port = 80
-    elif target_host.startswith("https://"):
-        default_port = 443
-    else:
-        default_port = 80
+    # If no scheme, add one for parsing
+    if not target_host.startswith(('http://', 'https://')):
+        target_host = f"http://{target_host}"
 
-    parts = target_host.split(":")
-    if len(parts) >= 2:
-        try:
-            port_int = int(parts[-1])
-            host = ":".join(parts[:-1])
-            return host, port_int
-        except ValueError:
-            host = target_host
-            return host, default_port
-    else:
-        host = target_host
-        return host, default_port
+    # Parse the URL properly
+    parsed = urlparse(target_host)
+    host = parsed.hostname or 'localhost'
+    port = parsed.port
+
+    # If no port specified, use default based on scheme
+    if port is None:
+        port = 443 if parsed.scheme == 'https' else 80
+
+    return host, port
 
 
 import re
