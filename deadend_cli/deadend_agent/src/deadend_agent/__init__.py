@@ -11,7 +11,7 @@ for the security research CLI application.
 
 from .config.settings import Config
 from .core import config_setup, init_rag_database, sandbox_setup, setup_model_registry
-from .models.registry import ModelRegistry, AIModel
+from .models.registry import ModelRegistry, EmbedderClient
 from .rag.db_cruds import RetrievalDatabaseConnector
 from .sandbox.sandbox import Sandbox
 from .deadend_agent import DeadEndAgent
@@ -24,20 +24,20 @@ from .hooks import (
 
 
 __all__ = [
-    'DeadEndAgent',
-    'Config',
-    'ModelRegistry',
-    'AIModel',
-    'RetrievalDatabaseConnector',
-    'Sandbox',
-    'config_setup',
-    'init_rag_database',
-    'sandbox_setup',
-    'setup_model_registry',
+    "DeadEndAgent",
+    "Config",
+    "ModelRegistry",
+    "EmbedderClient",
+    "RetrievalDatabaseConnector",
+    "Sandbox",
+    "config_setup",
+    "init_rag_database",
+    "sandbox_setup",
+    "setup_model_registry",
     # Hooks
-    'EventHooks',
-    'NullEventHooks',
-    'set_event_hooks',
-    'get_event_hooks',
+    "EventHooks",
+    "NullEventHooks",
+    "set_event_hooks",
+    "get_event_hooks",
 ]
 

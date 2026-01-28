@@ -1,4 +1,4 @@
-import { Presetup } from "../components/Presetup.tsx";
+import type { InitResult } from "../types/rpc.ts";
 
 type PresetupStep = 
     | "provider"

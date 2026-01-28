@@ -210,20 +210,6 @@ class Task(BaseModel):
     goal: str
     output: str
 
-class AIModel(BaseModel):
-    """
-    Configuration model for AI model access and authentication.
-    
-    This model stores the necessary information for connecting to
-    and authenticating with AI model services.
-    
-    Attributes:
-        model_name: Name or identifier of the AI model to use
-        api_key: API key for authenticating with the AI service
-    """
-    model_name: str
-    api_key: str
-
 @dataclass
 class TargetDeps:
     """

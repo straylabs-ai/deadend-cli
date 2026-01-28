@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Set, Any, TYPE_CHECKING
 
 from deadend_agent.logging import logger
-from deadend_agent.models import AIModel
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.utils.structures import Task, TaskPlanner
 from deadend_agent.utils.functions import num_tokens_from_string
 
@@ -832,9 +832,9 @@ class ContextEngine:
     # Unique session identifier
     context_file_path: Path
     # Path to the text context file
-    model: AIModel
+    model: ModelSpec
     # Adding AI model for summarization if input tokens too long
-    def __init__(self, model: AIModel, session_id: uuid.UUID | None = None) -> None:
+    def __init__(self, model: ModelSpec, session_id: uuid.UUID | None = None) -> None:
         """Initialize the ContextEngine with empty state.
 
         Args:

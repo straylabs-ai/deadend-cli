@@ -6,7 +6,8 @@ from uuid import UUID
 from deadend_agent.logging import logger
 
 from pydantic_ai import RunUsage, UsageLimits
-from deadend_agent.models.registry import AIModel, EmbedderClient
+from deadend_agent.config.settings import ModelSpec
+from deadend_agent.models.registry import EmbedderClient
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
@@ -34,7 +35,7 @@ class DeadEndAgent:
     """Main orchestrator for the DeadEnd security research framework."""
 
     session_id: UUID
-    model: AIModel
+    model: ModelSpec
     embedder_model: EmbedderClient | None = None
     available_agents: Dict[str, str]
     context: ContextEngine
@@ -58,7 +59,7 @@ class DeadEndAgent:
     def __init__(
         self,
         session_id: UUID,
-        model: AIModel,
+        model: ModelSpec,
         available_agents: Dict[str, str],
         max_depth: int = 3,
         validation_type: str | None = None,

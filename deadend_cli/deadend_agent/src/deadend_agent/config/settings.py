@@ -51,6 +51,23 @@ def _cfg(key: str, default: str | None = None) -> str | None:
         return _CACHE_CONFIG[key]
     return os.getenv(key, default)
 
+class ModelConfig(BaseSettings):
+    """Model Config"""
+    api_key: str
+    model_name: str
+    base_url: str | None = None
+
+class ModelSettings(BaseSettings):
+    """Model settings"""
+      # Model provider configs
+    openai: ModelConfig | None = None
+    anthropic: ModelConfig | None = None
+    gemini: ModelConfig | None = None
+    openrouter: ModelConfig | None = None
+    local: ModelConfig | None = None
+    # Default model to use
+    default_provider: str = "openai"
+
 class ModelSpec(BaseSettings):
     """Model settings object"""
     provider: str = Field(alias='provider_name'),
@@ -87,25 +104,6 @@ class EmbeddingSpec(ModelSpec):
             self.vec_dim = vec_dim
 
 
-
-class ModelConfig(BaseSettings):
-    """Model Config"""
-    api_key: str
-    model_name: str
-    base_url: str | None = None
-
-
-class ModelSettings(BaseSettings):
-    """Model settings"""
-      # Model provider configs
-    openai: ModelConfig | None = None
-    anthropic: ModelConfig | None = None
-    gemini: ModelConfig | None = None
-    openrouter: ModelConfig | None = None
-    local: ModelConfig | None = None
-    # Default model to use
-    default_provider: str = "openai"
-
 class ProvidersList(BaseSettings):
     model_providers: List[ModelSpec | EmbeddingSpec]
 
@@ -118,8 +116,11 @@ class ProvidersList(BaseSettings):
         base_url: str | None = None,
         type_model: str | None = None,
         vec_dim: int | None = None,
-
     ):
+        """Updates a provider from the list. 
+        Verifies before hand if there is a provider that matches the one we want to change
+        
+        """
         new_provider = ModelSpec()
         for idx, provider_spec in enumerate(self.model_providers):
             if provider_spec == updated_provider:
@@ -153,6 +154,10 @@ class ProvidersList(BaseSettings):
         type_model: str | None = None,
         vec_dim: str | None = None
     ):
+        """Add a provider to the list of providers. Adds it in a unique way, where there is a check 
+        that the provider that's being added is not already in the list.
+
+        """
         if type_model is not None and type_model == "embedding":
             embedding_model = EmbeddingSpec(
                 provider=provider,
@@ -241,12 +246,13 @@ class Config:
 
     @classmethod
     def populate_providers(cls) -> None:
+        """Populates the list of providers with all those found in the config.toml"""
         toml_providers = _CONFIG_SETTINGS.get("provider")
         for provider in [*toml_providers]:
             cls.providers.add_provider(
                 **toml_providers[provider]
             )
-    
+
     @classmethod
     def update_provider(
         cls,
@@ -257,6 +263,8 @@ class Config:
         type_model: str | None,
         vec_dim: int | None
     ):
+        """
+        """
         new_provider = cls.providers.update_provider(updated_provider, provider, model_name, api_key, type_model, vec_dim)
         config_file = load_config_toml()
         config_file['provider'].update(new_provider.model_dump())
@@ -265,6 +273,20 @@ class Config:
                 toml.dump(config_file, f)
         except OSError:
             logger.info("Config file update failed.")
+    
+    @classmethod
+    def all_model_providers(cls) -> ProvidersList:
+        """Returns the list of all providers"""
+        return cls.providers
+
+    @classmethod
+    def get_model_from_provider(cls, provider_name: str) -> List[ModelSpec | EmbeddingSpec]:
+        """Returns the """
+        models_spec_found = []
+        for provider in cls.providers.model_providers:
+            if provider.provider == provider_name:
+                models_spec_found.append(provider)
+        return models_spec_found
 
 
     @classmethod

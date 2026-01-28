@@ -2,33 +2,18 @@
 # Licensed under the GNU Affero General Public License v3
 # See LICENSE file for full license information.
 
-"""AI model registry for managing different language model providers.
+"""AI model registry for managing model specifications and embedding clients.
 
-This module provides a registry system for managing AI model instances from
-various providers (OpenAI, Anthropic, Google), including configuration,
-initialization, and provider-specific model abstractions.
+This module provides a registry system for managing model *specifications*
+(`ModelSpec` and `EmbeddingSpec`) and an embedding HTTP client. It no longer
+depends on `pydantic_ai` model classes and instead exposes configuration
+objects that are consumed by the CoreAgent and other components.
 """
 
 from typing import Dict
 import aiohttp
-from pydantic_ai.models.openai import OpenAIChatModel
-from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.models.google import GoogleModel
-from pydantic_ai.providers.openai import OpenAIProvider
-from pydantic_ai.providers.anthropic import AnthropicProvider
-from pydantic_ai.providers.google import GoogleProvider
-from pydantic_ai.models.openrouter import OpenRouterModel
-from pydantic_ai.providers.openrouter import OpenRouterProvider
 
-from deadend_agent.config.settings import Config
-
-# AIModel abstraction
-AIModel = OpenAIChatModel | AnthropicModel | GoogleModel
-"""Type alias for supported AI model providers.
-    
-This represents any of the supported language model types from OpenAI,
-Anthropic, or Google providers.
-"""
+from deadend_agent.config.settings import Config, ModelSpec, EmbeddingSpec, ProvidersList
 
 class EmbedderClient:
     """Client for generating embeddings using various embedding API providers.
@@ -120,12 +105,12 @@ class EmbedderClient:
         return embeddings if embeddings else []
 
 class ModelRegistry:
-    """Registry for managing AI model instances from multiple providers.
+    """Registry for managing model specifications from multiple providers.
     
-    This class initializes and manages access to language models from various
-    providers (OpenAI, Anthropic, Google/Gemini, OpenRouter) based on
-    configuration settings. It also manages the embedding client for
-    generating vector embeddings.
+    This class initializes and manages access to language model specifications
+    from various providers (OpenAI, Anthropic, Google/Gemini, OpenRouter, Local)
+    based on configuration settings. It also manages the embedding client for
+    generating vector embeddings via HTTP.
     
     Attributes:
         embedder_model: Embedding client instance, or None if not initialized.
@@ -143,173 +128,132 @@ class ModelRegistry:
             config: Configuration object containing API keys and model settings
                 for various providers.
         """
-        self._models: Dict[str, AIModel] = {}
-        self._config = config  # Store config for runtime model creation
+        # Map of provider name -> list[ModelSpec] (LLM models only, not embeddings)
+        self._models: Dict[str, list[ModelSpec]] = {}
+        # Keep a reference to config for runtime spec creation
+        self._config = config
         self._initialize_models(config=config)
 
     def _initialize_models(self, config: Config):
-        """Initialize model instances for all configured providers.
+        """Initialize model specifications and embedding client.
         
-        Iterates through available model provider settings (OpenAI, Anthropic,
-        Gemini, OpenRouter) and creates model instances for each configured
-        provider. Also initializes the embedding client using the first
-        available provider's configuration.
+        Uses the TOML-backed `ProvidersList` populated via `Config.populate_providers()`
+        as the single source of truth. Each entry is either a `ModelSpec` (LLM)
+        or an `EmbeddingSpec` (embeddings). No legacy `ModelSettings` are used.
         
         Args:
             config: Configuration object containing model settings and API keys.
         """
-        models_settings = config.get_models_settings()
-        if models_settings.openai:
-            openai_settings = models_settings.openai
-            self._models['openai'] = OpenAIChatModel(
-                model_name=openai_settings.model_name,
-                provider=OpenAIProvider(api_key=openai_settings.api_key)
-            )
-            self.embedder_model = EmbedderClient(
-                model_name=config.embedding_model,
-                api_key=config.openai_api_key,
-                base_url="https://api.openai.com/v1/embeddings"
-            )
+        self._models.clear()
+        self.embedder_model = None
 
-        if models_settings.anthropic:
-            anthropic_settings = models_settings.anthropic
-            self._models['anthropic'] = AnthropicModel(
-                model_name=anthropic_settings.model_name,
-                provider=AnthropicProvider(api_key=anthropic_settings.api_key)
-            )
-            self.embedder_model = EmbedderClient(
-                model_name=config.embedding_model,
-                api_key=config.openai_api_key,
-                base_url="https://api.openai.com/v1/embeddings"
-            )
+        providers_list: ProvidersList = config.all_model_providers()
 
+        # Use the TOML-backed providers list as the single source of truth
+        if providers_list and providers_list.model_providers:
+            for spec in providers_list.model_providers:
+                if isinstance(spec, EmbeddingSpec):
+                    # Use the first embedding spec we encounter as the embedder client
+                    if self.embedder_model is None:
+                        api_key, base_url = self._resolve_embedding_credentials(spec)
+                        self.embedder_model = EmbedderClient(
+                            model_name=spec.model_name,
+                            api_key=api_key,
+                            base_url=base_url,
+                        )
+                else:
+                    # Regular language model spec - store all specs per provider.
+                    if spec.provider not in self._models:
+                        self._models[spec.provider] = []
+                    self._models[spec.provider].append(spec)
 
-        if models_settings.gemini:
-            gemini_settings = models_settings.gemini
-            self._models['gemini'] = GoogleModel(
-                model_name=gemini_settings.model_name,
-                provider=GoogleProvider(api_key=gemini_settings.api_key),
-            )
-            self.embedder_model = EmbedderClient(
-                model_name=config.embedding_model,
-                api_key=config.openai_api_key,
-                base_url="https://api.openai.com/v1/embeddings"
-            )
+        # If no providers were found in TOML, registry will simply report no models.
 
-        if models_settings.openrouter:
-            openrouter_settings = models_settings.openrouter
-            self._models['openrouter'] = OpenRouterModel(
-                model_name=openrouter_settings.model_name,
-                provider=OpenRouterProvider(
-                    # base_url="https://openrouter.ai/api/v1",
-                    api_key=openrouter_settings.api_key
-                ),
-            )
-            self.embedder_model = EmbedderClient(
-                model_name=config.embedding_model,
-                api_key=config.open_router_key,
-                base_url="https://openrouter.ai/api/v1/embeddings"
-            )
-        if models_settings.local:
-            local_settings = models_settings.local
-            self._models['local'] = OpenAIChatModel(
-                model_name=local_settings.model_name,
-                provider=OpenAIProvider(
-                    base_url=local_settings.base_url,
-                    api_key=local_settings.api_key
-                ),
-            )
-            self.embedder_model = EmbedderClient(
-                model_name=config.embedding_model,
-                api_key=config.open_router_key,
-                base_url="https://openrouter.ai/api/v1/embeddings"
-            )
-
-    def get_model(self, provider: str = 'openai', model_name: str | None = None) -> AIModel:
-        """Retrieve a model instance for the specified provider.
+    def _resolve_embedding_credentials(
+        self,
+        spec: EmbeddingSpec,
+    ) -> tuple[str, str]:
+        """Resolve API key and base URL for an embedding specification.
 
         Args:
-            provider: Name of the provider to retrieve. Must be one of:
-                'openai', 'anthropic', 'gemini', 'openrouter', or 'local'.
-                Defaults to 'openai'.
-            model_name: Optional model name override. If provided, creates a new
-                model instance with this name instead of using the default.
+            spec: Embedding specification from providers list.
 
         Returns:
-            AIModel instance for the requested provider.
+            Tuple of (api_key, base_url).
+        """
+        # Use the values defined on the EmbeddingSpec itself. We do not apply
+        # provider-based defaults here – the spec is the single source of truth.
+        api_key = spec.api_key
+        base_url = spec.base_url
+
+        if not api_key or not base_url:
+            raise ValueError(
+                f"Embedding provider '{spec.provider}' is missing required credentials."
+            )
+
+        return api_key, base_url
+
+    def get_model(self, provider: str = "openai", model_name: str | None = None) -> ModelSpec:
+        """Retrieve a model specification.
+
+        Args:
+            provider: Preferred provider name when selecting by provider.
+            model_name: Optional specific model name. If provided, the registry will
+                return the `ModelSpec` whose ``model_name`` matches, regardless of
+                provider. If omitted, the default spec for ``provider`` is returned.
+
+        Returns:
+            ModelSpec instance matching the requested provider or model name.
 
         Raises:
-            ValueError: If the provider is not supported, not configured,
-                or no models have been initialized.
+            ValueError: If no matching model is configured.
         """
-        if provider not in self._models:
+        if not self._models:
+            raise ValueError(
+                "No model was instantiated. Have you tried supplying an API key for the Model?"
+            )
+
+        # If a specific model_name is requested, find the spec that has that name.
+        if model_name is not None:
+            return self._find_spec_by_model_name(model_name=model_name, preferred_provider=provider)
+
+        # Otherwise, return the first spec for the given provider (default).
+        if provider not in self._models or not self._models[provider]:
             raise ValueError(f"Model provider {provider} not supported.")
-        elif not self._models:
-            raise ValueError("No model was instantiated. \
-                Have you tried supplying an API key for the Model?")
+        return self._models[provider][0]
 
-        # If no model_name override, return the default model
-        if model_name is None:
-            return self._models[provider]
-
-        # Create a new model instance with the override name
-        return self._create_model_with_name(provider, model_name)
-
-    def _create_model_with_name(self, provider: str, model_name: str) -> AIModel:
-        """Create a new model instance with a specific model name.
+    def _find_spec_by_model_name(self, model_name: str, preferred_provider: str | None = None) -> ModelSpec:
+        """Locate an existing ModelSpec whose model_name matches.
 
         Args:
-            provider: The provider to create the model for.
-            model_name: The model name to use.
+            model_name: The model name to search for.
+            preferred_provider: Optional provider hint to prioritize when searching.
 
         Returns:
-            A new AIModel instance with the specified model name.
+            The existing ModelSpec that has the requested model_name.
 
         Raises:
-            ValueError: If the provider is not configured.
+            ValueError: If no ModelSpec with that model_name is configured.
         """
-        models_settings = self._config.get_models_settings()
+        # 1) Prefer a match within the in-memory map, honoring preferred_provider first
+        if preferred_provider and preferred_provider in self._models:
+            for spec in self._models[preferred_provider]:
+                if spec.model_name == model_name:
+                    return spec
 
-        if provider == 'openai':
-            if not models_settings.openai:
-                raise ValueError("OpenAI provider not configured")
-            return OpenAIChatModel(
-                model_name=model_name,
-                provider=OpenAIProvider(api_key=models_settings.openai.api_key)
-            )
-        elif provider == 'anthropic':
-            if not models_settings.anthropic:
-                raise ValueError("Anthropic provider not configured")
-            return AnthropicModel(
-                model_name=model_name,
-                provider=AnthropicProvider(api_key=models_settings.anthropic.api_key)
-            )
-        elif provider == 'gemini':
-            if not models_settings.gemini:
-                raise ValueError("Gemini provider not configured")
-            return GoogleModel(
-                model_name=model_name,
-                provider=GoogleProvider(api_key=models_settings.gemini.api_key)
-            )
-        elif provider == 'openrouter':
-            if not models_settings.openrouter:
-                raise ValueError("OpenRouter provider not configured")
-            return OpenRouterModel(
-                model_name=model_name,
-                provider=OpenRouterProvider(api_key=models_settings.openrouter.api_key)
-            )
-        elif provider == 'local':
-            if not models_settings.local:
-                raise ValueError("Local provider not configured")
-            return OpenAIChatModel(
-                model_name=model_name,
-                provider=OpenAIProvider(
-                    base_url=models_settings.local.base_url,
-                    api_key=models_settings.local.api_key
-                )
-            )
-        else:
-            raise ValueError(f"Unknown provider: {provider}")
+        for specs in self._models.values():
+            for spec in specs:
+                if spec.model_name == model_name:
+                    return spec
+
+        # 2) Fallback: search the full providers list from config (ModelSpec only)
+        providers_list = self._config.all_model_providers()
+        for spec in providers_list.model_providers:
+            if isinstance(spec, ModelSpec) and not isinstance(spec, EmbeddingSpec):
+                if spec.model_name == model_name:
+                    return spec
+
+        raise ValueError(f"No model configured with name '{model_name}'")
 
     def get_embedder_model(self) -> EmbedderClient:
         """Retrieve the embedding client instance.
@@ -337,15 +281,15 @@ class ModelRegistry:
         """Return True if at least one model provider is configured."""
         return len(self._models) > 0
 
-    def get_all_models(self) -> Dict[str, AIModel]:
-        """Get a dictionary of all initialized model instances.
+    def get_all_models(self) -> Dict[str, list[ModelSpec]]:
+        """Get a dictionary of all initialized model specifications.
         
         Returns a copy of the internal models dictionary, allowing access
-        to all configured model providers without exposing the internal
-        storage directly.
+        to all configured model providers and their associated model specs
+        without exposing the internal storage directly.
         
         Returns:
-            Dictionary mapping provider names to their AIModel instances.
+            Dictionary mapping provider names to lists of their ModelSpec instances.
         """
-        return self._models.copy()
+        return {provider: specs.copy() for provider, specs in self._models.items()}
 

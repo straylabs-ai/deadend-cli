@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.agents.factory import AgentRunner, AgentOutput
-from deadend_agent.models.registry import AIModel
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.tools import (
     pw_send_payload,
     webapp_code_rag
@@ -54,7 +54,7 @@ class RequesterAgent(AgentRunner):
 
     def __init__(
         self,
-        model: AIModel,
+        model: ModelSpec,
         deps_type: Any | None,
         target_information: str,
         requires_approval: bool,

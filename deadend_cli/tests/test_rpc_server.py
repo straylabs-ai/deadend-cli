@@ -54,7 +54,6 @@ def run_command(cmd, description=""):
         print(f"Running: {description}")
     print(f"Command: {' '.join(cmd)}")
     print(f"{'='*50}\n")
-    
     result = subprocess.run(cmd, capture_output=False, text=True, check=False)
     return result.returncode
 

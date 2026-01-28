@@ -16,11 +16,11 @@ from uuid import uuid4
 import docker
 from pydantic import BaseModel, Field
 from deadend_agent import (
-    AIModel,
     RetrievalDatabaseConnector,
     Sandbox,
-    DeadEndAgent
+    DeadEndAgent,
 )
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.models.registry import EmbedderClient
 from deadend_eval.metrics import (
     instrument_agent_runner,
@@ -78,7 +78,7 @@ class EvalMetadata(BaseModel):
     solution: str = Field(..., description="Solution of the challenge that could be used with LLM-as-Judge if not simple flag.")
 
 async def eval_deadend_agent(
-        model: AIModel,
+        model: ModelSpec,
         embedder_client: EmbedderClient,
         # evaluators: list[Evaluator],
         code_indexer_db: RetrievalDatabaseConnector,

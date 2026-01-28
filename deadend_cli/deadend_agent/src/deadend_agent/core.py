@@ -30,6 +30,8 @@ def config_setup() -> Config:
     """Setup config"""
     config = Config()
     config.configure()
+    # Populates the providers from the config.toml
+    config.populate_providers()
     return config
 
 async def init_rag_database(database_url: str) -> RetrievalDatabaseConnector:
