@@ -19,13 +19,12 @@ from pydantic_settings import BaseSettings
 from deadend_agent.logging import logger
 
 # Load cached CLI configuration first (if present), then environment variables.
-# The file is stored at ~/.cache/deadend/config.toml for historical reasons, but
-# its contents are JSON.
+# The file is stored at ~/.cache/deadend/config.json
 _CACHE_TOML_PATH = Path.home() / ".cache" / "deadend" / "config.json"
 _CACHE_CONFIG: dict[str, str] = {}
 _CONFIG_SETTINGS: dict[str, Any] = {}
 
-def load_config_toml() -> dict[str, Any]:
+def load_config_json() -> dict[str, Any]:
     if not _CACHE_TOML_PATH.exists():
         return {}
     try:
@@ -35,21 +34,21 @@ def load_config_toml() -> dict[str, Any]:
         logger.info("Could not open or parse config file as JSON: %s", exc)
         return {}
 
-def _load_cache_toml() -> dict[str, str]:
-    """Load cached configuration from the JSON config file."""
-    if not _CACHE_TOML_PATH.exists():
-        return {}
-    try:
-        with open(_CACHE_TOML_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        # Only keep simple string-like entries for _cfg cache usage.
-        return {k: str(v) for k, v in data.items() if isinstance(v, (str, int, float, bool))}
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.info("Could not open or parse cache config as JSON: %s", exc)
-        return {}
+# def _load_cache_toml() -> dict[str, str]:
+#     """Load cached configuration from the JSON config file."""
+#     if not _CACHE_TOML_PATH.exists():
+#         return {}
+#     try:
+#         with open(_CACHE_TOML_PATH, "r", encoding="utf-8") as f:
+#             data = json.load(f)
+#         # Only keep simple string-like entries for _cfg cache usage.
+#         return {k: str(v) for k, v in data.items() if isinstance(v, (str, int, float, bool))}
+#     except (OSError, json.JSONDecodeError) as exc:
+#         logger.info("Could not open or parse cache config as JSON: %s", exc)
+#         return {}
 
-_CACHE_CONFIG = _load_cache_toml()
-_CONFIG_SETTINGS = load_config_toml()
+# _CACHE_CONFIG = _load_cache_toml()
+_CONFIG_SETTINGS = load_config_json()
 
 logger.info("Logging is : %s", _CACHE_CONFIG)
 
@@ -59,22 +58,6 @@ def _cfg(key: str, default: str | None = None) -> str | None:
         return _CACHE_CONFIG[key]
     return os.getenv(key, default)
 
-class ModelConfig(BaseSettings):
-    """Model Config"""
-    api_key: str
-    model_name: str
-    base_url: str | None = None
-
-class ModelSettings(BaseSettings):
-    """Model settings"""
-      # Model provider configs
-    openai: ModelConfig | None = None
-    anthropic: ModelConfig | None = None
-    gemini: ModelConfig | None = None
-    openrouter: ModelConfig | None = None
-    local: ModelConfig | None = None
-    # Default model to use
-    default_provider: str = "openai"
 
 class ModelSpec(BaseSettings):
     """Model settings object"""
@@ -90,8 +73,6 @@ class ModelSpec(BaseSettings):
             self.api_key = api_key
         if base_url is not None:
             self.base_url = base_url
-        
-
 
 class EmbeddingSpec(ModelSpec):
     # Use field names and aliases that match the JSON config keys ("type" and "vec_dim")
@@ -231,7 +212,7 @@ class Config:
     providers: ProvidersList = ProvidersList()
 
     # Database
-    db_url: str | None = _cfg("DB_URL")
+    db_url: str | None = _cfg("DB_URL", "postgresql://postgres:postgres@localhost:54320/codeindexerdb")
     # Tools
     zap_api_key: str | None = _cfg("ZAP_PROXY_API_KEY")
 
@@ -285,7 +266,7 @@ class Config:
         new_provider = cls.providers.update_provider(
             updated_provider, provider, model_name, api_key, type_model, vec_dim
         )
-        config_file = load_config_toml()
+        config_file = load_config_json()
         providers_section = config_file.get("provider", {})
         if not isinstance(providers_section, dict):
             providers_section = {}
@@ -314,41 +295,3 @@ class Config:
             if provider.provider == provider_name:
                 models_spec_found.append(provider)
         return models_spec_found
-
-
-    @classmethod
-    def get_models_settings(cls) -> ModelSettings:
-        """
-        Get all the models settings that are configured
-        """
-        model_settings = ModelSettings()
-
-        if cls.openai_api_key:
-            model_settings.openai = ModelConfig(
-                api_key=cls.openai_api_key,
-                model_name=cls.openai_model_name if cls.openai_model_name else "gpt-4o"
-            )
-        if cls.anthropic_api_key:
-            model_settings.anthropic = ModelConfig(
-                api_key=cls.anthropic_api_key,
-                model_name=cls.anthropic_model_name if cls.anthropic_model_name \
-                    else "claude-3-5-sonnet-20241022"
-            )
-        if cls.gemini_api_key:
-            model_settings.gemini = ModelConfig(
-                api_key=cls.gemini_api_key,
-                model_name=cls.gemini_model_name if cls.gemini_model_name else "gemini-2.5-flash",
-            )
-        if cls.open_router_key:
-            model_settings.openrouter = ModelConfig(
-                api_key=cls.open_router_key,
-                model_name=cls.open_router_model
-            )
-
-        if cls.local_api_key:
-            model_settings.local = ModelConfig(
-                api_key=cls.local_api_key,
-                model_name=cls.local_model,
-                base_url=cls.local_base_url
-            )
-        return model_settings
