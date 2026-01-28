@@ -15,7 +15,7 @@ from deadend_agent.tools.tool_wrappers import (
     disable_approval_mode,
     is_approval_mode_enabled
 )
-from deadend_cli.logging import logger
+from deadend_cli.cli_logging import logger
 from deadend_cli.component_manager import ComponentManager
 from deadend_cli.jsonrpc.rpc_server import RPCServer
 from deadend_cli.jsonrpc.event_bus import EventBus

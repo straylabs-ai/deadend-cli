@@ -35,7 +35,7 @@ from .init import (
     pull_sandboxed_kali_image,
     stop_pgvector_container,
 )
-from .logging import logger
+from .cli_logging import logger
 
 class ComponentManager:
     """Manages lifecycle of all daemon components.

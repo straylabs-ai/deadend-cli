@@ -5,20 +5,23 @@
 """Configuration management system for the security research framework.
 
 This module provides configuration loading, validation, and management
-functionality, supporting both environment variables and TOML configuration
-files with caching and validation capabilities.
+functionality, supporting both environment variables and a JSON-based
+configuration file with caching and validation capabilities.
 """
 
 import os
+import json
 from typing import Any, List
 from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings
-import toml
 from deadend_agent.logging import logger
-# Load cached CLI configuration first (if present), then environment variables
-_CACHE_TOML_PATH = Path.home() / ".cache" / "deadend" / "config.toml"
+
+# Load cached CLI configuration first (if present), then environment variables.
+# The file is stored at ~/.cache/deadend/config.toml for historical reasons, but
+# its contents are JSON.
+_CACHE_TOML_PATH = Path.home() / ".cache" / "deadend" / "config.json"
 _CACHE_CONFIG: dict[str, str] = {}
 _CONFIG_SETTINGS: dict[str, Any] = {}
 
@@ -26,18 +29,23 @@ def load_config_toml() -> dict[str, Any]:
     if not _CACHE_TOML_PATH.exists():
         return {}
     try:
-        return toml.load(str(_CACHE_TOML_PATH))
-    except OSError:
-        logger.info('Could not open config.toml file.')
+        with open(_CACHE_TOML_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.info("Could not open or parse config file as JSON: %s", exc)
         return {}
 
 def _load_cache_toml() -> dict[str, str]:
-    """Load cached configuration from TOML using the toml library."""
+    """Load cached configuration from the JSON config file."""
     if not _CACHE_TOML_PATH.exists():
         return {}
     try:
-        return toml.load(_CACHE_TOML_PATH)
-    except Exception:
+        with open(_CACHE_TOML_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # Only keep simple string-like entries for _cfg cache usage.
+        return {k: str(v) for k, v in data.items() if isinstance(v, (str, int, float, bool))}
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.info("Could not open or parse cache config as JSON: %s", exc)
         return {}
 
 _CACHE_CONFIG = _load_cache_toml()
@@ -86,8 +94,9 @@ class ModelSpec(BaseSettings):
 
 
 class EmbeddingSpec(ModelSpec):
-    type: str = Field(alias='type_model', default="embedding")
-    vec_dim: int = Field(alias="dimension", default=1536)
+    # Use field names and aliases that match the JSON config keys ("type" and "vec_dim")
+    type: str = Field(alias="type", default="embedding")
+    vec_dim: int = Field(alias="vec_dim", default=1536)
 
     def update_not_null(
         self,
@@ -95,8 +104,9 @@ class EmbeddingSpec(ModelSpec):
         api_key: str | None,
         base_url: str | None,
         type_model: str | None,
-        vec_dim: int | None
+        vec_dim: int | None,
     ):
+        """Update only non-null fields, keeping compatibility with caller signature."""
         super().update_not_null(model_name, api_key, base_url)
         if type_model is not None:
             self.type = type_model
@@ -105,7 +115,8 @@ class EmbeddingSpec(ModelSpec):
 
 
 class ProvidersList(BaseSettings):
-    model_providers: List[ModelSpec | EmbeddingSpec]
+    # Use default_factory to allow constructing an empty ProvidersList()
+    model_providers: List[ModelSpec | EmbeddingSpec] = Field(default_factory=list)
 
     def update_provider(
         self,
@@ -193,8 +204,8 @@ class Config:
     - Local/Self-hosted: Uses LOCAL_API_KEY, LOCAL_MODEL, and LOCAL_BASE_URL
     
     Configuration is loaded from ~/.cache/deadend/config.toml (preferred) or environment variables.
-    The config.toml file is created/updated via the CLI's through the interactive LLM provider 
-    selector in the chat interface.
+    The config file is JSON-formatted, despite the historical .toml extension, and is created/updated
+    via the CLI's interactive LLM provider selector in the chat interface.
     
     litellm automatically handles provider-specific API formats, so you just need to provide
     the API key and model name. For OpenRouter, use the format "provider/model-name" (e.g., 
@@ -246,12 +257,18 @@ class Config:
 
     @classmethod
     def populate_providers(cls) -> None:
-        """Populates the list of providers with all those found in the config.toml"""
-        toml_providers = _CONFIG_SETTINGS.get("provider")
-        for provider in [*toml_providers]:
-            cls.providers.add_provider(
-                **toml_providers[provider]
-            )
+        """Populates the list of providers with all those found in the config file.
+
+        The config file stores providers under the "provider" key as a dictionary
+        mapping arbitrary keys to provider definitions. Each definition is passed
+        directly to `ProvidersList.add_provider`, which creates ModelSpec or
+        EmbeddingSpec instances. Multiple models per provider are supported by
+        using distinct keys that share the same `provider_name` value.
+        """
+        providers_section = _CONFIG_SETTINGS.get("provider") or {}
+        if isinstance(providers_section, dict):
+            for _, provider_cfg in providers_section.items():
+                cls.providers.add_provider(**provider_cfg)
 
     @classmethod
     def update_provider(
@@ -265,12 +282,22 @@ class Config:
     ):
         """
         """
-        new_provider = cls.providers.update_provider(updated_provider, provider, model_name, api_key, type_model, vec_dim)
+        new_provider = cls.providers.update_provider(
+            updated_provider, provider, model_name, api_key, type_model, vec_dim
+        )
         config_file = load_config_toml()
-        config_file['provider'].update(new_provider.model_dump())
+        providers_section = config_file.get("provider", {})
+        if not isinstance(providers_section, dict):
+            providers_section = {}
+
+        # Use provider+model_name as a stable key to allow multiple models per provider.
+        key = f"{new_provider.provider}:{new_provider.model_name}"
+        providers_section[key] = new_provider.model_dump()
+        config_file["provider"] = providers_section
+
         try:
-            with open(str(_CACHE_TOML_PATH), 'w', encoding='utf-8') as f:
-                toml.dump(config_file, f)
+            with open(str(_CACHE_TOML_PATH), "w", encoding="utf-8") as f:
+                json.dump(config_file, f, indent=2)
         except OSError:
             logger.info("Config file update failed.")
     

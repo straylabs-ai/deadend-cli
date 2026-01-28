@@ -28,7 +28,7 @@ from .jsonrpc.rpc_models import (
     AllInitResult,
     RPCErrorCode,
 )
-from .logging import logger, setup_logging, get_module_logger
+from .cli_logging import logger, setup_logging, get_module_logger
 
 
 def get_rpc_server():

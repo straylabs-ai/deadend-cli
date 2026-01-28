@@ -15,7 +15,6 @@ from importlib.resources import files
 from pathlib import Path
 from deadend_cli.cli import app
 
-
 def main():
     """Entry point for the deadend CLI application."""
 
