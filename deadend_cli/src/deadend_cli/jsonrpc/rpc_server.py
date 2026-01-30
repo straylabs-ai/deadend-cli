@@ -34,7 +34,7 @@ from deadend_agent.core_agent import (
     InvalidRequestError,
 )
 
-from ..logging import logger, setup_logging
+from ..cli_logging import logger, setup_logging
 from .rpc_models import RPCErrorCode
 
 

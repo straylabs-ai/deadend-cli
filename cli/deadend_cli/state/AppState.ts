@@ -1,38 +1,29 @@
 import type { InitResult } from "../types/rpc.ts";
 
-type PresetupStep = 
+type PresetupModelStep = 
     | "provider"
     | "model"
     | "api_key"
     | "base_url"
-    | "embedding_provider"
-    | "embedding_model"
     | "confirm";
 
+type PresetupEmbeddingModel =
+    | "provider"
+    | "embedding_model"
+    | "api_key"
+    | "base_url"
+    | "confirm"
 
 type ViewType = 
     | "chat"
     | "settings"
     | "llm_selector"
-export const ViewType = {
-    chat : "chat",
-    settings : "settings",
-    llm_selector : "llm_selector"
-} as const;
 
-export const AppStates = {
-    STARTING: "STARTING",
-    INITIALIZING: "INITIALIZING",
-    CHECK_CONFIG: "CHECK_CONFIG",
-    PRESETUP: "PRESETUP",
-    READY: "READY",
-    
-}
 type AppState =
     | { type: "STARTING" }
     | { type: "INITIALIZING"; progress: string; components: InitResult[] }
     | { type: "CHECK_CONFIG" }
-    | { type: "PRESETUP"; step: PresetupStep } 
+    | { type: "PRESETUP"; step: PresetupModelStep } 
     | { type: "READY"; view: ViewType }          
     | { type: "ERROR"; error: string; recoverable: boolean }
     | { type: "EXITING" };

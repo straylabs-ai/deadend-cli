@@ -3,10 +3,11 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { logger } from "./lib/logger.ts";
 import { Banner } from "./components/Banner.tsx";
 import { Chat } from "./components/chat.tsx";
-import { Presetup } from "./components/Presetup.tsx";
+import { PresetupWizard } from "./components/PresetupWizard.tsx";
 import { DirectStatusLine } from "./components/DirectStatusLine.tsx";
 import { DeadEndRpcClient } from "./lib/deadend-rpc-client.ts";
 import { configExists } from "./lib/config.ts";
+import { configManager } from "./config/manager.ts";
 import { parseArgs, showHelp, type CliArgs } from "./lib/cli-args.ts";
 import type { InitResult } from "./types/rpc.ts";
 
@@ -108,7 +109,6 @@ function App({ cliArgs }: AppProps) {
             `Warning: Some components failed to initialize: ${initResult.failed_components.join(", ")}`
           );
         }
-
         rpcClientRef.current = client;
         setRpcClient(client);
         setInitComplete(true);
@@ -118,9 +118,7 @@ function App({ cliArgs }: AppProps) {
         setInitComplete(true);
       }
     };
-
     initClient();
-
     // Cleanup on unmount
     return () => {
       void cleanupClient();
@@ -143,12 +141,38 @@ function App({ cliArgs }: AppProps) {
     };
   }, []);
 
-  // Check if config exists on mount
+  // Check if config exists and has providers configured
   useEffect(() => {
-    configExists().then((exists) => {
-      setIsChecking(false);
-      setShowPresetup(!exists);
-    });
+    const checkConfig = async () => {
+      const exists = await configExists();
+      if (!exists) {
+        setIsChecking(false);
+        setShowPresetup(true);
+        return;
+      }
+      
+      // If config exists, check if it has providers configured
+      try {
+        await configManager.load();
+        const config = configManager.getConfig();
+        
+        // Show presetup if no providers are configured
+        if (!config || !config.configured_models || config.configured_models.length === 0) {
+          setIsChecking(false);
+          setShowPresetup(true);
+        } else {
+          setIsChecking(false);
+          setShowPresetup(false);
+        }
+      } catch (error) {
+        // If we can't load the config, show presetup
+        logger.warn("Failed to load config, showing presetup:", error);
+        setIsChecking(false);
+        setShowPresetup(true);
+      }
+    };
+    
+    checkConfig();
   }, []);
 
   const handleExit = () => {
@@ -246,7 +270,7 @@ function App({ cliArgs }: AppProps) {
           <Banner />
         </Box>
         <Box flexDirection="column" flexGrow={1}>
-          <Presetup onComplete={handlePresetupComplete} />
+          <PresetupWizard rpcClient={rpcClient} onComplete={handlePresetupComplete} />
         </Box>
       </Box>
     );

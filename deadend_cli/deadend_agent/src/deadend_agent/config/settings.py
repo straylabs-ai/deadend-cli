@@ -25,6 +25,7 @@ _CACHE_CONFIG: dict[str, str] = {}
 _CONFIG_SETTINGS: dict[str, Any] = {}
 
 def load_config_json() -> dict[str, Any]:
+    """Loads the JSON config"""
     if not _CACHE_TOML_PATH.exists():
         return {}
     try:
@@ -34,20 +35,6 @@ def load_config_json() -> dict[str, Any]:
         logger.info("Could not open or parse config file as JSON: %s", exc)
         return {}
 
-# def _load_cache_toml() -> dict[str, str]:
-#     """Load cached configuration from the JSON config file."""
-#     if not _CACHE_TOML_PATH.exists():
-#         return {}
-#     try:
-#         with open(_CACHE_TOML_PATH, "r", encoding="utf-8") as f:
-#             data = json.load(f)
-#         # Only keep simple string-like entries for _cfg cache usage.
-#         return {k: str(v) for k, v in data.items() if isinstance(v, (str, int, float, bool))}
-#     except (OSError, json.JSONDecodeError) as exc:
-#         logger.info("Could not open or parse cache config as JSON: %s", exc)
-#         return {}
-
-# _CACHE_CONFIG = _load_cache_toml()
 _CONFIG_SETTINGS = load_config_json()
 
 logger.info("Logging is : %s", _CACHE_CONFIG)
@@ -57,7 +44,6 @@ def _cfg(key: str, default: str | None = None) -> str | None:
     if key in _CACHE_CONFIG and _CACHE_CONFIG[key] != "":
         return _CACHE_CONFIG[key]
     return os.getenv(key, default)
-
 
 class ModelSpec(BaseSettings):
     """Model settings object"""
@@ -76,7 +62,7 @@ class ModelSpec(BaseSettings):
 
 class EmbeddingSpec(ModelSpec):
     # Use field names and aliases that match the JSON config keys ("type" and "vec_dim")
-    type: str = Field(alias="type", default="embedding")
+    type: str = Field(alias="type", default="embeddings")
     vec_dim: int = Field(alias="vec_dim", default=1536)
 
     def update_not_null(
@@ -94,9 +80,7 @@ class EmbeddingSpec(ModelSpec):
         if vec_dim is not None:
             self.vec_dim = vec_dim
 
-
 class ProvidersList(BaseSettings):
-    # Use default_factory to allow constructing an empty ProvidersList()
     model_providers: List[ModelSpec | EmbeddingSpec] = Field(default_factory=list)
 
     def update_provider(
@@ -150,7 +134,7 @@ class ProvidersList(BaseSettings):
         that the provider that's being added is not already in the list.
 
         """
-        if type_model is not None and type_model == "embedding":
+        if type_model is not None and type_model == "embeddings":
             embedding_model = EmbeddingSpec(
                 provider=provider,
                 model_name=model_name,
@@ -252,6 +236,60 @@ class Config:
                 cls.providers.add_provider(**provider_cfg)
 
     @classmethod
+    def add_provider(
+        cls,
+        provider: str,
+        model_name: str,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        type_model: str | None = None,
+        vec_dim: int | None = None
+    ):
+        """Add a new provider to the configuration and save to config.json.
+        
+        Args:
+            provider: Provider name (e.g., "openai", "anthropic")
+            model_name: Model name
+            api_key: API key (optional)
+            base_url: Base URL (optional)
+            type_model: Type of model, "embeddings" for embedding models (optional)
+            vec_dim: Vector dimension for embedding models (optional)
+        """
+        # Add provider to the in-memory list
+        cls.providers.add_provider(
+            provider=provider,
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            type_model=type_model,
+            vec_dim=str(vec_dim) if vec_dim is not None else None
+        )
+
+        # Load existing config
+        config_file = load_config_json()
+        providers_section = config_file.get("provider", {})
+        if not isinstance(providers_section, dict):
+            providers_section = {}
+
+        # Find the provider spec that was just added
+        key = f"{provider}:{model_name}"
+        provider_spec = None
+        for spec in cls.providers.model_providers:
+            if spec.provider == provider and spec.model_name == model_name:
+                provider_spec = spec
+                break
+
+        if provider_spec:
+            providers_section[key] = provider_spec.model_dump()
+            config_file["provider"] = providers_section
+            
+            try:
+                with open(str(_CACHE_TOML_PATH), "w", encoding="utf-8") as f:
+                    json.dump(config_file, f, indent=2)
+            except OSError:
+                logger.info("Config file update failed.")
+
+    @classmethod
     def update_provider(
         cls,
         updated_provider: ModelSpec | EmbeddingSpec,
@@ -281,7 +319,7 @@ class Config:
                 json.dump(config_file, f, indent=2)
         except OSError:
             logger.info("Config file update failed.")
-    
+
     @classmethod
     def all_model_providers(cls) -> ProvidersList:
         """Returns the list of all providers"""
@@ -289,7 +327,7 @@ class Config:
 
     @classmethod
     def get_model_from_provider(cls, provider_name: str) -> List[ModelSpec | EmbeddingSpec]:
-        """Returns the """
+        """Returns the list of spec by provider"""
         models_spec_found = []
         for provider in cls.providers.model_providers:
             if provider.provider == provider_name:

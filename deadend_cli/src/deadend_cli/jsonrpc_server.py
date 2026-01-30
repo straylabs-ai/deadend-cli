@@ -325,14 +325,14 @@ def main(
     # ==========================================
     # LLM provider methods
     # ==========================================
-    @server.add_method("list_llm_providers")
-    async def list_llm_providers(
+    @server.add_method("get_all_models")
+    async def get_all_models(
         _request_id: Any,
         _params: Dict[str, Any],
         component_manager: ComponentManager
     ) -> Dict[str, Any]:
-        """List all available LLM providers and their configuration status."""
-        result = component_manager.list_llm_providers()
+        """List all available and configured models in the config.json."""
+        result = component_manager.get_all_models()
         return result
     # TODO: the get llm provider should return the provider AND the model currently used
     # otherwise we can't set it up correctly
@@ -363,6 +363,64 @@ def main(
         # llm_provider = provider
 
         return {"status": "ok", "provider": provider}
+
+    @server.add_method("add_model")
+    async def add_model(
+        _request_id: Any,
+        params: Dict[str, Any],
+        component_manager: ComponentManager
+    ) -> Dict[str, Any]:
+        """Add a new model provider to the configuration.
+        
+        Args:
+            params: Dictionary containing:
+                - provider: Provider name (e.g., "openai", "anthropic")
+                - model_name: Model name
+                - api_key: API key (optional)
+                - base_url: Base URL (optional)
+                - type_model: Type of model, "embeddings" for embedding models (optional)
+                - vec_dim: Vector dimension for embedding models (optional)
+        
+        Returns:
+            Dictionary with status and provider information
+        """
+        if component_manager.config is None:
+            raise RuntimeError("Configuration not initialized")
+
+        provider = params.get("provider")
+        model_name = params.get("model_name")
+        api_key = params.get("api_key")
+        base_url = params.get("base_url")
+        type_model = params.get("type_model")
+        vec_dim = params.get("vec_dim")
+
+        if not provider or not model_name:
+            raise ValueError("provider and model_name are required")
+
+        # Add provider to the config and save to config.json
+        component_manager.add_model_provider(
+            provider=provider,
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            type_model=type_model,
+            vec_dim=vec_dim
+        )
+
+        # If it's a regular model (not embedding), optionally set it as the current provider
+        if type_model != "embeddings" and component_manager.model_registry:
+            try:
+                component_manager.set_llm_provider(provider)
+            except (ValueError, RuntimeError):
+                # Provider might not be in registry yet, that's okay
+                pass
+        
+        return {
+            "status": "ok",
+            "provider": provider,
+            "model_name": model_name,
+            "type_model": type_model or None
+        }
 
 
 

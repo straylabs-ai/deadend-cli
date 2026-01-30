@@ -9,6 +9,7 @@ import subprocess
 import time
 from datetime import datetime
 from typing import Any, Optional
+from deadend_agent import ModelRegistry
 import docker
 from deadend_agent.core import (
     init_rag_database,
@@ -59,7 +60,7 @@ class ComponentManager:
 
         # Component instances
         self.config: Config | None = None
-        self.model_registry: Any = None
+        self.model_registry: ModelRegistry = None
         self.rag_connector: RetrievalDatabaseConnector | None = None
         self.python_sandbox_process: Optional[subprocess.Popen] = None
         self.sandbox_manager: Any = None
@@ -760,7 +761,7 @@ class ComponentManager:
         """
         return self.current_llm_provider
 
-    def list_llm_providers(self) -> dict[str, Any]:
+    def get_all_models(self) -> dict[str, Any]:
         """List all available LLM providers and their configuration status.
 
         Returns:
@@ -772,38 +773,50 @@ class ComponentManager:
                 "current": self.current_llm_provider,
                 "providers": []
             }
+        return self.model_registry.get_all_models()
+
+    def add_model_provider(
+        self,
+        provider: str,
+        model_name: str,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        type_model: str | None = None,
+        vec_dim: int | None = None
+    ) -> None:
+        """Add a new model provider to the configuration.
+
+        Args:
+            provider: Provider name (e.g., "openai", "anthropic")
+            model_name: Model name
+            api_key: API key (optional)
+            base_url: Base URL (optional)
+            type_model: Type of model, "embeddings" for embedding models (optional)
+            vec_dim: Vector dimension for embedding models (optional)
+
+        Raises:
+            RuntimeError: If model registry is not initialized
+        """
+        if self.model_registry is None:
+            raise RuntimeError(
+                "Model registry not initialized. Call init_model_registry() first."
+            )
         
-        available_providers = self.model_registry.list_configured_providers()
-        all_providers = ["openai", "anthropic", "gemini", "openrouter", "local"]
+        self.model_registry.add_model_provider(
+            provider=provider,
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            type_model=type_model,
+            vec_dim=vec_dim
+        )
         
-        providers_info = []
-        for provider_name in all_providers:
-            configured = provider_name in available_providers
-            model_name = None
-            
-            if configured:
-                try:
-                    model = self.model_registry.get_model(provider=provider_name)
-                    # Try to get model name from various attributes
-                    if hasattr(model, "model_name"):
-                        model_name = model.model_name
-                    elif hasattr(model, "model_id"):
-                        model_name = model.model_id
-                    elif hasattr(model, "_model_id"):
-                        model_name = model._model_id
-                except Exception:
-                    pass
-            
-            providers_info.append({
-                "name": provider_name,
-                "configured": configured,
-                "model": model_name
-            })
-        
-        return {
-            "current": self.current_llm_provider,
-            "providers": providers_info
-        }
+        # Update current provider if it's a regular model and no provider is set yet
+        if type_model != "embeddings":
+            available_providers = self.model_registry.list_configured_providers()
+            if available_providers and self.current_llm_provider not in available_providers:
+                self.current_llm_provider = available_providers[0]
+                logger.info("Defaulting to first available provider: %s", self.current_llm_provider)
 
     def get_embedder(self):
         """Get the embedder model from the model registry.

@@ -14,6 +14,7 @@ from typing import Dict
 import aiohttp
 
 from deadend_agent.config.settings import Config, ModelSpec, EmbeddingSpec, ProvidersList
+from pydantic import BaseModel
 
 class EmbedderClient:
     """Client for generating embeddings using various embedding API providers.
@@ -104,6 +105,11 @@ class EmbedderClient:
 
         return embeddings if embeddings else []
 
+class ModelInfo(BaseModel):
+    provider: str
+    model_name: str
+    type_model:  str | None = None
+
 class ModelRegistry:
     """Registry for managing model specifications from multiple providers.
     
@@ -139,7 +145,7 @@ class ModelRegistry:
         
         Uses the TOML-backed `ProvidersList` populated via `Config.populate_providers()`
         as the single source of truth. Each entry is either a `ModelSpec` (LLM)
-        or an `EmbeddingSpec` (embeddings). No legacy `ModelSettings` are used.
+        or an `EmbeddingSpec` (embeddings)
         
         Args:
             config: Configuration object containing model settings and API keys.
@@ -215,14 +221,18 @@ class ModelRegistry:
 
         # If a specific model_name is requested, find the spec that has that name.
         if model_name is not None:
-            return self._find_spec_by_model_name(model_name=model_name, preferred_provider=provider)
+            return self._find_spec_by_model_name(model_name=model_name, selected_provider=provider)
 
         # Otherwise, return the first spec for the given provider (default).
         if provider not in self._models or not self._models[provider]:
             raise ValueError(f"Model provider {provider} not supported.")
         return self._models[provider][0]
 
-    def _find_spec_by_model_name(self, model_name: str, preferred_provider: str | None = None) -> ModelSpec:
+    def _find_spec_by_model_name(
+        self,
+        model_name: str,
+        selected_provider: str | None = None
+    ) -> ModelSpec:
         """Locate an existing ModelSpec whose model_name matches.
 
         Args:
@@ -236,8 +246,8 @@ class ModelRegistry:
             ValueError: If no ModelSpec with that model_name is configured.
         """
         # 1) Prefer a match within the in-memory map, honoring preferred_provider first
-        if preferred_provider and preferred_provider in self._models:
-            for spec in self._models[preferred_provider]:
+        if selected_provider and selected_provider in self._models:
+            for spec in self._models[selected_provider]:
                 if spec.model_name == model_name:
                     return spec
 
@@ -291,5 +301,60 @@ class ModelRegistry:
         Returns:
             Dictionary mapping provider names to lists of their ModelSpec instances.
         """
-        return {provider: specs.copy() for provider, specs in self._models.items()}
+        all_models: Dict[str, list[ModelInfo]] = {}
 
+        for provider, model_specs in self._models.items():
+            provider_models = [ModelInfo(provider=spec.provider, model_name=spec.model_name, type_model=None) for spec in model_specs]
+            all_models[provider] = provider_models
+
+        return all_models
+    
+    def add_model_provider(
+        self,
+        provider: str,
+        model_name: str,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        type_model: str | None = None,
+        vec_dim: int | None = None
+    ):
+        """Add a new model provider to the configuration and reinitialize the registry.
+        
+        Args:
+            provider: Provider name (e.g., "openai", "anthropic")
+            model_name: Model name
+            api_key: API key (optional)
+            base_url: Base URL (optional)
+            type_model: Type of model, "embeddings" for embedding models (optional)
+            vec_dim: Vector dimension for embedding models (optional)
+        """
+        self._config.add_provider(
+            provider=provider,
+            model_name=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            type_model=type_model,
+            vec_dim=vec_dim
+        )
+        # Reinitialize models to reflect the new provider
+        self._initialize_models(config=self._config)
+
+    def update_model_by_provider(
+        self,
+        selected_provider: str,
+        selected_model: str,
+        new_provider: str,
+        new_model: str,
+        api_key: str | None
+    ):
+        selected_model_spec = self._find_spec_by_model_name(
+            model_name=selected_model,
+            selected_provider=selected_provider
+        )
+
+        self._config.update_provider(
+            updated_provider=selected_model_spec,
+            provider=new_provider,
+            model_name=new_model,
+            api_key=api_key
+        )
