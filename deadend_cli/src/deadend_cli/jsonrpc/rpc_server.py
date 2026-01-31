@@ -50,14 +50,25 @@ class JSONRPCErrorCode:
 def _make_jsonrpc_response(
     request_id: Any,
     result: Any = None,
-    error: Optional[Dict[str, Any]] = None
+    error: Optional[Dict[str, Any]] = None,
+    streaming: Optional[bool] = None
 ) -> Dict[str, Any]:
-    """Create a JSON-RPC 2.0 response."""
+    """Create a JSON-RPC 2.0 response.
+    
+    Args:
+        request_id: The request ID from the original request
+        result: The result value (for success responses)
+        error: The error object (for error responses)
+        streaming: If True, adds _streaming: true flag. If False, adds _streaming: false.
+                   If None, no streaming flag is added.
+    """
     response: Dict[str, Any] = {"jsonrpc": "2.0", "id": request_id}
     if error is not None:
         response["error"] = error
     else:
         response["result"] = result
+    if streaming is not None:
+        response["_streaming"] = streaming
     return response
 
 
@@ -118,6 +129,9 @@ class RPCServer:
         # Shutdown callbacks for graceful cleanup
         self._shutdown_callbacks: list[Callable[[], Any]] = []
 
+        # Track active streaming requests for cancellation
+        self._active_streams: Dict[Any, Any] = {}
+
     def add_dependency(self, name: str, value: Any) -> None:
         """Register a new dependency used by the RPC methods"""
         self._dependencies[name] = value
@@ -151,7 +165,7 @@ class RPCServer:
             param_names.discard('_request_id')
             param_names.discard('params')
             param_names.discard('_params')
-            
+
             # Check if the function is an async generator function
             is_async_gen = inspect.isasyncgenfunction(func)
 
@@ -214,7 +228,7 @@ class RPCServer:
         )
 
         logger.info("RPC Server started and listening on stdin")
-        
+
         # Track active request handlers for concurrent processing
         active_tasks: set[asyncio.Task] = set()
 
@@ -325,6 +339,41 @@ class RPCServer:
             )
             return
 
+        # Handle cancellation requests
+        if method == "cancel":
+            cancel_id = params.get("id") if isinstance(params, dict) else None
+            if cancel_id is None:
+                yield _make_jsonrpc_error(
+                    request_id=request_id,
+                    code=JSONRPCErrorCode.INVALID_PARAMS,
+                    message="Cancel request must include 'id' parameter"
+                )
+                return
+            
+            # Try to cancel the stream
+            if cancel_id in self._active_streams:
+                # Close the stream (best effort - async generators can't be forcefully stopped)
+                stream = self._active_streams.pop(cancel_id, None)
+                if stream:
+                    try:
+                        # Try to close the async generator
+                        if hasattr(stream, "aclose"):
+                            await stream.aclose()
+                        elif hasattr(stream, "close"):
+                            stream.close()
+                    except Exception as e:
+                        logger.warning("Error closing cancelled stream: %s", e)
+                yield _make_jsonrpc_response(
+                    request_id=request_id,
+                    result={"status": "cancelled", "id": cancel_id}
+                )
+            else:
+                yield _make_jsonrpc_response(
+                    request_id=request_id,
+                    result={"status": "not_found", "id": cancel_id}
+                )
+            return
+
         handler = self._method_handlers.get(method)
         if handler is None:
             yield _make_jsonrpc_error(
@@ -337,23 +386,59 @@ class RPCServer:
         try:
             # Call the handler - it might return a coroutine or an async generator
             handler_result = handler(request_id, params)
-            
-            # Check if handler returned an async generator (async generator functions return generators immediately)
+
+            # Check if handler returned an async generator 
+            # (async generator functions return generators immediately)
             if hasattr(handler_result, "__aiter__"):
                 # Handler returned an async generator - iterate over it directly
-                async for item in handler_result:
-                    yield _make_jsonrpc_response(request_id=request_id, result=item)
+                # Track this stream for cancellation
+                self._active_streams[request_id] = handler_result
+                try:
+                    async for item in handler_result:
+                        # For streaming responses, mark as streaming: true
+                        yield _make_jsonrpc_response(
+                            request_id=request_id,
+                            result=item,
+                            streaming=True
+                        )
+                    # Stream completed - send final response with streaming: false
+                    yield _make_jsonrpc_response(
+                        request_id=request_id,
+                        result={"_end": True},
+                        streaming=False
+                    )
+                finally:
+                    # Clean up stream tracking
+                    self._active_streams.pop(request_id, None)
             elif asyncio.iscoroutine(handler_result):
                 # Handler returned a coroutine - await it
                 result = await handler_result
                 # Check if the awaited result is an async generator
                 if hasattr(result, "__aiter__"):
-                    async for item in result:
-                        yield _make_jsonrpc_response(request_id=request_id, result=item)
+                    # Track this stream for cancellation
+                    self._active_streams[request_id] = result
+                    try:
+                        async for item in result:
+                            # For streaming responses, mark as streaming: true
+                            yield _make_jsonrpc_response(
+                                request_id=request_id,
+                                result=item,
+                                streaming=True
+                            )
+                        # Stream completed - send final response with streaming: false
+                        yield _make_jsonrpc_response(
+                            request_id=request_id,
+                            result={"_end": True},
+                            streaming=False
+                        )
+                    finally:
+                        # Clean up stream tracking
+                        self._active_streams.pop(request_id, None)
                 else:
+                    # Single response - no streaming flag
                     yield _make_jsonrpc_response(request_id=request_id, result=result)
             else:
-                # Handler returned a regular value
+                # Handler returned a regular value - single response, no streaming
                 yield _make_jsonrpc_response(request_id=request_id, result=handler_result)
         except Exception as exc:
             # Map exceptions to JSON-RPC error codes

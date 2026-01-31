@@ -83,11 +83,23 @@ export function useEventStream(
 
     const runSubscription = async () => {
       try {
-        for await (const event of rpcClient.subscribeEvents()) {
-          if (abortControllerRef.current?.signal.aborted) {
-            break;
+        const { generator, abort } = rpcClient.subscribeEvents();
+        try {
+          for await (const event of generator) {
+            if (abortControllerRef.current?.signal.aborted) {
+              abort();
+              break;
+            }
+            addEvent(event);
           }
-          addEvent(event);
+        } catch (err) {
+          if (!abortControllerRef.current?.signal.aborted) {
+            setError(err instanceof Error ? err : new Error(String(err)));
+          }
+        } finally {
+          if (abortControllerRef.current?.signal.aborted) {
+            abort();
+          }
         }
       } catch (err) {
         if (!abortControllerRef.current?.signal.aborted) {

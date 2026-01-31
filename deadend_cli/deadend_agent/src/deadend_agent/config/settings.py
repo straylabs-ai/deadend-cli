@@ -194,7 +194,6 @@ class Config:
 
     # List providers
     providers: ProvidersList = ProvidersList()
-
     # Database
     db_url: str | None = _cfg("DB_URL", "postgresql://postgres:postgres@localhost:54320/codeindexerdb")
     # Tools

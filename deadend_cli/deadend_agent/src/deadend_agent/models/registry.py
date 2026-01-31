@@ -15,6 +15,7 @@ import aiohttp
 
 from deadend_agent.config.settings import Config, ModelSpec, EmbeddingSpec, ProvidersList
 from pydantic import BaseModel
+from deadend_cli.cli_logging import logger
 
 class EmbedderClient:
     """Client for generating embeddings using various embedding API providers.
@@ -155,23 +156,23 @@ class ModelRegistry:
 
         providers_list: ProvidersList = config.all_model_providers()
 
-        # Use the TOML-backed providers list as the single source of truth
         if providers_list and providers_list.model_providers:
             for spec in providers_list.model_providers:
                 if isinstance(spec, EmbeddingSpec):
                     # Use the first embedding spec we encounter as the embedder client
                     if self.embedder_model is None:
-                        api_key, base_url = self._resolve_embedding_credentials(spec)
+                        # api_key, base_url = self._resolve_embedding_credentials(spec)
                         self.embedder_model = EmbedderClient(
                             model_name=spec.model_name,
-                            api_key=api_key,
-                            base_url=base_url,
+                            api_key=spec.api_key,
+                            base_url=spec.base_url,
                         )
                 else:
                     # Regular language model spec - store all specs per provider.
                     if spec.provider not in self._models:
                         self._models[spec.provider] = []
                     self._models[spec.provider].append(spec)
+        logger.info("models init: %s", str(self._models))
 
         # If no providers were found in TOML, registry will simply report no models.
 

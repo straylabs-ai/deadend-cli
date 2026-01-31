@@ -8,7 +8,7 @@ import json
 from dataclasses import asdict, is_dataclass
 import typer
 import uuid
-from deadend_agent import DeadEndAgent, Sandbox, set_event_hooks
+from deadend_agent import DeadEndAgent, Sandbox, config_setup, set_event_hooks
 from deadend_agent.tools.tool_wrappers import (
     set_approval_provider,
     enable_approval_mode,
@@ -334,17 +334,29 @@ def main(
         """List all available and configured models in the config.json."""
         result = component_manager.get_all_models()
         return result
-    # TODO: the get llm provider should return the provider AND the model currently used
-    # otherwise we can't set it up correctly
     @server.add_method("get_llm_provider")
     async def get_llm_provider(
         _request_id: Any,
         _params: Dict[str, Any],
         component_manager: ComponentManager
     ) -> Dict[str, Any]:
-        """List all available LLM providers and their configuration status."""
+        """Get the current LLM provider and model name."""
         provider = component_manager.get_llm_provider()
-        return {"provider": provider}
+        
+        # Get the model spec to extract model name
+        try:
+            model_spec = component_manager.get_model(provider=provider)
+            return {
+                "provider": provider,
+                "model": model_spec.model_name
+            }
+        except (RuntimeError, ValueError) as e:
+            # If we can't get the model, just return the provider
+            logger.warning("Could not get model spec for provider %s: %s", provider, e)
+            return {
+                "provider": provider,
+                "model": None
+            }
     # TODO: The set provider here, only sets up the provider and not the model itself, or the
     # API KEY nor the base url if needed, this is a problem
     @server.add_method("set_llm_provider")
@@ -414,7 +426,7 @@ def main(
             except (ValueError, RuntimeError):
                 # Provider might not be in registry yet, that's okay
                 pass
-        
+
         return {
             "status": "ok",
             "provider": provider,
@@ -442,6 +454,20 @@ def main(
                 "reason": "Must supply a target"
             }
 
+        # Get provider and model from params, or use current defaults
+        provider = params.get("provider")
+        model_name = params.get("model_name")
+
+        # Get the model spec (will use current provider/model if not specified)
+        logger.info("model and provider %s %s", provider, model_name)
+        try:
+            model = component_manager.get_model(provider=provider, model_name=model_name)
+        except (RuntimeError, ValueError) as e:
+            return {
+                "status": "failed",
+                "reason": f"Failed to get model: {str(e)}"
+            }
+
         agent_id = uuid.uuid4()
 
         available_agents = {
@@ -459,7 +485,7 @@ def main(
         }
         deadend_agent = DeadEndAgent(
             session_id=agent_id,
-            model=component_manager.get_model(),
+            model=model,
             available_agents=available_agents,
             max_depth=3
         )
@@ -471,8 +497,11 @@ def main(
         try:
             sandbox = component_manager.create_task_sandbox(network_name="host")
         except Exception as e:
-            logger.warning("Failed to create sandbox: %s", e)
-            sandbox = None
+            logger.error("Failed to create sandbox: %s", e)
+            return {
+                "status": "failed",
+                "reason": f"Failed to create sandbox: {str(e)}"
+            }
 
         # components for embeddings
         embedder_client = component_manager.get_embedder()
@@ -480,12 +509,22 @@ def main(
         deadend_agent.set_approval_callback(approval_callback)
         deadend_agent.target = target
         deadend_agent_refs.update({str(agent_id): deadend_agent})
-        deadend_agent.prepare_dependencies(
-            embedder_client=embedder_client,
-            rag_connector=rag_db,
-            sandbox=sandbox,
-            target=target,
-        )
+
+        try:
+            deadend_agent.prepare_dependencies(
+                embedder_client=embedder_client,
+                rag_connector=rag_db,
+                sandbox=sandbox,
+                target=target,
+            )
+        except Exception as e:
+            logger.error("Failed to prepare dependencies: %s", e)
+            # Clean up the agent reference if preparation fails
+            deadend_agent_refs.pop(str(agent_id), None)
+            return {
+                "status": "failed",
+                "reason": f"Failed to prepare agent dependencies: {str(e)}"
+            }
 
         return {
             "status": "ok", 

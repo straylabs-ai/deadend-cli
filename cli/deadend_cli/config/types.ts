@@ -34,6 +34,11 @@ export interface EmbeddingConfig {
     auto_embed: boolean;
 }
 
+export interface EmbeddingDefaultSpec {
+    provider: string;
+    model: string;
+}
+
 export interface DefaultSettings {
     provider?: string
     model?: string
@@ -45,5 +50,5 @@ export interface DefaultSettings {
     lastTarget: string;
     commandHistory: string[];
     
-    embedding?: EmbeddingConfig;
+    embedding?: EmbeddingDefaultSpec;
 }

@@ -18,15 +18,7 @@ import { createMessage } from "../types/message.ts";
 import { parseCommand, isCommand } from "../lib/commands/command-parser.ts";
 import { executeCommand } from "../lib/commands/command-handler.ts";
 import type { RpcClient, InitResult } from "../types/rpc.ts";
-import { ConfigSetup } from "./ConfigSetup.tsx";
-import { START_RUN } from "../lib/commands/handlers/run.ts";
-import {
-  setLlmRpcClient,
-  INFO_MESSAGE_PREFIX,
-  OPEN_LLM_SELECTOR,
-} from "../lib/commands/handlers/llm.ts";
-import { LlmSelector } from "./LlmSelector.tsx";
-import { getCurrentTarget, setTarget as setTargetLocal, TARGET_SET_PREFIX } from "../lib/commands/handlers/target.ts";
+import { setTarget as setTargetLocal, TARGET_SET_PREFIX } from "../lib/commands/handlers/target.ts";
 import type { CliArgs } from "../lib/cli-args.ts";
 import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
 import { StatusArea, type StatusNotification } from "./StatusArea.tsx";
@@ -56,14 +48,12 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [showConfigSetup, setShowConfigSetup] = useState(false);
-  const [showLlmSelector, setShowLlmSelector] = useState(false);
   const [currentLlm, setCurrentLlm] = useState<{
     provider: string;
     model: string | null;
   } | null>(null);
   const [notifications, setNotifications] = useState<StatusNotification[]>([]);
-  const [showComponentStatus, setShowComponentStatus] = useState(false);
+  const [showComponentStatus, _setShowComponentStatus] = useState(false);
   const [settings, setSettings] = useState<CliSettings>({});
   const [settingsLoaded, setSettingsLoaded] = useState(false);
 
@@ -127,45 +117,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
     });
   }, []);
 
-  /**
-   * Set up the RPC client for command handlers that need it.
-   */
-  useEffect(() => {
-    if (rpcClient && "getLlmProvider" in rpcClient) {
-      setLlmRpcClient(rpcClient as DeadEndRpcClient);
-    }
-  }, [rpcClient]);
 
-  /**
-   * Refresh LLM display from settings or server.
-   * Settings take priority over server-reported provider.
-   */
-  const refreshLlm = useCallback(async () => {
-    // First load settings
-    const loaded = await loadSettings();
-    logger.log("[Task settings] Task settings :", loaded);
-    setSettings(loaded);
-
-    // If settings has provider, use it
-    if (loaded.provider) {
-      setCurrentLlm({
-        provider: loaded.provider,
-        model: loaded.model || null,
-      });
-    } else if (rpcClient && "listLlmProviders" in rpcClient) {
-      // Otherwise, fetch from server as fallback
-      try {
-        const result = await (rpcClient as DeadEndRpcClient).listLlmProviders();
-        const current = result.providers.find((p) => p.name === result.current);
-        setCurrentLlm({
-          provider: result.current,
-          model: current?.model || null,
-        });
-      } catch {
-        // Ignore errors
-      }
-    }
-  }, [rpcClient]);
 
   /**
    * Load CLI settings on mount and set LLM display.
@@ -256,7 +208,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
         cancel();
       }
     },
-    { isActive: !showConfigSetup && !showLlmSelector }
+    { isActive: true }
   );
 
   const handleSubmit = useCallback(async () => {
@@ -292,19 +244,6 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
           return;
         }
 
-        if (result === "START_CONFIG_SETUP") {
-          setIsLoading(false);
-          setShowConfigSetup(true);
-          return;
-        }
-
-        // Handle /llm command - open interactive selector
-        if (result === OPEN_LLM_SELECTOR) {
-          setIsLoading(false);
-          setShowLlmSelector(true);
-          return;
-        }
-
         // Handle /target command - initialize agent for target
         if (result.startsWith(TARGET_SET_PREFIX)) {
           const targetUrl = result.slice(TARGET_SET_PREFIX.length);
@@ -315,49 +254,9 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
           return;
         }
 
-        // Handle /run command - start task with current mode
-        if (result === START_RUN) {
-          if (!taskState.isTargetEmbedded) {
-            const errorMessage = createMessage(
-              "system",
-              "Error: No target set or target not ready. Use /target <url> first and wait for initialization.",
-              "error"
-            );
-            addMessage(errorMessage);
-            setIsLoading(false);
-            return;
-          }
-          // Get the task from the parsed args
-          const taskArg = parsed.args.join(" ").trim();
-          if (!taskArg) {
-            const errorMessage = createMessage(
-              "system",
-              "Error: Please provide a task. Usage: /run <task description>",
-              "error"
-            );
-            addMessage(errorMessage);
-            setIsLoading(false);
-            return;
-          }
-          // Start the task (events will stream as messages)
-          setIsLoading(false);
-          runTask({
-            task: taskArg,
-            mode: executionMode,
-          });
-          return;
-        }
-
         // Add command result message
-        // Check for info message prefix (renders italic)
-        if (result.startsWith(INFO_MESSAGE_PREFIX)) {
-          const content = result.slice(INFO_MESSAGE_PREFIX.length);
-          const resultMessage = createMessage("system", content, "info");
-          addMessage(resultMessage);
-        } else {
-          const resultMessage = createMessage("system", result, "text");
-          addMessage(resultMessage);
-        }
+        const resultMessage = createMessage("system", result, "text");
+        addMessage(resultMessage);
       } catch (error) {
         const errorMessage = createMessage(
           "system",
@@ -404,45 +303,6 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
     setTarget,
   ]);
 
-  // Config setup view
-  if (showConfigSetup) {
-    return (
-      <Box flexDirection="column" flexGrow={1}>
-        <ConfigSetup
-          onComplete={() => {
-            setShowConfigSetup(false);
-            const successMessage = createMessage(
-              "system",
-              "Configuration saved successfully!",
-              "text"
-            );
-            addMessage(successMessage);
-          }}
-        />
-      </Box>
-    );
-  }
-
-  // LLM Selector view
-  if (showLlmSelector) {
-    const streamingClient = rpcClient as unknown as DeadEndRpcClient;
-    return (
-      <Box flexDirection="column" flexGrow={1}>
-        <LlmSelector
-          rpcClient={streamingClient}
-          onComplete={() => {
-            setShowLlmSelector(false);
-            refreshLlm();
-            const successMessage = createMessage("system", "LLM provider updated.", "info");
-            addMessage(successMessage);
-          }}
-          onCancel={() => {
-            setShowLlmSelector(false);
-          }}
-        />
-      </Box>
-    );
-  }
 
   // Combine banner and static messages for Static component
   // Banner comes first, then old messages - all rendered once and never re-render

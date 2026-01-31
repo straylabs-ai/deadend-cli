@@ -155,8 +155,6 @@ function App({ cliArgs }: AppProps) {
       try {
         await configManager.load();
         const config = configManager.getConfig();
-        
-        // Show presetup if no providers are configured
         if (!config || !config.configured_models || config.configured_models.length === 0) {
           setIsChecking(false);
           setShowPresetup(true);
@@ -165,7 +163,6 @@ function App({ cliArgs }: AppProps) {
           setShowPresetup(false);
         }
       } catch (error) {
-        // If we can't load the config, show presetup
         logger.warn("Failed to load config, showing presetup:", error);
         setIsChecking(false);
         setShowPresetup(true);

@@ -11,11 +11,8 @@ interface PresetupWizardProps {
 }
 
 type WizardStep = 
-  | "provider"
   | "model"
-  | "api_key"
-  | "embedding"
-  | "confirm";
+  | "embedding";
 
 interface ModelConfig {
   provider: string;
@@ -25,8 +22,9 @@ interface ModelConfig {
 }
 
 export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
-  const [step, setStep] = useState<WizardStep>("provider");
+  const [step, setStep] = useState<WizardStep>("model");
   const [currentInput, setCurrentInput] = useState("");
+  const [currentField, setCurrentField] = useState<"provider" | "model" | "api_key" | "base_url">("provider");
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   
@@ -39,7 +37,7 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
   // Embedding configuration
   const [embeddingConfig, setEmbeddingConfig] = useState<EmbeddingConfig | null>(null);
   const [skipEmbedding, setSkipEmbedding] = useState(false);
-  const [embeddingStep, setEmbeddingStep] = useState<"question" | "provider" | "model" | "api_key" | "vec_dim">("question");
+  const [embeddingField, setEmbeddingField] = useState<"question" | "provider" | "model" | "api_key" | "base_url" | "vec_dim">("question");
   
 
   // Check if models are configured and skip presetup if both regular and embedding models exist
@@ -95,148 +93,41 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
         console.error("Failed to load models:", err);
       }
     };
-    
+
     checkModels();
   }, [rpcClient, onComplete]);
 
-  const handleProviderInput = useCallback((input: string) => {
-    const provider = input.trim().toLowerCase();
-    if (!provider) {
-      setError("Provider name is required");
-      return;
-    }
+  const handleModelStepInput = useCallback((input: string) => {
+    const value = input.trim();
     
-    setModelConfig(prev => ({ ...prev, provider }));
-    setError(null);
-    setCurrentInput("");
-    setStep("model");
-  }, []);
-
-  const handleModelInput = useCallback((input: string) => {
-    const model = input.trim();
-    if (!model) {
-      setError("Model name is required");
-      return;
-    }
-    
-    setModelConfig(prev => ({ ...prev, model }));
-    setError(null);
-    setCurrentInput("");
-    setStep("api_key");
-  }, []);
-
-
-  const handleApiKeyInput = useCallback((input: string) => {
-    const apiKey = input.trim();
-    
-    setModelConfig(prev => ({ ...prev, api_key: apiKey || undefined }));
-    setError(null);
-    setCurrentInput("");
-    setStep("embedding");
-  }, []);
-
-  const handleEmbeddingInput = useCallback((input: string) => {
-    const lowerInput = input.trim().toLowerCase();
-    
-    if (lowerInput === "skip" || lowerInput === "n" || lowerInput === "no" || lowerInput === "") {
-      setSkipEmbedding(true);
-      setStep("confirm");
-      return;
-    }
-    
-    if (lowerInput === "y" || lowerInput === "yes") {
-      // Start embedding configuration
-      setEmbeddingConfig({
-        provider: "",
-        model: "",
-        auto_embed: true,
-      });
-      setEmbeddingStep("provider");
-      setCurrentInput("");
-      return;
-    }
-    
-    setError("Please enter 'yes' or 'skip'");
-  }, []);
-
-  const handleEmbeddingProviderInput = useCallback((input: string) => {
-    const provider = input.trim().toLowerCase();
-    if (!provider) {
-      setError("Embedding provider name is required");
-      return;
-    }
-    
-    setEmbeddingConfig(prev => prev ? { ...prev, provider } : {
-      provider,
-      model: "",
-      auto_embed: true,
-    });
-    setError(null);
-    setCurrentInput("");
-    setEmbeddingStep("model");
-  }, []);
-
-  const handleEmbeddingModelInput = useCallback((input: string) => {
-    const model = input.trim();
-    if (!model) {
-      setError("Embedding model name is required");
-      return;
-    }
-    
-    setEmbeddingConfig(prev => {
-      if (prev) {
-        return { ...prev, model };
+    if (currentField === "provider") {
+      if (!value) {
+        setError("Provider name is required");
+        return;
       }
-      return {
-        provider: "",
-        model,
-        auto_embed: true,
-      };
-    });
-    setError(null);
-    setCurrentInput("");
-    setEmbeddingStep("api_key");
-  }, []);
-
-  const handleEmbeddingApiKeyInput = useCallback((input: string) => {
-    const apiKey = input.trim();
-    
-    if (apiKey) {
-      setEmbeddingConfig(prev => prev ? { ...prev, api_key: apiKey } : {
-        provider: "",
-        model: "",
-        api_key: apiKey,
-        auto_embed: true,
-      });
+      setModelConfig(prev => ({ ...prev, provider: value.toLowerCase() }));
+      setCurrentField("model");
+    } else if (currentField === "model") {
+      if (!value) {
+        setError("Model name is required");
+        return;
+      }
+      setModelConfig(prev => ({ ...prev, model: value }));
+      setCurrentField("api_key");
+    } else if (currentField === "api_key") {
+      setModelConfig(prev => ({ ...prev, api_key: value || undefined }));
+      setCurrentField("base_url");
+    } else if (currentField === "base_url") {
+      setModelConfig(prev => ({ ...prev, base_url: value || undefined }));
+      setStep("embedding");
+      setEmbeddingField("question");
     }
     
     setError(null);
     setCurrentInput("");
-    setEmbeddingStep("vec_dim");
-  }, []);
+  }, [currentField]);
 
-  const handleEmbeddingVecDimInput = useCallback((input: string) => {
-    const vecDimInput = input.trim();
-    const vecDim = vecDimInput ? parseInt(vecDimInput, 10) : 1536;
-    
-    if (isNaN(vecDim) || vecDim <= 0) {
-      setError("Vector dimension must be a positive number");
-      return;
-    }
-    
-    setEmbeddingConfig(prev => prev ? { ...prev, vec_dim: vecDim } : {
-      provider: "",
-      model: "",
-      vec_dim: vecDim,
-      auto_embed: true,
-    });
-    
-    setError(null);
-    setCurrentInput("");
-    setStep("confirm");
-  }, []);
-
-  const handleConfirm = useCallback(async () => {
+  const handleConfirm = useCallback(async (finalEmbeddingConfig?: EmbeddingConfig | null) => {
     if (!rpcClient) {
       setError("RPC client not available");
       return;
@@ -261,260 +152,267 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
         vec_dim: null,
       });
       
+      // Use provided config or fallback to state
+      const configToUse = finalEmbeddingConfig !== undefined ? finalEmbeddingConfig : embeddingConfig;
+      
       // Add embedding model if configured
-      if (embeddingConfig && !skipEmbedding) {
-        if (!embeddingConfig.provider || !embeddingConfig.model) {
+      if (configToUse && !skipEmbedding) {
+        if (!configToUse.provider || !configToUse.model) {
           throw new Error("Embedding provider and model are required");
         }
-        
-        await rpcClient.call("add_model", {
-          provider: embeddingConfig.provider,
-          model_name: embeddingConfig.model,
-          api_key: embeddingConfig.api_key || null,
-          base_url: embeddingConfig.base_url || null,
+        const result = await rpcClient.call("add_model", {
+          provider: configToUse.provider,
+          model_name: configToUse.model,
+          api_key: configToUse.api_key || null,
+          base_url: configToUse.base_url || null,
           type_model: "embeddings",
-          vec_dim: embeddingConfig.vec_dim || 1536,
+          vec_dim: configToUse.vec_dim || 1536,
         });
+        console.log("Embedding model added successfully:", result);
+      }
+      
+      // Create and save default settings with the entered model as default
+      try {
+        const newSettings = {
+          provider: modelConfig.provider,
+          model: modelConfig.model,
+          agentMode: "supervisor" as const,
+          showComponentStatus: true,
+          autoCollapseStatus: false,
+          lastTarget: "",
+          commandHistory: [],
+          ...(configToUse && !skipEmbedding ? {
+            embedding: {
+              provider: configToUse.provider,
+              model: configToUse.model,
+            }
+          } : {}),
+        };
+        
+        await configManager.saveDefaultSettings(newSettings);
+      } catch (settingsErr) {
+        // Log but don't fail the whole operation if settings save fails
+        console.error("Failed to save default settings:", settingsErr);
       }
       
       setIsSaving(false);
       onComplete();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      const errorMessage = err instanceof Error 
+        ? err.message 
+        : typeof err === "string" 
+        ? err 
+        : err?.toString() || "Unknown error";
+      console.error("Error in handleConfirm:", err);
+      setError(errorMessage);
       setIsSaving(false);
     }
   }, [modelConfig, embeddingConfig, skipEmbedding, onComplete, rpcClient]);
 
-  const renderProviderStep = () => (
-    <Box flexDirection="column">
-      <Text color="grey" bold>
-        Step 1/6: Select Provider
-      </Text>
-      <Text>
-        Enter your provider:
-      </Text>
-      <Box flexDirection="row">
-        <Text color="grey">{"> Provider: "}</Text>
-        <TextInput
-          value={currentInput}
-          onChange={setCurrentInput}
-          onSubmit={handleProviderInput}
-          placeholder="e.g., ollama"
-        />
-      </Box>
-    </Box>
-  );
+  const handleConfirmWithEmbedding = useCallback((finalEmbeddingConfig: EmbeddingConfig) => {
+    handleConfirm(finalEmbeddingConfig);
+  }, [handleConfirm]);
 
-  const renderModelStep = () => (
-    <Box flexDirection="column">
-      <Text color="grey" bold>
-        Step 2/6: Select Model
-      </Text>
-      <Text color="green">✓ Provider: {modelConfig.provider}</Text>
-      <Text>
-        Enter your model name:
-      </Text>
-      <Box flexDirection="row">
-        <Text color="grey">{"> Model: "}</Text>
-        <TextInput
-          value={currentInput}
-          onChange={setCurrentInput}
-          onSubmit={handleModelInput}
-          placeholder="e.g., gpt-4o-mini"
-        />
-      </Box>
-    </Box>
-  );
+  const handleEmbeddingStepInput = useCallback((input: string) => {
+    const value = input.trim();
+    
+    if (embeddingField === "question") {
+      const lowerInput = value.toLowerCase();
+      if (lowerInput === "skip" || lowerInput === "n" || lowerInput === "no" || lowerInput === "") {
+        setSkipEmbedding(true);
+        // Proceed to save
+        handleConfirm();
+        return;
+      }
+      if (lowerInput === "y" || lowerInput === "yes") {
+        setEmbeddingConfig({
+          provider: "",
+          model: "",
+          auto_embed: true,
+        });
+        setEmbeddingField("provider");
+        setError(null);
+        setCurrentInput("");
+        return;
+      }
+      setError("Please enter 'yes' or 'skip'");
+      return;
+    }
+    
+    if (embeddingField === "provider") {
+      if (!value) {
+        setError("Embedding provider name is required");
+        return;
+      }
+      setEmbeddingConfig(prev => prev ? { ...prev, provider: value.toLowerCase() } : {
+        provider: value.toLowerCase(),
+        model: "",
+        auto_embed: true,
+      });
+      setEmbeddingField("model");
+    } else if (embeddingField === "model") {
+      if (!value) {
+        setError("Embedding model name is required");
+        return;
+      }
+      setEmbeddingConfig(prev => prev ? { ...prev, model: value } : {
+        provider: "",
+        model: value,
+        auto_embed: true,
+      });
+      setEmbeddingField("api_key");
+    } else if (embeddingField === "api_key") {
+      setEmbeddingConfig(prev => prev ? { ...prev, api_key: value || undefined } : {
+        provider: "",
+        model: "",
+        api_key: value || undefined,
+        auto_embed: true,
+      });
+      setEmbeddingField("base_url");
+    } else if (embeddingField === "base_url") {
+      setEmbeddingConfig(prev => prev ? { ...prev, base_url: value || undefined } : {
+        provider: "",
+        model: "",
+        base_url: value || undefined,
+        auto_embed: true,
+      });
+      setEmbeddingField("vec_dim");
+    } else if (embeddingField === "vec_dim") {
+      const vecDim = value ? parseInt(value, 10) : 1536;
+      if (isNaN(vecDim) || vecDim <= 0) {
+        setError("Vector dimension must be a positive number");
+        return;
+      }
+      const updatedConfig = {
+        ...(embeddingConfig || { provider: "", model: "", auto_embed: true }),
+        vec_dim: vecDim,
+      };
+      setEmbeddingConfig(updatedConfig);
+      // Proceed to save with updated config
+      handleConfirmWithEmbedding(updatedConfig);
+      return;
+    }
+    
+    setError(null);
+    setCurrentInput("");
+  }, [embeddingField, embeddingConfig, handleConfirmWithEmbedding]);
 
-  const renderApiKeyStep = () => {
+  const renderModelStep = () => {
+    const getFieldLabel = () => {
+      if (currentField === "provider") return "Provider";
+      if (currentField === "model") return "Model";
+      if (currentField === "api_key") return "API Key (optional)";
+      if (currentField === "base_url") return "Base URL (optional)";
+      return "";
+    };
+
+    const getPlaceholder = () => {
+      if (currentField === "provider") return "e.g., ollama";
+      if (currentField === "model") return "e.g., gpt-4o-mini";
+      if (currentField === "api_key") return "Enter API key (optional)...";
+      if (currentField === "base_url") return "Enter base URL (optional)...";
+      return "";
+    };
+
     return (
       <Box flexDirection="column">
         <Text color="grey" bold>
-          Step 3/6: API Key
+          Step 1/2: Model Configuration
         </Text>
-        <Text color="green">✓ Provider: {modelConfig.provider}</Text>
-        <Text color="green">✓ Model: {modelConfig.model}</Text>
+        {modelConfig.provider && (
+          <Text color="green">✓ Provider: {modelConfig.provider}</Text>
+        )}
+        {modelConfig.model && (
+          <Text color="green">✓ Model: {modelConfig.model}</Text>
+        )}
+        {modelConfig.api_key && (
+          <Text color="green">✓ API key: {"*".repeat(Math.min(modelConfig.api_key.length, 20))}</Text>
+        )}
+        {modelConfig.base_url && (
+          <Text color="green">✓ Base URL: {modelConfig.base_url}</Text>
+        )}
         <Text>
-          Enter your API key (optional):
+          Enter {getFieldLabel()}:
         </Text>
-          <Box flexDirection="row">
-            <Text color="grey">{"> API key: "}</Text>
-            <TextInput
-              value={currentInput}
-              onChange={setCurrentInput}
-              onSubmit={handleApiKeyInput}
-              placeholder="Enter API key (optional)..."
-            />
-          </Box>
+        <Box flexDirection="row">
+          <Text color="grey">{"> "}{getFieldLabel()}: </Text>
+          <TextInput
+            value={currentInput}
+            onChange={setCurrentInput}
+            onSubmit={handleModelStepInput}
+            placeholder={getPlaceholder()}
+          />
         </Box>
+      </Box>
     );
   };
 
   const renderEmbeddingStep = () => {
-    if (embeddingStep === "provider") {
-      return (
-        <Box flexDirection="column">
-          <Text color="grey" bold>
-            Step 4/6: Embedding Provider
-          </Text>
-          <Text>
-            Enter embedding provider name:
-          </Text>
-          <Box flexDirection="row">
-            <Text color="grey">{"> Embedding provider: "}</Text>
-            <TextInput
-              value={currentInput}
-              onChange={setCurrentInput}
-              onSubmit={handleEmbeddingProviderInput}
-              placeholder="e.g., openai"
-            />
-          </Box>
-          </Box>
-      );
-    }
-    
-    if (embeddingStep === "model") {
-      return (
-        <Box flexDirection="column">
-          <Text color="grey" bold>
-            Step 4/6: Embedding Model
-          </Text>
-          <Text color="green">✓ Provider: {embeddingConfig?.provider}</Text>
-          <Text>
-            Enter embedding model name:
-          </Text>
-          <Box flexDirection="row">
-            <Text color="grey">{"> Embedding model: "}</Text>
-            <TextInput
-              value={currentInput}
-              onChange={setCurrentInput}
-              onSubmit={handleEmbeddingModelInput}
-              placeholder="e.g., text-embedding-3-small"
-            />
-          </Box>
-          </Box>
-      );
-    }
-    
-    if (embeddingStep === "api_key") {
-      return (
-        <Box flexDirection="column">
-          <Text color="grey" bold>
-            Step 4/6: Embedding API Key
-          </Text>
-          <Text color="green">✓ Provider: {embeddingConfig?.provider}</Text>
-          <Text color="green">✓ Model: {embeddingConfig?.model}</Text>
-          <Text>
-            Enter embedding API key (optional):
-          </Text>
-          <Box flexDirection="row">
-            <Text color="grey">{"> Embedding API key: "}</Text>
-            <TextInput
-              value={currentInput}
-              onChange={setCurrentInput}
-              onSubmit={handleEmbeddingApiKeyInput}
-              placeholder="Enter API key (optional)..."
-            />
-          </Box>
-          </Box>
-      );
-    }
-    
-    if (embeddingStep === "vec_dim") {
-      return (
-        <Box flexDirection="column">
-          <Text color="grey" bold>
-            Step 5/6: Embedding Vector Dimension
-          </Text>
-          <Text color="green">✓ Provider: {embeddingConfig?.provider}</Text>
-          <Text color="green">✓ Model: {embeddingConfig?.model}</Text>
-          {embeddingConfig?.api_key && (
-            <Text color="green">✓ API key: {"*".repeat(Math.min(embeddingConfig.api_key.length, 20))}</Text>
-          )}
-          <Text>
-            Enter vector dimension (default: 1536):
-          </Text>
-          <Box flexDirection="row">
-            <Text color="grey">{"> Vector dimension: "}</Text>
-            <TextInput
-              value={currentInput}
-              onChange={setCurrentInput}
-              onSubmit={handleEmbeddingVecDimInput}
-              placeholder="1536"
-            />
-          </Box>
-          </Box>
-      );
-    }
-    
-    // Initial embedding question
+    const getFieldLabel = () => {
+      if (embeddingField === "question") return "Configure embedding? (yes/skip)";
+      if (embeddingField === "provider") return "Embedding Provider";
+      if (embeddingField === "model") return "Embedding Model";
+      if (embeddingField === "api_key") return "Embedding API Key (optional)";
+      if (embeddingField === "base_url") return "Embedding Base URL (optional)";
+      if (embeddingField === "vec_dim") return "Vector Dimension (default: 1536)";
+      return "";
+    };
+
+    const getPlaceholder = () => {
+      if (embeddingField === "question") return "yes/skip";
+      if (embeddingField === "provider") return "e.g., openai";
+      if (embeddingField === "model") return "e.g., text-embedding-3-small";
+      if (embeddingField === "api_key") return "Enter API key (optional)...";
+      if (embeddingField === "base_url") return "Enter base URL (optional)...";
+      if (embeddingField === "vec_dim") return "1536";
+      return "";
+    };
+
     return (
       <Box flexDirection="column">
         <Text color="grey" bold>
-          Step 4/6: Embedding Configuration
+          Step 2/2: Embedding Configuration
         </Text>
-        <Text color="green">✓ Provider: {modelConfig.provider}</Text>
-        <Text color="green">✓ Model: {modelConfig.model}</Text>
+        {embeddingField !== "question" && embeddingConfig && (
+          <>
+            {embeddingConfig.provider && (
+              <Text color="green">✓ Embedding Provider: {embeddingConfig.provider}</Text>
+            )}
+            {embeddingConfig.model && (
+              <Text color="green">✓ Embedding Model: {embeddingConfig.model}</Text>
+            )}
+            {embeddingConfig.api_key && (
+              <Text color="green">✓ Embedding API key: {"*".repeat(Math.min(embeddingConfig.api_key.length, 20))}</Text>
+            )}
+            {embeddingConfig.base_url && (
+              <Text color="green">✓ Embedding Base URL: {embeddingConfig.base_url}</Text>
+            )}
+            {embeddingConfig.vec_dim && (
+              <Text color="green">✓ Vector dimension: {embeddingConfig.vec_dim}</Text>
+            )}
+          </>
+        )}
         <Text>
-          Would you like to configure an embedding model for RAG features? (yes/skip):
+          {embeddingField === "question" 
+            ? "Would you like to configure an embedding model for RAG features?"
+            : `Enter ${getFieldLabel()}:`}
         </Text>
-        <Box flexDirection="row">
-          <Text color="grey">{"> Configure embedding? "}</Text>
-          <TextInput
-            value={currentInput}
-            onChange={setCurrentInput}
-            onSubmit={handleEmbeddingInput}
-            placeholder="yes/skip"
-          />
-        </Box>
-        </Box>
+        {isSaving ? (
+          <Text color="yellow">Saving configuration...</Text>
+        ) : (
+          <Box flexDirection="row">
+            <Text color="grey">{"> "}{getFieldLabel()}: </Text>
+            <TextInput
+              value={currentInput}
+              onChange={setCurrentInput}
+              onSubmit={handleEmbeddingStepInput}
+              placeholder={getPlaceholder()}
+            />
+          </Box>
+        )}
+      </Box>
     );
   };
-
-  const renderConfirmStep = () => (
-    <Box flexDirection="column">
-      <Text color="grey" bold>
-        Step 6/6: Confirm Configuration
-      </Text>
-      <Text color="green">✓ Provider: {modelConfig.provider}</Text>
-      <Text color="green">✓ Model: {modelConfig.model}</Text>
-      {modelConfig.api_key && (
-        <Text color="green">✓ API key: {"*".repeat(Math.min(modelConfig.api_key.length, 20))}</Text>
-      )}
-      {skipEmbedding ? (
-        <Text color="yellow">⊘ Embedding: Skipped</Text>
-      ) : embeddingConfig ? (
-        <>
-          <Text color="green">✓ Embedding Provider: {embeddingConfig.provider}</Text>
-          <Text color="green">✓ Embedding Model: {embeddingConfig.model}</Text>
-          {embeddingConfig.api_key && (
-            <Text color="green">✓ Embedding API key: {"*".repeat(Math.min(embeddingConfig.api_key.length, 20))}</Text>
-          )}
-          <Text color="green">✓ Vector dimension: {embeddingConfig.vec_dim || 1536}</Text>
-        </>
-      ) : null}
-      
-      {isSaving ? (
-        <Box>
-          <Text color="yellow">Saving configuration...</Text>
-        </Box>
-      ) : (
-        <Box>
-          <Text>Press Enter to save the configuration.</Text>
-        </Box>
-      )}
-      
-        <Box flexDirection="row">
-          <Text color="grey">{"> "}</Text>
-          <TextInput
-            value=""
-            onChange={() => {}}
-            onSubmit={handleConfirm}
-            placeholder="Press Enter to save..."
-          />
-        </Box>
-      </Box>
-  );
 
   return (
     <Box flexDirection="column">
@@ -534,11 +432,8 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
           </Text>
         </Box>
         <Box flexDirection="column">
-        {step === "provider" && renderProviderStep()}
         {step === "model" && renderModelStep()}
-        {step === "api_key" && renderApiKeyStep()}
         {step === "embedding" && renderEmbeddingStep()}
-        {step === "confirm" && renderConfirmStep()}
         </Box>
       </Box>
 

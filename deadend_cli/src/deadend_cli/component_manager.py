@@ -180,33 +180,17 @@ class ComponentManager:
             from deadend_agent import Config
             self.config = Config()
             self.config.configure()
-
-            # Gather config summary
-            has_openai = bool(getattr(self.config, "openai_api_key", None))
-            has_anthropic = bool(getattr(self.config, "anthropic_api_key", None))
-            has_gemini = bool(getattr(self.config, "gemini_api_key", None))
-
-            providers = [p for p, v in [
-                ("openai", has_openai),
-                ("anthropic", has_anthropic),
-                ("gemini", has_gemini),
-            ] if v]
-
+            self.config.populate_providers()
             self.config_state.status = ComponentStatus.READY
-            self.config_state.metadata = {
-                "has_openai": has_openai,
-                "has_anthropic": has_anthropic,
-                "has_gemini": has_gemini,
-            }
             self.config_state.last_check = datetime.now()
 
-            logger.debug("Configuration loaded, providers: %s", providers)
+            logger.debug("Configuration loaded, providers: %s", self.config.providers.model_dump())
             return InitResult(
                 success=True,
                 component="config",
                 status=ComponentStatus.READY,
                 message="Configuration loaded successfully",
-                details={"providers_configured": providers},
+                details={"providers_configured": str(self.config.providers.model_dump())},
             )
         except Exception as e:
             logger.error("Configuration loading failed: %s", e)
@@ -717,6 +701,7 @@ class ComponentManager:
             raise RuntimeError(
                 "Model registry not initialized. Call init_model_registry() first."
             )
+        logger.info("models : %s", str(self.model_registry._models))
         if not self.model_registry.has_any_model():
             raise RuntimeError(
                 "No LLM model configured. Run `deadend init` to initialize the model configuration."
@@ -725,7 +710,6 @@ class ComponentManager:
         # Use current provider if not specified
         if provider is None:
             provider = self.current_llm_provider
-
         return self.model_registry.get_model(provider=provider, model_name=model_name)
 
     def set_llm_provider(self, provider: str) -> None:
