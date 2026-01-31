@@ -259,16 +259,8 @@ function App({ cliArgs }: AppProps) {
   if (showPresetup) {
     return (
       <Box flexDirection="column" height="100%">
-        <Box marginTop={2} />
-        <Box
-          borderStyle="round"
-          borderColor="red"
-          padding={2}
-          paddingTop={3}
-          marginBottom={3}
-        >
+        <Box />
           <Banner />
-        </Box>
         <Box flexDirection="column" flexGrow={1}>
           <PresetupWizard rpcClient={rpcClient} onComplete={handlePresetupComplete} />
         </Box>

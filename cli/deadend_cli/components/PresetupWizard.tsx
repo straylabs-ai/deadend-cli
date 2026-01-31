@@ -287,55 +287,41 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
 
   const renderProviderStep = () => (
     <Box flexDirection="column">
-      <Text color="cyan" bold>
+      <Text color="grey" bold>
         Step 1/6: Select Provider
       </Text>
       <Text>
         Enter your provider:
       </Text>
-      <Box
-        borderStyle="round"
-        borderColor="cyan"
-        padding={1}
-        marginTop={1}
-      >
-        <Box flexDirection="row">
-          <Text color="cyan">{"> Provider: "}</Text>
-          <TextInput
-            value={currentInput}
-            onChange={setCurrentInput}
-            onSubmit={handleProviderInput}
-            placeholder="e.g., openai"
-          />
-        </Box>
+      <Box flexDirection="row">
+        <Text color="grey">{"> Provider: "}</Text>
+        <TextInput
+          value={currentInput}
+          onChange={setCurrentInput}
+          onSubmit={handleProviderInput}
+          placeholder="e.g., ollama"
+        />
       </Box>
     </Box>
   );
 
   const renderModelStep = () => (
     <Box flexDirection="column">
-      <Text color="cyan" bold>
+      <Text color="grey" bold>
         Step 2/6: Select Model
       </Text>
       <Text color="green">✓ Provider: {modelConfig.provider}</Text>
       <Text>
         Enter your model name:
       </Text>
-      <Box
-        borderStyle="round"
-        borderColor="cyan"
-        padding={1}
-        marginTop={1}
-      >
-        <Box flexDirection="row">
-          <Text color="cyan">{"> Model: "}</Text>
-          <TextInput
-            value={currentInput}
-            onChange={setCurrentInput}
-            onSubmit={handleModelInput}
-            placeholder="e.g., gpt-4o-mini"
-          />
-        </Box>
+      <Box flexDirection="row">
+        <Text color="grey">{"> Model: "}</Text>
+        <TextInput
+          value={currentInput}
+          onChange={setCurrentInput}
+          onSubmit={handleModelInput}
+          placeholder="e.g., gpt-4o-mini"
+        />
       </Box>
     </Box>
   );
@@ -343,7 +329,7 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
   const renderApiKeyStep = () => {
     return (
       <Box flexDirection="column">
-        <Text color="cyan" bold>
+        <Text color="grey" bold>
           Step 3/6: API Key
         </Text>
         <Text color="green">✓ Provider: {modelConfig.provider}</Text>
@@ -351,14 +337,8 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
         <Text>
           Enter your API key (optional):
         </Text>
-        <Box
-          borderStyle="round"
-          borderColor="cyan"
-          padding={1}
-          marginTop={1}
-        >
           <Box flexDirection="row">
-            <Text color="cyan">{"> API key: "}</Text>
+            <Text color="grey">{"> API key: "}</Text>
             <TextInput
               value={currentInput}
               onChange={setCurrentInput}
@@ -367,7 +347,6 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
             />
           </Box>
         </Box>
-      </Box>
     );
   };
 
@@ -375,66 +354,52 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
     if (embeddingStep === "provider") {
       return (
         <Box flexDirection="column">
-          <Text color="cyan" bold>
+          <Text color="grey" bold>
             Step 4/6: Embedding Provider
           </Text>
           <Text>
             Enter embedding provider name:
           </Text>
-          <Box
-            borderStyle="round"
-            borderColor="cyan"
-            padding={1}
-            marginTop={1}
-          >
-            <Box flexDirection="row">
-              <Text color="cyan">{"> Embedding provider: "}</Text>
-              <TextInput
-                value={currentInput}
-                onChange={setCurrentInput}
-                onSubmit={handleEmbeddingProviderInput}
-                placeholder="e.g., openai"
-              />
-            </Box>
+          <Box flexDirection="row">
+            <Text color="grey">{"> Embedding provider: "}</Text>
+            <TextInput
+              value={currentInput}
+              onChange={setCurrentInput}
+              onSubmit={handleEmbeddingProviderInput}
+              placeholder="e.g., openai"
+            />
           </Box>
-        </Box>
+          </Box>
       );
     }
     
     if (embeddingStep === "model") {
       return (
         <Box flexDirection="column">
-          <Text color="cyan" bold>
+          <Text color="grey" bold>
             Step 4/6: Embedding Model
           </Text>
           <Text color="green">✓ Provider: {embeddingConfig?.provider}</Text>
           <Text>
             Enter embedding model name:
           </Text>
-          <Box
-            borderStyle="round"
-            borderColor="cyan"
-            padding={1}
-            marginTop={1}
-          >
-            <Box flexDirection="row">
-              <Text color="cyan">{"> Embedding model: "}</Text>
-              <TextInput
-                value={currentInput}
-                onChange={setCurrentInput}
-                onSubmit={handleEmbeddingModelInput}
-                placeholder="e.g., text-embedding-3-small"
-              />
-            </Box>
+          <Box flexDirection="row">
+            <Text color="grey">{"> Embedding model: "}</Text>
+            <TextInput
+              value={currentInput}
+              onChange={setCurrentInput}
+              onSubmit={handleEmbeddingModelInput}
+              placeholder="e.g., text-embedding-3-small"
+            />
           </Box>
-        </Box>
+          </Box>
       );
     }
     
     if (embeddingStep === "api_key") {
       return (
         <Box flexDirection="column">
-          <Text color="cyan" bold>
+          <Text color="grey" bold>
             Step 4/6: Embedding API Key
           </Text>
           <Text color="green">✓ Provider: {embeddingConfig?.provider}</Text>
@@ -442,30 +407,23 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
           <Text>
             Enter embedding API key (optional):
           </Text>
-          <Box
-            borderStyle="round"
-            borderColor="cyan"
-            padding={1}
-            marginTop={1}
-          >
-            <Box flexDirection="row">
-              <Text color="cyan">{"> Embedding API key: "}</Text>
-              <TextInput
-                value={currentInput}
-                onChange={setCurrentInput}
-                onSubmit={handleEmbeddingApiKeyInput}
-                placeholder="Enter API key (optional)..."
-              />
-            </Box>
+          <Box flexDirection="row">
+            <Text color="grey">{"> Embedding API key: "}</Text>
+            <TextInput
+              value={currentInput}
+              onChange={setCurrentInput}
+              onSubmit={handleEmbeddingApiKeyInput}
+              placeholder="Enter API key (optional)..."
+            />
           </Box>
-        </Box>
+          </Box>
       );
     }
     
     if (embeddingStep === "vec_dim") {
       return (
         <Box flexDirection="column">
-          <Text color="cyan" bold>
+          <Text color="grey" bold>
             Step 5/6: Embedding Vector Dimension
           </Text>
           <Text color="green">✓ Provider: {embeddingConfig?.provider}</Text>
@@ -476,30 +434,23 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
           <Text>
             Enter vector dimension (default: 1536):
           </Text>
-          <Box
-            borderStyle="round"
-            borderColor="cyan"
-            padding={1}
-            marginTop={1}
-          >
-            <Box flexDirection="row">
-              <Text color="cyan">{"> Vector dimension: "}</Text>
-              <TextInput
-                value={currentInput}
-                onChange={setCurrentInput}
-                onSubmit={handleEmbeddingVecDimInput}
-                placeholder="1536"
-              />
-            </Box>
+          <Box flexDirection="row">
+            <Text color="grey">{"> Vector dimension: "}</Text>
+            <TextInput
+              value={currentInput}
+              onChange={setCurrentInput}
+              onSubmit={handleEmbeddingVecDimInput}
+              placeholder="1536"
+            />
           </Box>
-        </Box>
+          </Box>
       );
     }
     
     // Initial embedding question
     return (
       <Box flexDirection="column">
-        <Text color="cyan" bold>
+        <Text color="grey" bold>
           Step 4/6: Embedding Configuration
         </Text>
         <Text color="green">✓ Provider: {modelConfig.provider}</Text>
@@ -507,29 +458,22 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
         <Text>
           Would you like to configure an embedding model for RAG features? (yes/skip):
         </Text>
-        <Box
-          borderStyle="round"
-          borderColor="cyan"
-          padding={1}
-          marginTop={1}
-        >
-          <Box flexDirection="row">
-            <Text color="cyan">{"> Configure embedding? "}</Text>
-            <TextInput
-              value={currentInput}
-              onChange={setCurrentInput}
-              onSubmit={handleEmbeddingInput}
-              placeholder="yes/skip"
-            />
-          </Box>
+        <Box flexDirection="row">
+          <Text color="grey">{"> Configure embedding? "}</Text>
+          <TextInput
+            value={currentInput}
+            onChange={setCurrentInput}
+            onSubmit={handleEmbeddingInput}
+            placeholder="yes/skip"
+          />
         </Box>
-      </Box>
+        </Box>
     );
   };
 
   const renderConfirmStep = () => (
     <Box flexDirection="column">
-      <Text color="cyan" bold>
+      <Text color="grey" bold>
         Step 6/6: Confirm Configuration
       </Text>
       <Text color="green">✓ Provider: {modelConfig.provider}</Text>
@@ -551,23 +495,17 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
       ) : null}
       
       {isSaving ? (
-        <Box marginTop={1}>
+        <Box>
           <Text color="yellow">Saving configuration...</Text>
         </Box>
       ) : (
-        <Box marginTop={1}>
+        <Box>
           <Text>Press Enter to save the configuration.</Text>
         </Box>
       )}
       
-      <Box
-        borderStyle="round"
-        borderColor="cyan"
-        padding={1}
-        marginTop={1}
-      >
         <Box flexDirection="row">
-          <Text color="cyan">{"> "}</Text>
+          <Text color="grey">{"> "}</Text>
           <TextInput
             value=""
             onChange={() => {}}
@@ -576,35 +514,34 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
           />
         </Box>
       </Box>
-    </Box>
   );
 
   return (
-    <Box flexDirection="column" padding={2}>
+    <Box flexDirection="column">
       <Box
         borderStyle="round"
-        borderColor="yellow"
-        padding={2}
-        marginBottom={2}
+        borderColor="grey"
+        padding={1}
+        marginBottom={1}
+        flexDirection="column"
       >
         <Box flexDirection="column">
-          <Text color="yellow" bold>
-            Welcome to Deadend CLI!
+          <Text>
+            It looks like this is your first time running the CLI (config.json not found).
           </Text>
           <Text>
-            It looks like this is your first time running the application.
+            Follow these steps to setup your first LLM.
           </Text>
-          <Text>
-            Let's set up your configuration.
-          </Text>
+        </Box>
+        <Box flexDirection="column">
+        {step === "provider" && renderProviderStep()}
+        {step === "model" && renderModelStep()}
+        {step === "api_key" && renderApiKeyStep()}
+        {step === "embedding" && renderEmbeddingStep()}
+        {step === "confirm" && renderConfirmStep()}
         </Box>
       </Box>
 
-      {step === "provider" && renderProviderStep()}
-      {step === "model" && renderModelStep()}
-      {step === "api_key" && renderApiKeyStep()}
-      {step === "embedding" && renderEmbeddingStep()}
-      {step === "confirm" && renderConfirmStep()}
 
       {error && (
         <Box marginTop={1}>
