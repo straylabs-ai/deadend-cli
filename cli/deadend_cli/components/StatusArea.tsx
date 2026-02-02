@@ -82,13 +82,14 @@ export function StatusArea({
         </Box>
       )}
 
-      {/* Current task status - uses DirectStatusLine to avoid flickering */}
-      {/* This renders directly to stdout, bypassing Ink's render cycle */}
+      {/* Current task status - uses absolute positioning to last terminal line */}
+      {/* This renders to the last terminal line, completely bypassing Ink's render cycle */}
       <DirectStatusLine
         text={statusText}
         color={statusColor}
         isActive={Boolean(hasAnimatedContent)}
         updateInterval={100}
+        mode="absolute"
       />
 
       {/* Notifications */}

@@ -9,7 +9,7 @@
  * - Keyboard shortcut (Shift+Tab) for mode toggling
  */
 
-import { useState, useCallback, useEffect, useMemo, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { logger } from "../lib/logger.ts";
 import { Box, useInput, Static } from "ink";
 import type { Message } from "../types/message.ts";
@@ -22,7 +22,6 @@ import { setTarget as setTargetLocal, TARGET_SET_PREFIX } from "../lib/commands/
 import type { CliArgs } from "../lib/cli-args.ts";
 import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
 import { StatusArea, type StatusNotification } from "./StatusArea.tsx";
-import { ChatHistory } from "./ChatHistory.tsx";
 import { InputArea } from "./InputArea.tsx";
 import { useTaskRunner } from "../hooks/useTaskRunner.ts";
 import { loadSettings, type CliSettings } from "../lib/settings.ts";
@@ -68,23 +67,9 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
     setMessages((prev) => [...prev, message]);
   }, []);
 
-  // Split messages into static and dynamic for Static component usage
-  // Keep last 5 messages dynamic (they might still be updating)
-  const DYNAMIC_MESSAGES_COUNT = 5;
-  
-  const { staticMessages, dynamicMessages } = useMemo(() => {
-    if (messages.length <= DYNAMIC_MESSAGES_COUNT) {
-      return { staticMessages: [], dynamicMessages: messages };
-    }
-    return {
-      staticMessages: messages.slice(0, messages.length - DYNAMIC_MESSAGES_COUNT),
-      dynamicMessages: messages.slice(-DYNAMIC_MESSAGES_COUNT)
-    };
-  }, [
-    messages.length,
-    messages.length > DYNAMIC_MESSAGES_COUNT ? messages.length - DYNAMIC_MESSAGES_COUNT : 0,
-    messages.length > DYNAMIC_MESSAGES_COUNT ? messages[messages.length - DYNAMIC_MESSAGES_COUNT - 1]?.id : null
-  ]);
+  // All messages will be rendered as static to preserve scroll position
+  // When new messages are added, they're appended to the static items array
+  // The Static component will append them without re-rendering existing messages
 
   // Task runner hook for streaming task execution
   const { taskState, setTarget, runTask, cancel } = useTaskRunner(
@@ -304,23 +289,54 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
   ]);
 
 
-  // Combine banner and static messages for Static component
-  // Banner comes first, then old messages - all rendered once and never re-render
+  // Combine banner and ALL messages for Static component
+  // All messages are static - when new ones are added, they're appended to the array
+  // The Static component will append them without re-rendering existing messages, preserving scroll position
+  const staticItemsRef = useRef<Array<{ type: 'banner'; id: string } | { type: 'message'; id: string; message: Message }>>([]);
+  const staticMessageIdsRef = useRef<string>('');
+  const bannerRef = useRef<ReactNode>(banner);
+  
+  // Compute all message IDs to detect when new messages are added
+  const allMessageIds = messages.map(m => m.id).join(',');
+  
   const staticItems = useMemo(() => {
-    const items: Array<{ type: 'banner'; id: string } | { type: 'message'; id: string; message: Message }> = [];
+    const currentMessageIds = messages.map(m => m.id).join(',');
+    const bannerChanged = banner !== bannerRef.current;
+    
+    // Only update if messages actually changed (new message added) or banner changed
+    // Also update on first render (when ref is empty)
+    if (currentMessageIds !== staticMessageIdsRef.current || bannerChanged || staticItemsRef.current.length === 0) {
+      const items: Array<{ type: 'banner'; id: string } | { type: 'message'; id: string; message: Message }> = [];
+      const seenIds = new Set<string>();
 
-    // Add banner as first item (always)
-    if (banner) {
-      items.push({ type: 'banner', id: 'banner' });
+      // Add banner as first item (only once, on first render)
+      if (banner && !seenIds.has('banner') && staticItemsRef.current.length === 0) {
+        items.push({ type: 'banner', id: 'banner' });
+        seenIds.add('banner');
+      }
+
+      // Add ALL messages - they're all static now
+      // Ensure no duplicate IDs
+      for (const msg of messages) {
+        if (!seenIds.has(msg.id)) {
+          items.push({ type: 'message', id: msg.id, message: msg });
+          seenIds.add(msg.id);
+        }
+      }
+
+      // Update refs
+      staticItemsRef.current = items;
+      staticMessageIdsRef.current = currentMessageIds;
+      bannerRef.current = banner;
     }
-
-    // Add static messages
-    for (const msg of staticMessages) {
-      items.push({ type: 'message', id: msg.id, message: msg });
-    }
-
-    return items;
-  }, [banner, staticMessages]);
+    
+    // Always return the ref value to maintain stable reference
+    return staticItemsRef.current;
+  }, [
+    banner, 
+    // Depend on allMessageIds - only changes when messages are added/removed
+    allMessageIds
+  ]);
 
   return (
     <Box flexDirection="column">
@@ -347,13 +363,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
         showComponents={showComponentStatus}
       />
 
-      {/* Chat history - scrollable messages area */}
-      {/* No flexGrow constraint - allows terminal to scroll naturally */}
-      <ChatHistory 
-        messages={messages} 
-        staticMessages={staticMessages}
-        dynamicMessages={dynamicMessages}
-      />
+      {/* All messages are rendered in Static component above - no need for ChatHistory */}
 
       {/* Input area - text input with mode indicator */}
       <InputArea
