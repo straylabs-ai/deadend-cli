@@ -11,6 +11,7 @@ for the security research framework to operate.
 
 from pathlib import Path
 import hashlib
+import platform
 import subprocess
 import requests
 from deadend_agent.config.settings import Config
@@ -19,12 +20,29 @@ from deadend_agent.sandbox.sandbox_manager import SandboxManager
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
 
 
-PYTHON_SANDBOX_NAME = "python-sandbox-tool-linux"
-SIMPLE_PYTHON_SANDBOX_URL = (
-    "https://github.com/xoxruns/simple-python-interpreter-sandbox/"
-    "releases/download/v0.0.3/python-sandbox-tool-linux"
-)
-PYTHON_SANDBOX_SHA256 = "74b8a80709a912028600f39b9953889c011278a80acf066af5bd6979366455f4"
+# Platform-specific sandbox binary configurations
+SANDBOX_CONFIGS = {
+    "Linux": {
+        "name": "python-sandbox-tool-linux",
+        "url": "https://github.com/xoxruns/simple-python-interpreter-sandbox/releases/download/v0.0.3/python-sandbox-tool-linux",
+        "sha256": "74b8a80709a912028600f39b9953889c011278a80acf066af5bd6979366455f4",
+    },
+    "Darwin": {
+        "name": "python-sandbox-tool-macos",
+        "url": "https://github.com/xoxruns/simple-python-interpreter-sandbox/releases/download/v0.0.3/python-sandbox-tool-macos",
+        "sha256": "9dc49652b1314978544e3e56eef67610d10a2fbb51ecaf06bc10f9c27ad75d7c",
+    },
+}
+
+
+def get_sandbox_config():
+    """Get the sandbox configuration for the current platform."""
+    system = platform.system()
+    if system not in SANDBOX_CONFIGS:
+        raise RuntimeError(
+            f"Unsupported platform: {system}. Supported platforms: {', '.join(SANDBOX_CONFIGS.keys())}"
+        )
+    return SANDBOX_CONFIGS[system]
 
 def config_setup() -> Config:
     """Setup config"""
@@ -67,36 +85,35 @@ def _file_matches_sha256(path: Path, expected_hash: str) -> bool:
 
 def download_python_sandbox(
     destination_dir: Path | None = None,
-    expected_sha256: str = PYTHON_SANDBOX_SHA256,
 ) -> Path:
     """Download the Python sandbox binary to the local cache if missing or outdated.
 
     Args:
         destination_dir: Optional directory to store the sandbox binary. Defaults
             to ~/.cache/deadend/python/.
-        expected_sha256: Expected SHA-256 checksum of the binary.
 
     Returns:
         Path to the downloaded (or existing) sandbox binary.
     """
+    config = get_sandbox_config()
     cache_dir = destination_dir or Path.home() / ".cache" / "deadend" / "python"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    sandbox_path = cache_dir / PYTHON_SANDBOX_NAME
+    sandbox_path = cache_dir / config["name"]
 
-    if _file_matches_sha256(sandbox_path, expected_sha256):
+    if _file_matches_sha256(sandbox_path, config["sha256"]):
         return sandbox_path
 
     if sandbox_path.exists():
         sandbox_path.unlink()
 
-    response = requests.get(SIMPLE_PYTHON_SANDBOX_URL, stream=True, timeout=120)
+    response = requests.get(config["url"], stream=True, timeout=120)
     response.raise_for_status()
     with open(sandbox_path, "wb") as fd:
         for chunk in response.iter_content(chunk_size=8192):
             if chunk:
                 fd.write(chunk)
 
-    if not _file_matches_sha256(sandbox_path, expected_sha256):
+    if not _file_matches_sha256(sandbox_path, config["sha256"]):
         sandbox_path.unlink(missing_ok=True)
         raise RuntimeError(
             "Downloaded Python sandbox binary failed checksum verification."

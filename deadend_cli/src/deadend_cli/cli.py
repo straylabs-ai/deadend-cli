@@ -6,28 +6,41 @@
 
 Defines commands to run interactive chat and evaluation agents.
 """
-import importlib.metadata
 import asyncio
+import importlib.metadata
+import os
 from typing import List
-import typer
+
 import docker
+import logfire
+import typer
 from docker.errors import DockerException
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 import logfire
 
+# Fix Docker socket path if default doesn't exist
+if not os.path.exists("/var/run/docker.sock"):
+    docker_socket = os.path.expanduser("~/.docker/run/docker.sock")
+    if os.path.exists(docker_socket):
+        os.environ["DOCKER_HOST"] = f"unix://{docker_socket}"
+
 from deadend_agent import config_setup
 from deadend_agent.core import start_python_sandbox
-from .chat import chat_interface, Modes
-from .eval import eval_interface
+
 from .banner import print_banner
 from .init import init_cli_config, check_docker, \
     check_pgvector_container, stop_pgvector_container, setup_pgvector_database
 from .component_manager import ComponentManager
+from .chat import Modes, chat_interface
+from .eval import eval_interface
+from .init import (check_docker, check_pgvector_container, init_cli_config,
+                   setup_pgvector_database, stop_pgvector_container)
 
 console = Console()
 
 app = typer.Typer(help="Deadend CLI - interact with the Deadend framework.")
+
 
 @app.command()
 def version():
@@ -36,17 +49,23 @@ def version():
         package_version = importlib.metadata.version("deadend_cli")
         console.print(f"[bold green]Deadend CLI v{package_version}[/bold green]")
     except importlib.metadata.PackageNotFoundError:
-        console.print("[bold red]Deadend CLI[/bold red] - [yellow]Version not available[/yellow]")
+        console.print(
+            "[bold red]Deadend CLI[/bold red] - [yellow]Version not available[/yellow]"
+        )
 
 
 @app.command()
 def chat(
     prompt: str = typer.Option(None, help="Send a prompt directly to chat mode."),
     target: str = typer.Option(None, help="Target URL or identifier for chat."),
-    mode: Modes = typer.Option(Modes.hacker, help="Two modes available, yolo and hacker."),
-    openapi_spec: str = typer.Option(None, help="Path to the OpenAPI specification file."),
-    knowledge_base: str = typer.Option(None, help="Folder path to the knowledge base.")
-    ):
+    mode: Modes = typer.Option(
+        Modes.hacker, help="Two modes available, yolo and hacker."
+    ),
+    openapi_spec: str = typer.Option(
+        None, help="Path to the OpenAPI specification file."
+    ),
+    knowledge_base: str = typer.Option(None, help="Folder path to the knowledge base."),
+):
     """Run the interactive chat agent.
 
     Args:
@@ -57,9 +76,13 @@ def chat(
     # Check Docker availability first
     docker_client = docker.from_env()
     if not check_docker(docker_client):
-        console.print("\n[red]Docker is required for this application to function properly.[/red]")
+        console.print(
+            "\n[red]Docker is required for this application to function properly.[/red]"
+        )
         console.print("Please install Docker from: https://docs.docker.com/get-docker/")
-        console.print("Make sure Docker daemon is running, then run this command again.")
+        console.print(
+            "Make sure Docker daemon is running, then run this command again."
+        )
         raise typer.Exit(1)
 
     # Check pgvector database and setup if not running
@@ -86,7 +109,7 @@ def chat(
                 mode=mode,
                 target=target,
                 openapi_spec=openapi_spec,
-                knowledge_base=knowledge_base
+                knowledge_base=knowledge_base,
             )
         )
     finally:
@@ -96,18 +119,24 @@ def chat(
         try:
             stop_pgvector_container(docker_client)
         except (DockerException, OSError, ConnectionError) as e:
-            console.print(f"[yellow]Warning: Could not stop pgvector container: {e}[/yellow]")
+            console.print(
+                f"[yellow]Warning: Could not stop pgvector container: {e}[/yellow]"
+            )
 
 
 @app.command()
 def eval_agent(
     eval_metadata_file: str = typer.Option(
         None,
-        help="Dataset file containing all the information about the challenges to run"
+        help="Dataset file containing all the information about the challenges to run",
     ),
-    llm_providers: List[str] = typer.Option(['openai'], help="Specify the eval providers"),
-    guided: bool = typer.Option(False, help="Run subtasks instead of one general task.")
-    ):
+    llm_providers: List[str] = typer.Option(
+        ["openai"], help="Specify the eval providers"
+    ),
+    guided: bool = typer.Option(
+        False, help="Run subtasks instead of one general task."
+    ),
+):
     """Run the evaluation agent on a dataset of challenges.
 
     Args:
@@ -119,9 +148,13 @@ def eval_agent(
     # Check Docker availability first
     docker_client = docker.from_env()
     if not check_docker(docker_client):
-        console.print("\n[red]Docker is required for this application to function properly.[/red]")
+        console.print(
+            "\n[red]Docker is required for this application to function properly.[/red]"
+        )
         console.print("Please install Docker from: https://docs.docker.com/get-docker/")
-        console.print("Make sure Docker daemon is running, then run this command again.")
+        console.print(
+            "Make sure Docker daemon is running, then run this command again."
+        )
         raise typer.Exit(1)
 
     # Check pgvector database and setup if not running
@@ -142,7 +175,7 @@ def eval_agent(
                 config=config,
                 eval_metadata_file=eval_metadata_file,
                 providers=llm_providers,
-                guided=guided
+                guided=guided,
             )
         )
     finally:
@@ -152,7 +185,10 @@ def eval_agent(
         try:
             stop_pgvector_container(docker_client)
         except (DockerException, OSError, ConnectionError) as e:
-            console.print(f"[yellow]Warning: Could not stop pgvector container: {e}[/yellow]")
+            console.print(
+                f"[yellow]Warning: Could not stop pgvector container: {e}[/yellow]"
+            )
+
 
 @app.command()
 def init():
