@@ -422,69 +422,6 @@ IMPORTANT:
 
         yield context
 
-#         self.threat_model_agent = ReconThreatModelAgent(
-#             name="threat_model",
-#             model=self.model,
-#             deps_type=RequesterDeps,
-#             tools=[]
-#         )
-
-#         self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
-
-#         self.adapt_agent = ADaPTAgent(
-#             session_id=self.session_id,
-#             context=self.context,
-#             executor=self.executor,
-#             planner=self.planner,
-#             validator=self.validator,
-#             max_depth=1
-#         )
-#         plan: TaskNode | None = None
-#         async for event in self.adapt_agent.run(task=task, exit_strategy=""):
-#             if isinstance(event, dict):
-#                 if event.get("type") == "result":
-#                     root_candidate = event.get("root")
-#                     if isinstance(root_candidate, TaskNode):
-#                         plan = root_candidate
-#                 else:
-#                     yield event.get("message", str(event))
-#             else:
-#                 yield str(event)
-#         if plan is None:
-#             raise RuntimeError("ADaPT agent did not produce a plan.")
-
-#         reporter_agent = ReporterAgent(
-#             model=self.model,
-#             deps_type=None,
-#             tools=None,
-#             validation_format="Information",
-#             validation_type="security assessment"
-#         )
-#         context_text = await self.context.get_all_context()
-#         prompt_assessment = f"""\
-# Summarize the security assessment results from the reconnaissance phase.
-
-# IMPORTANT:
-# - Preserve EXACT working payloads character-for-character
-# - Include full HTTP requests that succeeded
-# - Include response snippets proving vulnerabilities
-# - Document filter bypass techniques with exact encoding used
-# - Note validation status (reflected vs executed, needs browser test)
-
-# ## Assessment Data
-# {context_text}
-# """
-#         threat_model_data = await reporter_agent.run(
-#             prompt=prompt_assessment,
-#             deps=None,
-#             usage=RunUsage(),
-#             usage_limits=UsageLimits(),
-#             deferred_tool_results=None,
-#             message_history=""
-#         )
-
-#         yield plan, threat_model_data.output
-
     async def run_exploitation(self, threat_model: str, task: str):
         """Runs the exploitation workflow"""
         # setup session key for exploit agent

@@ -13,7 +13,8 @@ export interface LlmDefaults {
  * Returns null if no defaults are available.
  * 
  * @returns Object with provider and model, or null if not yet loaded or not configured
- */
+ * and a boolean to track the loading 
+ */ 
 export function useLlmDefaults(): {defaults: LlmDefaults | null, isLoading: boolean } {
   const [defaults, setDefaults] = useState<LlmDefaults | null>(null);
   const [isLoading, setIsLoading] = useState(true);

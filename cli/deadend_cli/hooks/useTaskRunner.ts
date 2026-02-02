@@ -292,9 +292,7 @@ export function useTaskRunner(
       if (pendingTargetRef.current && !llmDefaultsLoading && llmDefaults) {
         const target = pendingTargetRef.current
         pendingTargetRef.current = null
-        setTarget({target}).catch(() => {
-
-        });
+        setTarget({target}).catch(() => {});
       }
   }, [llmDefaults, llmDefaultsLoading, setTarget])
 

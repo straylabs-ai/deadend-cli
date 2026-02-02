@@ -83,7 +83,7 @@ class RPCServer:
     def __init__(
         self,
         llm_provider: str = "openai",
-        debug: bool = False,
+        debug: bool = True,
         log_file: Optional[str] = None,
     ) -> None:
         # Setup logging first so all subsequent operations are logged

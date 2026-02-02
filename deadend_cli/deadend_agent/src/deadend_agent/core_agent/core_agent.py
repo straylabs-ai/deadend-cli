@@ -19,17 +19,38 @@ import inspect
 import asyncio
 from typing import Callable, Type, Any
 from contextlib import contextmanager
-
-from pydantic import BaseModel, Field
-from pydantic_ai import RunUsage
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
-
-from deadend_agent.logging import get_module_logger
-
-logger = get_module_logger(__name__)
 from rich.console import Console
 from rich.panel import Panel
+from pydantic import BaseModel, Field
+from pydantic_ai import RunUsage
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+    RetryError
+)
+from litellm.exceptions import (
+    RateLimitError as LiteLLMRateLimitError,
+    ServiceUnavailableError,
+    Timeout as LiteLLMTimeout,
+    APIConnectionError as LiteLLMConnectionError,
+)
+from deadend_agent.logging import get_module_logger
+from . import (
+    UsageLimitExceeded,
+    LLMError,
+    RateLimitError as CoreRateLimitError,
+    QuotaExceededError,
+    AuthenticationError,
+    ConnectionError as CoreConnectionError,
+    ModelNotFoundError,
+    InvalidRequestError,
+)
+from .telemetry import tracer
+from deadend_agent.hooks import get_event_hooks
 
+logger = get_module_logger(__name__)
 # Rich console for colored output - uses stderr to avoid breaking RPC communication
 console = Console(force_terminal=True, stderr=True)
 
@@ -53,20 +74,6 @@ try:
     AIOLIMITER_AVAILABLE = True
 except ImportError:
     AIOLIMITER_AVAILABLE = False
-
-from . import (
-    UsageLimitExceeded,
-    LLMError,
-    RateLimitError as CoreRateLimitError,
-    QuotaExceededError,
-    AuthenticationError,
-    ConnectionError as CoreConnectionError,
-    ModelNotFoundError,
-    InvalidRequestError,
-)
-from .telemetry import tracer
-from deadend_agent.hooks import get_event_hooks
-
 
 class TokenUsageInfo(BaseModel):
     """Token usage information from LLM response."""
@@ -598,12 +605,7 @@ class CoreAgent:
         """
         # Get litellm exception types (they're in litellm.exceptions)
         try:
-            from litellm.exceptions import (
-                RateLimitError as LiteLLMRateLimitError,
-                ServiceUnavailableError,
-                Timeout as LiteLLMTimeout,
-                APIConnectionError as LiteLLMConnectionError,
-            )
+
             retryable_exceptions = (
                 LiteLLMRateLimitError,
                 ServiceUnavailableError,
@@ -783,7 +785,7 @@ class CoreAgent:
                 if "deps" in params:
                     args["deps"] = deps
 
-                # Inject ctx if function expects it (Pydantic AI RunContext style)
+                # Inject ctx if function expects it
                 # This provides compatibility with @agent.tool decorated functions
                 if "ctx" in params:
                     # Create a RunContext-compatible wrapper

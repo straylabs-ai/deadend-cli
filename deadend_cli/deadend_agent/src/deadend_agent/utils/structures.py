@@ -89,7 +89,11 @@ class ShellRunner:
             stdout=truncate_string(result["stdout"]),
             stderr=truncate_string(stderr)
         )
-        return result
+        return CmdLog(
+            stdin=new_cmd,
+            stdout=truncate_string(result["stdout"]),
+            stderr=truncate_string(stderr)
+        )
 
     def get_cmd_log(self) -> Dict[int, CmdLog]:
         """
