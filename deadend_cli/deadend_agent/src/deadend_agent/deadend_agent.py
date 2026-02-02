@@ -373,7 +373,7 @@ Critical rules:
 
         target_context =f"Target : {self.context.target}"
         context = {}
-        confidence_score = 0.0       
+        confidence_score = 0.0 
          # Run the supervisor directly
         async for event in self.executor.execute_supervisor(
             task_node=task_root,

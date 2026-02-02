@@ -29,15 +29,16 @@ Note:
 """
 from enum import Enum
 from datetime import datetime
-import docker
-from docker.errors import ImageNotFound, NotFound
-import docker.errors
+
 import shlex
 import threading
 import time
 from typing import Optional, Union
-
-from pydantic import BaseModel, Field
+import docker
+from docker.models.containers import Container
+from docker.errors import ImageNotFound, NotFound
+import docker.errors
+from pydantic import BaseModel, ConfigDict, Field
 
 from deadend_agent.logging import logger
 
@@ -105,9 +106,10 @@ class Sandbox(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     _docker_client: docker.DockerClient # = Field(exclude=True, default=None)
 
-    class Config:
-        arbitrary_types_allowed = True
-        use_enum_values = True
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        use_enum_values=True
+    )
 
     def __init__(self, docker_client: docker.DockerClient, **data):
         """Initialize the Sandbox with a Docker client.
@@ -378,10 +380,10 @@ class Sandbox(BaseModel):
             }
 
     def _execute_with_timeout(
-        self, 
-        container, 
-        command: Union[str, list], 
-        stream: bool, 
+        self,
+        container: Container,
+        command: Union[str, list],
+        stream: bool,
         timeout_seconds: int
     ) -> dict:
         """Execute command with timeout support using threading."""
@@ -439,9 +441,9 @@ class Sandbox(BaseModel):
         thread = threading.Thread(target=execute_worker)
         thread.daemon = True
         thread.start()
-        
+
         thread.join(timeout_seconds)
-        
+
         if thread.is_alive():
             # Command is still running, timeout occurred
             # Docker doesn't allow killing exec_run commands directly,
@@ -455,13 +457,13 @@ class Sandbox(BaseModel):
                 "timed_out": True,
                 "execution_time": timeout_seconds
             }
-        
+
         if "exception" in exception_container:
             raise exception_container["exception"]
-        
+
         if "result" in result_container:
             return result_container["result"]
-        
+
         # Fallback case
         raise RuntimeError("Command execution failed without proper result")
 

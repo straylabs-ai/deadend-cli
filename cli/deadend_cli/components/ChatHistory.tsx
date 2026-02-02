@@ -1,5 +1,5 @@
 import { Box, Text } from "ink";
-import { useMemo } from "react";
+import { useMemo, memo } from "react";
 import type { Message } from "../types/message.ts";
 import { ChatMessage } from "./ChatMessage.tsx";
 
@@ -13,7 +13,7 @@ export interface ChatHistoryProps {
   dynamicMessages?: Message[];
 }
 
-export function ChatHistory({ messages, staticMessages, dynamicMessages }: ChatHistoryProps) {
+function ChatHistoryComponent({ messages, staticMessages, dynamicMessages }: ChatHistoryProps) {
   // If staticMessages and dynamicMessages are provided, use them (for Static component usage)
   // Otherwise, render all messages normally
   const messagesToRender = useMemo(() => {
@@ -52,3 +52,22 @@ export function ChatHistory({ messages, staticMessages, dynamicMessages }: ChatH
     </Box>
   );
 }
+
+// Memoize ChatHistory to prevent re-renders when props haven't meaningfully changed
+export const ChatHistory = memo(ChatHistoryComponent, (prevProps, nextProps) => {
+  // Only re-render if:
+  // 1. Message count changed
+  // 2. Dynamic messages changed (check by last message ID)
+  // 3. Static messages changed (check by count)
+  const prevDynamicLastId = prevProps.dynamicMessages?.[prevProps.dynamicMessages.length - 1]?.id;
+  const nextDynamicLastId = nextProps.dynamicMessages?.[nextProps.dynamicMessages.length - 1]?.id;
+  const prevStaticCount = prevProps.staticMessages?.length ?? 0;
+  const nextStaticCount = nextProps.staticMessages?.length ?? 0;
+  
+  const dynamicChanged = prevDynamicLastId !== nextDynamicLastId;
+  const staticChanged = prevStaticCount !== nextStaticCount;
+  const messageCountChanged = prevProps.messages.length !== nextProps.messages.length;
+  
+  // Re-render only if something meaningful changed
+  return !(dynamicChanged || staticChanged || messageCountChanged);
+});

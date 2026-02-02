@@ -80,69 +80,128 @@ export interface DirectStatusLineProps {
   isActive: boolean;
   /** Update interval in ms (default: 100) */
   updateInterval?: number;
+  /** 
+   * Positioning mode:
+   * - "inline": Uses placeholder Box in Ink layout (default)
+   * - "absolute": Uses absolute positioning to last terminal line, returns null
+   */
+  mode?: "inline" | "absolute";
+}
+
+/**
+ * Get terminal dimensions
+ */
+function getTerminalSize(): { rows: number; cols: number } {
+  const cols = process.stdout.columns || 80;
+  const rows = process.stdout.rows || 24;
+  return { rows, cols };
 }
 
 /**
  * DirectStatusLine renders an animated status line directly to the terminal,
  * bypassing Ink's render cycle to prevent flickering.
  *
- * It uses a placeholder Box to reserve space in the Ink layout, then renders
- * the animated content directly to stdout using ANSI escape sequences.
+ * Two modes:
+ * - "inline": Uses placeholder Box in Ink layout (default)
+ * - "absolute": Uses absolute positioning to last terminal line, returns null
  */
 export function DirectStatusLine({
   text,
   color = "magenta",
   isActive,
   updateInterval = 100,
+  mode = "inline",
 }: DirectStatusLineProps) {
   const triangleIndexRef = useRef(0);
   const barIndexRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastRenderedRef = useRef<string>("");
+  const terminalSizeRef = useRef(getTerminalSize());
+  const isRenderingRef = useRef(false);
 
   // Get the ANSI color code
   const colorCode = ANSI.colors[color] || ANSI.colors.magenta;
 
   // Render function that writes directly to stdout
   const renderStatusLine = useCallback(() => {
-    if (!isActive) return;
+    if (!isActive || isRenderingRef.current) return;
+    
+    isRenderingRef.current = true;
 
-    const triangle = triangleFrames[triangleIndexRef.current];
-    const bar = barFrames[barIndexRef.current];
+    try {
+      const triangle = triangleFrames[triangleIndexRef.current];
+      const bar = barFrames[barIndexRef.current];
 
-    // Build the status line string with ANSI codes
-    const statusLine =
-      `${colorCode}${ANSI.bold}${triangle}${ANSI.reset} ` +
-      `${colorCode}${ANSI.bold}${text}${ANSI.reset} ` +
-      `${colorCode}${ANSI.dim}${bar}${ANSI.reset}`;
+      // Build the status line string with ANSI codes
+      const statusLine =
+        `${colorCode}${ANSI.bold}${triangle}${ANSI.reset} ` +
+        `${colorCode}${ANSI.bold}${text}${ANSI.reset} ` +
+        `${colorCode}${ANSI.dim}${bar}${ANSI.reset}`;
 
-    // Only render if content changed (reduces writes)
-    if (statusLine === lastRenderedRef.current) return;
-    lastRenderedRef.current = statusLine;
+      // Only render if content changed (reduces writes)
+      if (statusLine === lastRenderedRef.current) {
+        isRenderingRef.current = false;
+        return;
+      }
+      lastRenderedRef.current = statusLine;
 
-    // Save cursor, move to the placeholder position, clear line, write, restore cursor
-    // We use carriage return + clear to end approach for simplicity
-    const output =
-      ANSI.saveCursor +           // Save current cursor position
-      `\r` +                       // Move to beginning of current line (placeholder line)
-      ANSI.clearLine +            // Clear the entire line
-      statusLine +                // Write the status
-      ANSI.restoreCursor;         // Restore cursor position
+      let output: string;
+      
+      if (mode === "absolute") {
+        // Absolute positioning mode: render to last terminal line
+        const size = getTerminalSize();
+        terminalSizeRef.current = size;
+        output =
+          ANSI.saveCursor +                    // Save current cursor position
+          ANSI.moveTo(size.rows, 1) +          // Move to last line, column 1
+          ANSI.clearLine +                    // Clear the entire line
+          statusLine +                        // Write the status
+          ANSI.restoreCursor;                 // Restore cursor position
+      } else {
+        // Inline mode: use placeholder line (carriage return)
+        output =
+          ANSI.saveCursor +           // Save current cursor position
+          `\r` +                       // Move to beginning of current line (placeholder line)
+          ANSI.clearLine +            // Clear the entire line
+          statusLine +                // Write the status
+          ANSI.restoreCursor;         // Restore cursor position
+      }
 
-    // Write directly to stdout, bypassing Ink
-    process.stdout.write(output);
-  }, [text, colorCode, isActive]);
+      // Write directly to stdout, bypassing Ink
+      process.stdout.write(output);
+    } catch (error) {
+      // Silently fail if terminal operations fail
+      console.error("[DirectStatusLine] Render error:", error);
+    } finally {
+      isRenderingRef.current = false;
+    }
+  }, [text, colorCode, isActive, mode]);
 
   // Clear the status line when deactivating
   const clearStatusLine = useCallback(() => {
-    const output =
-      ANSI.saveCursor +
-      `\r` +
-      ANSI.clearLine +
-      ANSI.restoreCursor;
-    process.stdout.write(output);
-    lastRenderedRef.current = "";
-  }, []);
+    try {
+      let output: string;
+      if (mode === "absolute") {
+        const size = terminalSizeRef.current;
+        output =
+          ANSI.saveCursor +
+          ANSI.moveTo(size.rows, 1) +
+          ANSI.clearLine +
+          ANSI.restoreCursor;
+      } else {
+        output =
+          ANSI.saveCursor +
+          `\r` +
+          ANSI.clearLine +
+          ANSI.restoreCursor;
+      }
+      process.stdout.write(output);
+      lastRenderedRef.current = "";
+    } catch (error) {
+      // Silently fail
+      console.error("[DirectStatusLine] Clear error:", error);
+    }
+  }, [mode]);
 
   // Set up the animation interval
   useEffect(() => {
@@ -183,8 +242,32 @@ export function DirectStatusLine({
     }
   }, [text, isActive, renderStatusLine]);
 
-  // Render a placeholder box that reserves space in Ink's layout
-  // This ensures the status line has its own line in the terminal
+  // Handle terminal resize (for absolute mode)
+  useEffect(() => {
+    if (mode === "absolute" && typeof process !== 'undefined' && process.stdout) {
+      const handleResize = () => {
+        terminalSizeRef.current = getTerminalSize();
+        if (isActive) {
+          lastRenderedRef.current = ""; // Force re-render
+          renderStatusLine();
+        }
+      };
+      
+      process.stdout.on('resize', handleResize);
+      return () => {
+        if (process.stdout) {
+          process.stdout.off('resize', handleResize);
+        }
+      };
+    }
+  }, [mode, isActive, renderStatusLine]);
+
+  // In absolute mode, return null (not in Ink render tree)
+  if (mode === "absolute") {
+    return null;
+  }
+
+  // In inline mode, render a placeholder box that reserves space in Ink's layout
   if (!isActive) {
     return null;
   }
