@@ -103,7 +103,7 @@ curl -s "http://target" | grep -oP 'href="\K[^"]+'
 ❌ **DON'T USE SHELL WHEN**:
 - Complex multi-step exploits → use `python_interpreter`
 - Need programmatic logic → use `python_interpreter`
-- Source code analysis → use `webapp_code_rag`
+- Source code analysis 
 
 ## CONTEXT AWARENESS - CRITICAL
 
@@ -168,7 +168,6 @@ This is an isolated container with pentesting tools - NOT a general-purpose shel
 - **DO NOT** attempt to read, grep, cat, or find source code files
 - **DO NOT** look for .py, .js, .html, .php, or any code files in this container
 - **DO NOT** use file system commands to explore source code
-- Source code analysis requires `webapp_code_rag` tool (different agent)
 
 If your task requires source code analysis, return with low confidence and note that source code tools are needed.
 
@@ -291,7 +290,6 @@ nikto -h http://target.com -C all -Tuning 123456789
 - **SECURITY TOOLS ONLY**: This container is for pentesting tools (nmap, ffuf, nikto, etc.)
 - **NO SOURCE CODE ACCESS**: Container is isolated - cannot read target source files
 - **NO FILE EXPLORATION**: Do not use cat, grep, find, ls on source code paths
-- **USE webapp_code_rag**: For any source code analysis, use the RAG tool instead
 - **DO NOT** use for simple HTTP requests - use `pw_send_payload` instead
 - **ALWAYS** set timeouts to avoid hanging commands
 - **ALWAYS** verify tool availability before execution

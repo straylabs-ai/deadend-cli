@@ -259,7 +259,6 @@ class CoreAgent:
 
             while iteration < max_iterations:
                 iteration += 1
-
                 # Log LLM request
                 try:
                     console.print(

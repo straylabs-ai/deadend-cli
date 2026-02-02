@@ -6,6 +6,7 @@
 from typing import Any, Dict
 import json
 from dataclasses import asdict, is_dataclass
+from pydantic import TypeAdapter
 import typer
 import uuid
 from deadend_agent import DeadEndAgent, Sandbox, config_setup, set_event_hooks
@@ -646,7 +647,7 @@ def main(
                 threat_model_text += object_to_string(item)
                 yield {
                     "phase": "recon",
-                    "data": to_serializable(item),
+                    "data": TypeAdapter(dict).dump_json(item),
                 }
 
             yield {
@@ -660,7 +661,7 @@ def main(
             ):
                 yield {
                     "phase": "exploit",
-                    "data": to_serializable(item),
+                    "data": TypeAdapter(dict).dump_json(item),
                 }
         except Exception as exc:
             logger.exception("Error in run_agent_recursive: %s", exc)

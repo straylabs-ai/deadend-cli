@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
 import type { Message } from "../types/message.ts";
 import { createMessage, agentEventToMessage } from "../types/message.ts";
@@ -112,7 +112,9 @@ export function useTaskRunner(
   const { onMessage, onComplete, onCancel, onError } = options;
 
   // Get provider and model for future uses and calls 
-  const llmDefaults = useLlmDefaults();
+  const { defaults: llmDefaults, isLoading: llmDefaultsLoading }  = useLlmDefaults();
+  
+  const pendingTargetRef = useRef<string | null>(null);
 
   const [taskState, setTaskState] = useState<TaskState>({
     isRunning: false,
@@ -172,6 +174,11 @@ export function useTaskRunner(
         return;
       }
 
+      if (llmDefaultsLoading || !llmDefaults) {
+        pendingTargetRef.current = target;
+        onMessage(createMessage("system", "Loading LLM configuration, will retry...", "info"));
+        return;
+      }
       // Prevent concurrent operations
       if (isEmbeddingRef.current) {
         onMessage(createMessage("system", "Embedding already in progress, please wait...", "info"));
@@ -184,6 +191,7 @@ export function useTaskRunner(
         return;
       }
 
+      
       // Initialize state
       cancelledRef.current = false;
       isEmbeddingRef.current = true;
@@ -200,6 +208,7 @@ export function useTaskRunner(
         isTargetEmbedded: canReuse ? prev.isTargetEmbedded : false,
       }));
 
+      pendingTargetRef.current = null;
       try {
         let providerName: string | null;
         let modelName: string;
@@ -277,6 +286,17 @@ export function useTaskRunner(
     },
     [rpcClient, onMessage, onError, taskState, llmDefaults]
   );
+
+
+  useEffect(() => {
+      if (pendingTargetRef.current && !llmDefaultsLoading && llmDefaults) {
+        const target = pendingTargetRef.current
+        pendingTargetRef.current = null
+        setTarget({target}).catch(() => {
+
+        });
+      }
+  }, [llmDefaults, llmDefaultsLoading, setTarget])
 
   // ============================================================================
   // Task Execution: Run Agent with Prompt

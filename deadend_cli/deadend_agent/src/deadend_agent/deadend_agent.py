@@ -339,43 +339,56 @@ IMPORTANT:
         Returns:
             TaskNode with the execution plan and results
         """
-        # ADaPT agent handles both planning and execution, with router integration
-        # The executor within ADaPT uses the router to route tasks to appropriate agents
+        prompt_task = f"""
+Prepare the necessary information (reconnaissance) to achieve the following task: {task}
 
-        # Add a plan to recon for the threat model.
-        # The threat model agent is a supervisor that can call
-        #  to the router for the generic agent calling
-        # Initialize threat model agent for planning
-        self.threat_model_agent = ReconThreatModelAgent(
-            name="threat_model",
-            model=self.model,
-            deps_type=RequesterDeps,
-            tools=[]
+Focus on gathering ONLY the information needed for this specific task. Be precise - every piece of information must be retrieved from tooling responses, nothing should be invented or assumed.
+
+What to discover:
+- Endpoints relevant to the task and how to use them
+- What data/parameters each endpoint needs
+- Authentication requirements (which endpoints need auth, which don't)
+- Session management and authentication mechanisms
+- Any suspicious or interesting behavior related to the task
+
+Critical rules:
+- Do NOT use nmap or similar scanning on localhost (127.0.0.1)
+- Make requests to the target and analyze responses
+- Follow forms, links, and endpoints to discover relevant information
+- Extract endpoints, authentication info, and secrets from actual tool responses
+- Do NOT invent or guess endpoints - only use what is discovered
+- Return when you have gathered sufficient information to proceed with the task
+"""
+        validation_token: str = ""
+        task_root = TaskNode(
+            task=prompt_task,
+            depth=0,
+            confidence_score=0.7,
+            status="pending",
+            parent=None,
+            children=[]
         )
 
-        self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
+        self.context.set_root_task(task_root)
 
-        self.adapt_agent = ADaPTAgent(
-            session_id=self.session_id,
-            context=self.context,
-            executor=self.executor,
-            planner=self.planner,
-            validator=self.validator,
-            max_depth=1
-        )
-        plan: TaskNode | None = None
-        async for event in self.adapt_agent.run(task=task, exit_strategy=""):
-            if isinstance(event, dict):
-                if event.get("type") == "result":
-                    root_candidate = event.get("root")
-                    if isinstance(root_candidate, TaskNode):
-                        plan = root_candidate
-                else:
-                    yield event.get("message", str(event))
-            else:
-                yield str(event)
-        if plan is None:
-            raise RuntimeError("ADaPT agent did not produce a plan.")
+        target_context =f"Target : {self.context.target}"
+        context = {}
+        confidence_score = 0.0       
+         # Run the supervisor directly
+        async for event in self.executor.execute_supervisor(
+            task_node=task_root,
+            agent_context=target_context,
+            usage=RunUsage(),
+            usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
+        ):
+            # traces.append(event)
+            if isinstance(event, ResultEvent):
+                confidence_score = event.confidence_score
+                context = event.context
+                yield event.context
+
+        task_root.confidence_score = confidence_score
+        task_root.status = "completed"
 
         reporter_agent = ReporterAgent(
             model=self.model,
@@ -384,7 +397,7 @@ IMPORTANT:
             validation_format="Information",
             validation_type="security assessment"
         )
-        context_text = await self.context.get_all_context()
+        # context_text = await self.context.get_all_context()
         prompt_assessment = f"""\
 Summarize the security assessment results from the reconnaissance phase.
 
@@ -396,7 +409,7 @@ IMPORTANT:
 - Note validation status (reflected vs executed, needs browser test)
 
 ## Assessment Data
-{context_text}
+{context}
 """
         threat_model_data = await reporter_agent.run(
             prompt=prompt_assessment,
@@ -407,7 +420,70 @@ IMPORTANT:
             message_history=""
         )
 
-        yield plan, threat_model_data.output
+        yield context
+
+#         self.threat_model_agent = ReconThreatModelAgent(
+#             name="threat_model",
+#             model=self.model,
+#             deps_type=RequesterDeps,
+#             tools=[]
+#         )
+
+#         self.planner = Planner(planner_agent=self.threat_model_agent, deps=self.requester_deps)
+
+#         self.adapt_agent = ADaPTAgent(
+#             session_id=self.session_id,
+#             context=self.context,
+#             executor=self.executor,
+#             planner=self.planner,
+#             validator=self.validator,
+#             max_depth=1
+#         )
+#         plan: TaskNode | None = None
+#         async for event in self.adapt_agent.run(task=task, exit_strategy=""):
+#             if isinstance(event, dict):
+#                 if event.get("type") == "result":
+#                     root_candidate = event.get("root")
+#                     if isinstance(root_candidate, TaskNode):
+#                         plan = root_candidate
+#                 else:
+#                     yield event.get("message", str(event))
+#             else:
+#                 yield str(event)
+#         if plan is None:
+#             raise RuntimeError("ADaPT agent did not produce a plan.")
+
+#         reporter_agent = ReporterAgent(
+#             model=self.model,
+#             deps_type=None,
+#             tools=None,
+#             validation_format="Information",
+#             validation_type="security assessment"
+#         )
+#         context_text = await self.context.get_all_context()
+#         prompt_assessment = f"""\
+# Summarize the security assessment results from the reconnaissance phase.
+
+# IMPORTANT:
+# - Preserve EXACT working payloads character-for-character
+# - Include full HTTP requests that succeeded
+# - Include response snippets proving vulnerabilities
+# - Document filter bypass techniques with exact encoding used
+# - Note validation status (reflected vs executed, needs browser test)
+
+# ## Assessment Data
+# {context_text}
+# """
+#         threat_model_data = await reporter_agent.run(
+#             prompt=prompt_assessment,
+#             deps=None,
+#             usage=RunUsage(),
+#             usage_limits=UsageLimits(),
+#             deferred_tool_results=None,
+#             message_history=""
+#         )
+
+#         yield plan, threat_model_data.output
 
     async def run_exploitation(self, threat_model: str, task: str):
         """Runs the exploitation workflow"""

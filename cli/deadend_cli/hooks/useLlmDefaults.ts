@@ -14,11 +14,13 @@ export interface LlmDefaults {
  * 
  * @returns Object with provider and model, or null if not yet loaded or not configured
  */
-export function useLlmDefaults(): LlmDefaults | null {
+export function useLlmDefaults(): {defaults: LlmDefaults | null, isLoading: boolean } {
   const [defaults, setDefaults] = useState<LlmDefaults | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const loadDefaults = async () => {
+      setIsLoading(true)
       try {
         // Ensure config manager is loaded
         try {
@@ -43,12 +45,14 @@ export function useLlmDefaults(): LlmDefaults | null {
       } catch (_error) {
         // Error loading defaults, return null
         setDefaults(null);
+      } finally {
+        setIsLoading(false)
       }
     };
 
     loadDefaults();
   }, []);
 
-  return defaults;
+  return {defaults, isLoading};
 }
 
