@@ -207,22 +207,6 @@ class ADaPTAgent:
                             confidence=confidence_score,
                             actionable=not task_achieved
                         )
-                        # Check for FLAG in proofs
-                        # if "FLAG{" in proofs.upper():
-                        #     flag_match = re.search(r'FLAG\{[^}]+\}', proofs, re.IGNORECASE)
-                        #     if flag_match:
-                        #         self.context.add_discovered_fact(
-                        #             category="validated_exploit",
-                        #             key="captured_flag",
-                        #             value=f"FLAG CAPTURED: {flag_match.group(0)}",
-                        #             confidence=1.0,
-                        #             details={
-                        #                 "flag": flag_match.group(0),
-                        #                 "source": "supervisor_proofs",
-                        #                 "task": node.task[:100]
-                        #             },
-                        #             actionable=False
-                        #         )
 
                     # Log task status
                     status_str = "ACHIEVED" if task_achieved else "IN PROGRESS"
@@ -558,8 +542,8 @@ Update confidence_score for completed items. Reason step by step for the most lo
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None)
         )
-        print(f"subtasks: {subtasks}")
-        print(f"website info: {website_info}")
+        # print(f"subtasks: {subtasks}")
+        # print(f"website info: {website_info}")
 
         # Add website info to structured context as facts (not verbose dump)
         website_dict = website_info.model_dump()

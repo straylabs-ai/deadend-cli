@@ -68,6 +68,15 @@ class AllHealthResult(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.now)
 
 
+class AllInitResult(BaseModel):
+    """Combined initialization result for all components."""
+
+    overall_success: bool
+    components: list[InitResult]
+    failed_components: list[str] = Field(default_factory=list)
+    timestamp: datetime = Field(default_factory=datetime.now)
+
+
 # =============================================================================
 # Agent/Tool Event Types
 # =============================================================================
@@ -646,6 +655,15 @@ class RPCErrorCode:
     APPROVAL_ERROR = -32006
     INTERRUPT_ERROR = -32007
 
+    # LLM-related error codes
+    LLM_ERROR = -32010
+    LLM_RATE_LIMIT = -32011
+    LLM_QUOTA_EXCEEDED = -32012
+    LLM_AUTH_ERROR = -32013
+    LLM_CONNECTION_ERROR = -32014
+    LLM_MODEL_NOT_FOUND = -32015
+    LLM_INVALID_REQUEST = -32016
+
 
 __all__ = [
     # Component models
@@ -654,6 +672,7 @@ __all__ = [
     "InitResult",
     "HealthResult",
     "AllHealthResult",
+    "AllInitResult",
     # Event types
     "EventType",
     # Event data models

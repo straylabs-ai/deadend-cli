@@ -1,3 +1,3 @@
-from .registry import ModelRegistry, AIModel
+from .registry import ModelRegistry, EmbedderClient
 
-__all__ = [ "ModelRegistry", AIModel ]
+__all__ = ["ModelRegistry", "EmbedderClient"]

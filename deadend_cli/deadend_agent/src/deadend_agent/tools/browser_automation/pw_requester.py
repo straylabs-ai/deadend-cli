@@ -6,6 +6,7 @@ from anyio import Path
 from playwright.async_api import APIRequestContext, async_playwright
 from playwright._impl._api_structures import OriginState
 from .http_parser import analyze_http_request_text
+from deadend_agent.logging import logger
 
 
 class HTTPRequestParseError(Exception):
@@ -102,7 +103,7 @@ class PlaywrightRequester:
                 if not await storage_file.exists():
                     storage_path = None  # Don't use non-existent file
             except Exception as e:
-                print(f"Warning: Could not prepare storage path: {e}")
+                logger.warning("Could not prepare storage path: %s", e)
                 storage_path = None
 
         # Configure browser context options
@@ -119,7 +120,7 @@ class PlaywrightRequester:
             try:
                 context_options['storage_state'] = storage_path
             except Exception as e:
-                print(f"Warning: Could not load storage state: {e}")
+                logger.warning("Could not load storage state: %s", e)
 
         self.context = await self.browser.new_context(**context_options)
         # Create request context from browser context - this automatically uses cookies
@@ -132,9 +133,9 @@ class PlaywrightRequester:
             try:
                 cookies = await self.context.cookies()
                 if cookies:
-                    print(f"Loaded {len(cookies)} cookies from storage for session {self.session_id}")
+                    logger.debug("Loaded %d cookies from storage for session %s", len(cookies), self.session_id)
             except Exception as e:
-                print(f"Warning: Could not verify loaded cookies: {e}")
+                logger.warning("Could not verify loaded cookies: %s", e)
 
     async def _get_storage_path(self, session_id: str) -> str:
         """
@@ -172,7 +173,7 @@ class PlaywrightRequester:
                 try:
                     await self._persistent_page.goto(domain)
                 except Exception as e:
-                    print(f"Warning: Could not navigate to {domain}: {e}")
+                    logger.warning("Could not navigate to %s: %s", domain, e)
                     return None
 
         return self._persistent_page
@@ -197,7 +198,7 @@ class PlaywrightRequester:
             if api_key:
                 enhanced_headers["X-API-Key"] = api_key
         except Exception as e:
-            print(f"Warning: Could not inject auth headers from localStorage: {e}")
+            logger.warning("Could not inject auth headers from localStorage: %s", e)
         return enhanced_headers
 
     def _inject_auth_headers_with_storage(self,storage, headers: Dict[str, str]) -> Dict[str, str]:
@@ -211,7 +212,7 @@ class PlaywrightRequester:
                 elif item.get("name") == "api_key" and item.get("value"):
                     enhanced_headers["X-API-Key"] = item["value"]
         except Exception as e:
-            print(f"Warning: Could not inject auth headers from localStorage: {e}")
+            logger.warning("Could not inject auth headers from localStorage: %s", e)
         return enhanced_headers
 
     async def _cleanup(self):
@@ -303,7 +304,7 @@ class PlaywrightRequester:
                     # No localStorage data available, use original headers
                     new_headers = parsed_request['headers']
             except Exception as e:
-                print(f"Warning: Could not access localStorage for session {self.session_id}: {e}")
+                logger.warning("Could not access localStorage for session %s: %s", self.session_id, e)
                 new_headers = parsed_request['headers']
         else:
             new_headers = parsed_request['headers']
@@ -332,9 +333,9 @@ class PlaywrightRequester:
                            c.get('domain', '').lstrip('.') in parsed_url.netloc
                     ]
                     if domain_cookies:
-                        print(f"Using {len(domain_cookies)} cookies from context for {parsed_url.netloc}")
+                        logger.debug("Using %d cookies from context for %s", len(domain_cookies), parsed_url.netloc)
             except Exception as e:
-                print(f"Warning: Could not verify context cookies: {e}")
+                logger.warning("Could not verify context cookies: %s", e)
         
         try:
             # Two-step approach to ensure cookies are captured:
@@ -350,7 +351,7 @@ class PlaywrightRequester:
                 follow_redirects=False,  # Don't follow redirects yet
                 max_redirects=0
             )
-            print(f"initial response : {initial_response}")
+            logger.debug("initial response: %s", initial_response)
             # Extract cookies and auth tokens from the initial response
             await self._extract_cookies_and_tokens_from_response(initial_response, target_url)
 
@@ -395,9 +396,7 @@ class PlaywrightRequester:
                 try:
                     await self._save_storage_state(session_id=self.session_id)
                 except Exception as e:
-                    print(
-                        f"Warning: Could not save storage state for session {self.session_id}: {e}"
-                    )
+                    logger.warning("Could not save storage state for session %s: %s", self.session_id, e)
 
             # Format and return both responses
             # First, return the initial response (without redirects)
@@ -586,7 +585,7 @@ class PlaywrightRequester:
                         **request_options
                     )
             except Exception as e:
-                print(f"HTTP {method_upper} request failed for {url}: {str(e)}")
+                logger.error("HTTP %s request failed for %s: %s", method_upper, url, e)
                 raise
         else:
             # Fallback for non-APIRequestContext
@@ -598,7 +597,7 @@ class PlaywrightRequester:
                     **request_options
                 )
             except Exception as e:
-                print(f"HTTP {method_upper} request failed for {url}: {str(e)}")
+                logger.error("HTTP %s request failed for %s: %s", method_upper, url, e)
                 raise
 
     async def _format_response(self, response: Any) -> str:
@@ -654,7 +653,7 @@ class PlaywrightRequester:
             # Try XML parsing
             await self._detect_xml_tokens(str_response_body, domain)
         except Exception as e:
-            print(f"Error detecting tokens: {e}")
+            logger.debug("Error detecting tokens: %s", e)
 
     async def _detect_json_tokens(self, json_content: str, domain: str):
         try:
@@ -670,7 +669,7 @@ class PlaywrightRequester:
                     if field_name in data:
                         token_value = data[field_name]
                         await self.set_localstorage_value(storage_key, token_value, domain)
-                        print(f"Auto-stored {storage_key} from response")
+                        logger.debug("Auto-stored %s from response", storage_key)
         except (json.JSONDecodeError, KeyError):
             pass
 
@@ -795,7 +794,7 @@ class PlaywrightRequester:
             try:
                 await self._save_storage_state(session_id=self.session_id)
             except Exception as e:
-                print(f"Warning: Could not save cookies to storage: {e}")
+                logger.warning("Could not save cookies to storage: %s", e)
 
     async def _extract_cookies_and_tokens_from_response(self, response: Any, url: str):
         """
@@ -822,7 +821,7 @@ class PlaywrightRequester:
             except (AttributeError, TypeError):
                 # Fallback to headers property
                 all_headers = response.headers
-            print(f"headers caught : {all_headers}")
+            logger.debug("headers caught: %s", all_headers)
             # Check for Set-Cookie header (case-insensitive)
             set_cookie_values = []
             for header_name, header_value in all_headers.items():
@@ -894,7 +893,7 @@ class PlaywrightRequester:
                                 await self.context.add_cookies([cookie_attrs])
                                 cookies_extracted += 1
                             except Exception as e:
-                                print(f"Warning: Could not add cookie {cookie_name}: {e}")
+                                logger.warning("Could not add cookie %s: %s", cookie_name, e)
             
             # Also extract auth tokens from response body/headers
             try:
@@ -910,15 +909,15 @@ class PlaywrightRequester:
                 # Detect and store tokens from response
                 await self._detect_and_store_tokens(response_body=response_body_text, url=url)
             except Exception as e:
-                print(f"Warning: Could not extract tokens from response: {e}")
+                logger.warning("Could not extract tokens from response: %s", e)
             
             # Verify cookies were added
             if cookies_extracted > 0:
                 context_cookies_after = await self.context.cookies()
-                print(f"Extracted {cookies_extracted} cookies from response. Total cookies: {len(context_cookies_after)}")
+                logger.debug("Extracted %d cookies from response. Total cookies: %d", cookies_extracted, len(context_cookies_after))
                 
         except Exception as e:
-            print(f"Warning: Could not extract cookies and tokens from response: {e}")
+            logger.warning("Could not extract cookies and tokens from response: %s", e)
             import traceback
             traceback.print_exc()
 
@@ -946,11 +945,9 @@ class PlaywrightRequester:
                     storage_data = json.loads(content)
                     cookie_count = len(storage_data.get('cookies', []))
                     if cookie_count > 0:
-                        print(f"Saved {cookie_count} cookies to storage for session {session_id}")
+                        logger.debug("Saved %d cookies to storage for session %s", cookie_count, session_id)
         except Exception as e:
-            print(f"Error saving storage state: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.error("Error saving storage state: %s", e, exc_info=True)
 
     async def get_localstorage(self, session_id: str) -> List[OriginState]:
         """
@@ -992,7 +989,7 @@ class PlaywrightRequester:
             await page.evaluate(f"localStorage.setItem({escaped_key}, {escaped_value})")
             return True
         except Exception as e:
-            print(f"Error setting localStorage: {e}")
+            logger.error("Error setting localStorage: %s", e)
             return False
 
     async def get_localstorage_value(self, key: str, domain: str | None = None):
@@ -1021,7 +1018,7 @@ class PlaywrightRequester:
             value = await page.evaluate(f"localStorage.getItem({escaped_key})")
             return value
         except Exception as e:
-            print(f"Error getting localStorage: {e}")
+            logger.error("Error getting localStorage: %s", e)
             return None
 
     async def remove_localstorage_value(self, key: str, domain: str | None = None):
@@ -1051,7 +1048,7 @@ class PlaywrightRequester:
             await page.evaluate(f"localStorage.removeItem({escaped_key})")
             return True
         except Exception as e:
-            print(f"Error removing localStorage: {e}")
+            logger.error("Error removing localStorage: %s", e)
             return False
 
     async def clear_localstorage(self, domain: str | None = None):
@@ -1077,7 +1074,7 @@ class PlaywrightRequester:
             await page.evaluate("localStorage.clear()")
             return True
         except Exception as e:
-            print(f"Error clearing localStorage: {e}")
+            logger.error("Error clearing localStorage: %s", e)
             return False
 
     async def get_all_localstorage(self, domain: str | None = None):
@@ -1112,7 +1109,7 @@ class PlaywrightRequester:
             """)
             return storage
         except Exception as e:
-            print(f"Error getting all localStorage: {e}")
+            logger.error("Error getting all localStorage: %s", e)
             return {}
 
     async def set_multiple_localstorage(
@@ -1150,7 +1147,7 @@ class PlaywrightRequester:
             await page.evaluate(";".join(escaped_items))
             return True
         except Exception as e:
-            print(f"Error setting multiple localStorage values: {e}")
+            logger.error("Error setting multiple localStorage values: %s", e)
             return False
 
     async def clear_session(self):
@@ -1167,4 +1164,4 @@ class PlaywrightRequester:
             for page in pages:
                 await page.evaluate("localStorage.clear()")
         except Exception as e:
-            print(f"Warning: Could not clear localStorage: {e}")
+            logger.warning("Could not clear localStorage: %s", e)

@@ -11,7 +11,7 @@ from deadend_agent.agents import (
 )
 from deadend_agent.agents.components.planner import TaskNode
 from deadend_agent.context import ContextEngine
-from deadend_agent.models import AIModel
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.utils.structures import WebappreconDeps, RequesterDeps, ShellDeps
 
 
@@ -57,7 +57,7 @@ class AgentExecutor:
     def __init__(
         self,
         context: ContextEngine,
-        model: AIModel,
+        model: ModelSpec,
         available_agents: dict[str, str] | None = None,
         agent_factory: Any | None = None,
         requires_approval: bool = False,

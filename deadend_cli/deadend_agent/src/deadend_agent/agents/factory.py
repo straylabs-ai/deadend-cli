@@ -14,11 +14,12 @@ while maintaining the same interface as Pydantic AI for backward compatibility.
 from __future__ import annotations
 from typing import Any, List
 from pydantic import BaseModel
-from pydantic_ai import DeferredToolResults, UnexpectedModelBehavior
+from pydantic_ai import DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
-from deadend_agent.models.registry import AIModel
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.core_agent import CoreAgent, AgentResult as CoreAgentResult, get_session_metrics, UsageLimitExceeded
 from deadend_agent.hooks import get_event_hooks
+from deadend_agent.logging import logger
 
 
 class AgentOutput(BaseModel):
@@ -39,41 +40,6 @@ class AgentOutput(BaseModel):
     confidence_score: float = 0.5
     thoughts: str = ""
 
-
-def extract_text_from_messages(messages: List[ModelMessage], max_chars: int = 3000) -> str:
-    """Extract text content (agent's reasoning/thoughts) from captured messages.
-
-    Extracts all TextPart content from ModelResponse messages to capture
-    the agent's reasoning, analysis, and thoughts during execution.
-
-    Args:
-        messages: List of ModelMessage from capture_run_messages()
-        max_chars: Maximum characters to extract (default 3000)
-
-    Returns:
-        Concatenated text content from the agent's responses
-    """
-    text_parts: List[str] = []
-    total_chars = 0
-
-    for msg in messages:
-        if isinstance(msg, ModelResponse):
-            for part in msg.parts:
-                if isinstance(part, TextPart):
-                    text = part.content
-                    if text and isinstance(text, str):
-                        # Truncate if adding this would exceed max
-                        remaining = max_chars - total_chars
-                        if remaining <= 0:
-                            break
-                        if len(text) > remaining:
-                            text = text[:remaining] + "..."
-                        text_parts.append(text)
-                        total_chars += len(text)
-            if total_chars >= max_chars:
-                break
-
-    return "\n".join(text_parts)
 
 
 def summarize_agent_thought(raw_thought: str, max_length: int = 200) -> str:
@@ -201,7 +167,7 @@ class AgentRunner:
     def __init__(
         self,
         name: str,
-        model: AIModel,
+        model: ModelSpec,
         instructions: str | None,
         deps_type: Any | None,
         output_type: Any | None,
@@ -229,7 +195,7 @@ class AgentRunner:
             self.output_type = output_type
             output_schema = output_type
 
-        # Extract model info from AIModel
+        # Extract model info from ModelSpec
         model_name, api_key, api_base = self._extract_model_info(model)
 
         # Extract tool functions from Tool objects or use directly if callable
@@ -333,7 +299,7 @@ class AgentRunner:
 
         except UsageLimitExceeded as e:
             error_msg = str(e)
-            print(f"[AgentRunner] UsageLimitExceeded: {error_msg}")
+            logger.debug("AgentRunner UsageLimitExceeded: %s", error_msg)
 
             # Create a fallback result with the correct output type
             fallback_output = self._create_fallback_output(error_msg, "Usage limit exceeded")
@@ -345,7 +311,7 @@ class AgentRunner:
 
         except Exception as e:
             error_msg = str(e)
-            print(f"[AgentRunner] Error: {error_msg}")
+            logger.debug("AgentRunner Error: %s", error_msg)
 
             # Create a fallback result with the correct output type
             fallback_output = self._create_fallback_output(error_msg, "Agent error")
@@ -381,91 +347,32 @@ class AgentRunner:
 
         return result
 
-    def _extract_model_info(self, model: AIModel) -> tuple[str, str | None, str | None]:
-        """Extract model name, API key, and base URL from AIModel.
+    def _extract_model_info(self, model: ModelSpec) -> tuple[str, str | None, str | None]:
+        """Extract model name, API key, and base URL from ModelSpec.
 
         For OpenAI-compatible custom endpoints (local models), formats the model
         name as "openai/<model_name>" for litellm compatibility.
 
         Args:
-            model: AIModel instance
+            model: ModelSpec instance
 
         Returns:
             Tuple of (model_name, api_key, api_base)
         """
-        # Handle different model types
-        model_name = str(model)
-        api_key = None
-        api_base = None
+        # Build the fully-qualified model identifier as "{provider}/{model_name}".
+        # The provider comes from the ModelSpec itself and we always prefix explicitly.
+        fq_model_name = f"{model.provider}/{model.model_name}"
+        api_key = model.api_key
+        api_base = model.base_url
 
-        if hasattr(model, 'model_name'):
-            model_name = model.model_name
+        logger.debug(
+            "AgentRunner extracted model info: model_name=%s, api_key=%s, api_base=%s",
+            fq_model_name,
+            "***" if api_key else None,
+            api_base,
+        )
 
-        # Extract from provider (preferred - this is where config values are stored)
-        # Pydantic AI stores provider as _provider (private field)
-        if hasattr(model, '_provider'):
-            provider = model._provider
-
-            # Pydantic AI providers store api_key/base_url in the underlying client
-            # For OpenAIProvider, access via provider.client property
-            if hasattr(provider, 'client'):
-                try:
-                    client = provider.client
-
-                    # Extract api_key from client
-                    if hasattr(client, 'api_key'):
-                        raw_key = client.api_key
-                        # Handle SecretStr or similar types - convert to string
-                        if hasattr(raw_key, 'get_secret_value'):
-                            api_key = raw_key.get_secret_value()
-                        else:
-                            api_key = str(raw_key) if raw_key else None
-
-                    # Extract base_url from client
-                    if hasattr(client, 'base_url'):
-                        # OpenAI client stores base_url as httpx.URL object
-                        api_base = str(client.base_url)
-
-                except Exception:
-                    pass
-
-            # Also try provider properties (some providers expose these)
-            if not api_base and hasattr(provider, 'base_url'):
-                try:
-                    api_base = provider.base_url
-                except Exception:
-                    pass
-
-        # Fallback: extract directly from model
-        if not api_key and hasattr(model, 'api_key'):
-            api_key = model.api_key
-
-        if not api_base:
-            for attr in ['api_base', 'base_url']:
-                if hasattr(model, attr):
-                    val = getattr(model, attr, None)
-                    if val:
-                        api_base = val
-                        break
-
-        # For OpenAI-compatible custom endpoints (local models), format for litellm
-        # If we have a custom base_url, this is an OpenAI-compatible endpoint
-        if api_base and api_base not in [
-            "https://api.openai.com/v1",
-            "https://api.anthropic.com",
-            "https://generativelanguage.googleapis.com",
-            "https://openrouter.ai/api/v1"
-        ]:
-            # Custom endpoint - prefix with "openai/" for litellm
-            # But only if the model doesn't already have a provider prefix
-            known_prefixes = ("openai/", "azure_ai/", "anthropic/", "gemini/", "openrouter/", "bedrock/", "vertex_ai/")
-            if not any(model_name.startswith(prefix) for prefix in known_prefixes):
-                model_name = f"openai/{model_name}"
-
-        # Debug logging
-        print(f"[AgentRunner] Extracted model info: model_name={model_name}, api_key={'***' if api_key else None}, api_base={api_base}")
-
-        return model_name, api_key, api_base
+        return fq_model_name, api_key, api_base
 
     def _create_fallback_output(self, error_msg: str, error_type: str) -> BaseModel:
         """Create a fallback output with the correct schema type.

@@ -11,7 +11,7 @@ import uuid
 from datetime import datetime
 from typing import Any, AsyncGenerator, Callable, Awaitable, Optional
 
-from .rpc_models import AgentEvent, EventType
+from .rpc_models import AgentEvent
 
 
 class PendingApproval:
@@ -42,7 +42,6 @@ class EventBus:
     Provides non-blocking event publishing and async subscription.
     Also manages pending approval requests for the approval workflow.
     """
-
     def __init__(self, max_queue_size: int = 1000):
         self._queue: asyncio.Queue[AgentEvent] = asyncio.Queue(maxsize=max_queue_size)
         self._pending_approvals: dict[str, PendingApproval] = {}

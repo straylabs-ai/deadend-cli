@@ -2,15 +2,20 @@ import pytest
 import json
 from pathlib import Path
 
-# Import sandbox fixtures
-from tests.fixtures.sandbox_fixtures import *
+# Import sandbox fixtures (optional - only if they exist and can be imported)
+try:
+    from tests.fixtures.sandbox_fixtures import *
+except (ImportError, ModuleNotFoundError):
+    # Sandbox fixtures may not be available in all test environments
+    # This is fine for RPC server tests that don't need them
+    pass
 
 @pytest.fixture
 def sample_data():
     """Load sample test data."""
     fixtures_path = Path(__file__).parent / "fixtures" / "sample_data.json"
     if fixtures_path.exists():
-        with open(fixtures_path) as f:
+        with open(fixtures_path, encoding="utf-8") as f:
             return json.load(f)
     return {}
 
@@ -40,4 +45,7 @@ def pytest_configure(config):
     )
     config.addinivalue_line(
         "markers", "sandbox: mark test as sandbox-related"
+    )
+    config.addinivalue_line(
+        "markers", "asyncio: mark test as async (deselect with '-m \"not asyncio\"')"
     )

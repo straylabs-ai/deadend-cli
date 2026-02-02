@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from deadend_agent.agents.components.planner import TaskNode
-from deadend_agent.models import AIModel
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.agents import AgentRunner
 from deadend_prompts import render_agent_instructions
 
@@ -28,9 +28,9 @@ class Validator:
 
     def __init__(
         self,
-        model: AIModel,
+        model: ModelSpec,
         validation_type: str | None,
-        validation_format: str | None
+        validation_format: str | None,
     ) -> None:
         """Initialize the Validator.
         

@@ -11,14 +11,16 @@ by prompting for environment variables and saving them to a cache TOML file.
 import os
 import time
 from pathlib import Path
-
+import sys
 import docker
 import toml
 import typer
 from docker.errors import DockerException, NotFound
 from rich.console import Console
 
-console = Console()
+# Use stderr for console output so that stdout can remain reserved for
+# machine-readable JSON when this module is used from the RPC server.
+console = Console(file=sys.stderr)
 
 
 def check_docker(client: docker.DockerClient) -> bool:
@@ -258,7 +260,13 @@ def init_cli_config():
                 existing_config = toml.load(f)
 
             # Check if config has essential keys and values
-            essential_keys = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
+            essential_keys = [
+                "OPENAI_API_KEY", 
+                "ANTHROPIC_API_KEY", 
+                "GEMINI_API_KEY",
+                "OPEN_ROUTER_API_KEY",
+                # "LOCAL_API_KEY"
+            ]
             has_essential_config = any(
                 existing_config.get(key, "").strip() for key in essential_keys
             )
@@ -288,9 +296,14 @@ def init_cli_config():
         "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
         "OPENAI_MODEL": os.getenv("OPENAI_MODEL", "gpt-4o-mini-2024-07-18"),
         "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", ""),
-        "ANTHROPIC_MODEL": os.getenv("ANTHROPIC_MODEL", ""),
+        "ANTHROPIC_MODEL": os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
         "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
         "GEMINI_MODEL": os.getenv("GEMINI_MODEL", "gemini-2.5-pro"),
+        "OPEN_ROUTER_API_KEY": os.getenv("OPEN_ROUTER_API_KEY", ""),
+        "OPEN_ROUTER_MODEL": os.getenv("OPEN_ROUTER_MODEL", "anthropic/claude-4.5-opus"),
+        "LOCAL_API_KEY": os.getenv("LOCAL_API_KEY", ""),
+        "LOCAL_MODEL": os.getenv("LOCAL_MODEL", "Kimi-K2-Thinking"),
+        "LOCAL_BASE_URL": os.getenv("LOCAL_BASE_URL", ""),
         "EMBEDDING_MODEL": os.getenv("EMBEDDING_MODEL", ""),
         "DB_URL": os.getenv(
             "DB_URL", "postgresql://postgres:postgres@localhost:54320/codeindexerdb"
@@ -300,25 +313,31 @@ def init_cli_config():
         "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
     }
 
-    console.print("Configure environment values (press Enter to keep defaults).")
+    console.print("Configure LLM provider API keys and models (press Enter to keep defaults or skip).")
+    console.print("[yellow]Note: You need at least one LLM provider configured to use the CLI.[/yellow]")
     values = {}
     prompts = [
-        ("OPENAI_API_KEY", True),
-        ("OPENAI_MODEL", False),
-        ("ANTHROPIC_API_KEY", True),
-        ("ANTHROPIC_MODEL", False),
-        ("GEMINI_API_KEY", True),
-        ("GEMINI_MODEL", False),
-        ("EMBEDDING_MODEL", False),
-        ("DB_URL", False),
-        ("ZAP_PROXY_API_KEY", True),
-        ("APP_ENV", False),
-        ("LOG_LEVEL", False),
+        ("OPENAI_API_KEY", True, "OpenAI API key (e.g., sk-...)"),
+        ("OPENAI_MODEL", False, "OpenAI model name (e.g., gpt-4o, gpt-4o-mini)"),
+        ("ANTHROPIC_API_KEY", True, "Anthropic API key (e.g., sk-ant-...)"),
+        ("ANTHROPIC_MODEL", False, "Anthropic model name (e.g., claude-3-5-sonnet-20241022)"),
+        ("GEMINI_API_KEY", True, "Google Gemini API key"),
+        ("GEMINI_MODEL", False, "Gemini model name (e.g., gemini-2.5-pro)"),
+        ("OPEN_ROUTER_API_KEY", True, "OpenRouter API key (optional, for accessing multiple providers)"),
+        ("OPEN_ROUTER_MODEL", False, "OpenRouter model (e.g., anthropic/claude-4.5-opus)"),
+        ("LOCAL_API_KEY", True, "Local/self-hosted model API key (optional)"),
+        ("LOCAL_MODEL", False, "Local model name (e.g., Kimi-K2-Thinking)"),
+        ("LOCAL_BASE_URL", False, "Local model base URL (e.g., http://localhost:8000/v1)"),
+        ("EMBEDDING_MODEL", False, "Embedding model (optional, for RAG features)"),
+        ("DB_URL", False, "Database URL (optional)"),
+        ("ZAP_PROXY_API_KEY", True, "ZAP Proxy API key (optional, for security testing)"),
+        ("APP_ENV", False, "Application environment"),
+        ("LOG_LEVEL", False, "Log level (INFO, DEBUG, etc.)"),
     ]
 
-    for key, hide in prompts:
+    for key, hide, description in prompts:
         values[key] = typer.prompt(
-            key,
+            f"{key} ({description})",
             default=defaults.get(key, ""),
             hide_input=hide,
         )

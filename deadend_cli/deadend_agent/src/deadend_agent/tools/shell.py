@@ -10,10 +10,10 @@ while capturing command output and execution logs.
 """
 from typing import Dict
 from pydantic_ai import RunContext
-from rich import print as console_printer
 from deadend_agent.sandbox.sandbox import SandboxStatus
 from deadend_agent.utils.structures import WebappreconDeps, CmdLog
 from deadend_agent.tools.tool_wrappers import with_tool_events
+from deadend_agent.logging import logger
 
 
 @with_tool_events("sandboxed_shell")
@@ -35,13 +35,14 @@ def sandboxed_shell_tool(
     if ctx.deps.shell_runner.sandbox.status == SandboxStatus.RUNNING:
         result = ctx.deps.shell_runner.run_command(command, timeout_seconds)
 
-        console_printer(
-            f"Command execution completed in \
-                {result.get('execution_time', 0):.2f}s"
-            )
-        if result.get('timed_out', False):
-            print(f"⚠️  Command timed out after {timeout_seconds} seconds")
-        return ctx.deps.shell_runner.get_cmd_log()
+        # logger.debug(
+        #     "Command execution completed in %.2fs",
+        #     result.get('execution_time', 0)
+        # )
+        # if result.get('timed_out', False):
+        #     logger.warning("Command timed out after %d seconds", timeout_seconds)
+        # return ctx.deps.shell_runner.get_cmd_log()
+        return result
     else:
-        console_printer("Sandbox is not running")
+        logger.warning("Sandbox is not running")
         return {}

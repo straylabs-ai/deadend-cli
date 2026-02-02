@@ -2,7 +2,7 @@ from typing import Any
 from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
-from deadend_agent.models import AIModel
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.tools import webapp_code_rag
 from deadend_agent.utils.structures import PlannerOutput
 from deadend_prompts import render_agent_instructions, render_tool_description
@@ -18,7 +18,7 @@ class ReconThreatModelAgent(AgentRunner):
     def __init__(
         self,
         name: str,
-        model: AIModel,
+        model: ModelSpec,
         deps_type: Any | None,
         tools: list
     ):

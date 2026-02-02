@@ -15,13 +15,9 @@ from pydantic import BaseModel
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.agents.factory import AgentRunner, AgentOutput
-from deadend_agent.models.registry import AIModel
-from deadend_agent.tools import (
-    pw_send_payload,
-    webapp_code_rag
-)
+from deadend_agent.config.settings import ModelSpec
+from deadend_agent.tools import pw_send_payload
 from deadend_prompts import render_agent_instructions, render_tool_description
-
 
 class RequesterOutput(AgentOutput):
     """Output model for Playwright's requester.
@@ -54,7 +50,7 @@ class RequesterAgent(AgentRunner):
 
     def __init__(
         self,
-        model: AIModel,
+        model: ModelSpec,
         deps_type: Any | None,
         target_information: str,
         requires_approval: bool,
@@ -91,8 +87,7 @@ class RequesterAgent(AgentRunner):
             deps_type=deps_type,
             output_type=[RequesterOutput, DeferredToolRequests],
             tools=[
-                Tool(pw_send_payload, requires_approval=requires_approval),
-                # Tool(webapp_code_rag)
+                Tool(pw_send_payload, requires_approval=requires_approval)
             ]
         )
 

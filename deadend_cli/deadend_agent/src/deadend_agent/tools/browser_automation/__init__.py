@@ -3,6 +3,7 @@ from anyio import Path
 from pydantic_ai import RunContext
 from deadend_agent.utils.structures import RequesterDeps
 from deadend_agent.utils.functions import truncate_string
+from deadend_agent.logging import logger
 
 from .http_parser import is_valid_request_detailed, extract_host_port, autocorrect_http_request
 from .auth_handler import replace_credential_placeholders
@@ -44,16 +45,21 @@ async def pw_send_payload(
     Returns:
         Union[str, bytes]: HTTP response or error message
     """
-    host, port = extract_host_port(target_host=ctx.deps.target)
+    # Use the target_host parameter passed by the LLM, fallback to ctx.deps.target if empty
+    effective_target = target_host if target_host and target_host.strip() else ctx.deps.target
+    if not effective_target:
+        return "Error: target_host must be provided either as parameter or in context"
+    
+    host, port = extract_host_port(target_host=effective_target)
 
     # Auto-correct malformed HTTP requests before processing
     try:
         corrected_request, corrections = autocorrect_http_request(
             raw_request=raw_request,
-            target_host=ctx.deps.target
+            target_host=effective_target
         )
         if corrections:
-            print(f"Auto-corrected HTTP request: {', '.join(corrections)}")
+            logger.debug("Auto-corrected HTTP request: %s", ', '.join(corrections))
         raw_request = corrected_request
     except ValueError as e:
         return f"Error: Cannot auto-correct request - {str(e)}"
@@ -62,7 +68,7 @@ async def pw_send_payload(
     # the function detects the dummy credentials given and replaces them with the right one
     # So that the LLM will never see the true credentials
     raw_request_anon = replace_credential_placeholders(raw_request)
-    is_tls = port == 443 or ctx.deps.target.startswith('https://')
+    is_tls = port == 443 or effective_target.startswith('https://')
     session_key = f"{host}_{port}"
     proxy_url = "http://localhost:8080" if proxy else None
 
@@ -77,7 +83,7 @@ async def pw_send_payload(
         async for response in pw_session.send_raw_data(
             host=host,
             port=port,
-            target_host=ctx.deps.target,
+            target_host=effective_target,
             request_data=raw_request_anon,
             is_tls=is_tls,
             via_proxy=proxy
@@ -152,7 +158,7 @@ async def _save_responses_to_file(session_key: str, responses: list):
                 json_line = json.dumps(response_data, ensure_ascii=False, indent=2)
                 f.write(json_line + "\n")
     except Exception as e:
-        print(f"Warning: Could not save responses to file: {e}")
+        logger.warning("Could not save responses to file: %s", e)
 
 
 async def cleanup_playwright_session_for_target(target_host: str, proxy: bool = False, verify_ssl: bool = False):

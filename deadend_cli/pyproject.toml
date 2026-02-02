@@ -2,7 +2,7 @@
 name = "deadend_cli"
 dynamic = ["version"] 
 authors = [
-  { name="Yassine Bargach", email="yassine.bargach@proton.me" },
+  { name="Yassine Bargach", email="yassine@straylabs.ai" },
 ]
 description = "AI agent CLI for security research"
 readme = "README.md"
@@ -55,6 +55,7 @@ dependencies = [
 
 [project.scripts]
 deadend = "deadend_cli:main"
+deadend-jsonrpc-server = "deadend_cli.entrypoints:jsonrpc_server"
 
 [dependency-groups]
 dev = [
@@ -104,6 +105,8 @@ testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 adopts = [
     "--strict-markers",
     "--strict-config",
@@ -115,6 +118,7 @@ markers = [
     "slow: marks tests as slow",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+    "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
 ]
 
 [tool.coverage.run]

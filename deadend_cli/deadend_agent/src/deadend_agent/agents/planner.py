@@ -18,10 +18,10 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 
 from deadend_agent.agents.factory import AgentRunner
 from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
-from deadend_agent.models.registry import AIModel
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.utils.structures import RagDeps, Task
 from deadend_agent.tools import webapp_code_rag
-from deadend_prompts import render_agent_instructions,render_tool_description
+from deadend_prompts import render_agent_instructions, render_tool_description
 
 
 
@@ -46,10 +46,10 @@ class PlannerAgent(AgentRunner):
     """
 
     def __init__(
-            self,
-            model: AIModel,
-            output_type: Any | None,
-        ):
+        self,
+        model: ModelSpec,
+        output_type: Any | None,
+    ):
         """Initialize the planner agent.
         
         Args:
@@ -127,7 +127,7 @@ class Planner:
         tasks: List of planned security assessment tasks.
         agent: The PlannerAgent instance used for planning.
     """
-    def __init__(self, model: AIModel, target: str, api_spec: str):
+    def __init__(self, model: ModelSpec, target: str, api_spec: str):
         """Initialize the planner with target information.
         
         Args:

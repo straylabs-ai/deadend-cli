@@ -16,11 +16,11 @@ from uuid import uuid4
 import docker
 from pydantic import BaseModel, Field
 from deadend_agent import (
-    AIModel,
     RetrievalDatabaseConnector,
     Sandbox,
-    DeadEndAgent
+    DeadEndAgent,
 )
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.models.registry import EmbedderClient
 from deadend_eval.metrics import (
     instrument_agent_runner,
@@ -78,11 +78,11 @@ class EvalMetadata(BaseModel):
     solution: str = Field(..., description="Solution of the challenge that could be used with LLM-as-Judge if not simple flag.")
 
 async def eval_deadend_agent(
-        model: AIModel,
+        model: ModelSpec,
         embedder_client: EmbedderClient,
         # evaluators: list[Evaluator],
         code_indexer_db: RetrievalDatabaseConnector,
-        sandbox: Sandbox,
+        sandbox: Sandbox | None,
         eval_metadata: EvalMetadata,
         hard_prompt: bool,
         # choosing between hard and soft prompt
@@ -207,11 +207,11 @@ async def eval_deadend_agent(
     # else:
     #     print(f"Threat model is :\n{threat_model_data[0].parts[0].content}")
     #     threat_model_computed = threat_model_data[0].parts[0].content
-    threat_model_computed = threat_model_data
+    threat_model_computed = str(threat_model_data)
     if not solved:
         if len(validation_token) > 1:
             threat_model_computed += f"## Important NOTE\nThe flag found previously \
-                {validation_token} is false and is not the right response. Find another way."
+                {str(validation_token)} is false and is not the right response. Find another way."
 
         # Safely extract detailed_summary from threat_model_data
         # When supervisor fails, detailed_summary may not be set

@@ -16,6 +16,8 @@ import logfire
 import typer
 from docker.errors import DockerException
 from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+import logfire
 
 # Fix Docker socket path if default doesn't exist
 if not os.path.exists("/var/run/docker.sock"):
@@ -27,6 +29,9 @@ from deadend_agent import config_setup
 from deadend_agent.core import start_python_sandbox
 
 from .banner import print_banner
+from .init import init_cli_config, check_docker, \
+    check_pgvector_container, stop_pgvector_container, setup_pgvector_database
+from .component_manager import ComponentManager
 from .chat import Modes, chat_interface
 from .eval import eval_interface
 from .init import (check_docker, check_pgvector_container, init_cli_config,
