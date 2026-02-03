@@ -420,7 +420,7 @@ IMPORTANT:
             message_history=""
         )
 
-        yield context
+        yield threat_model_data
 
     async def run_exploitation(self, threat_model: str, task: str):
         """Runs the exploitation workflow"""
@@ -536,6 +536,40 @@ The threat model has been done :
                     yield event.get("message", str(event))
             else:
                 yield str(event)
+
+        reporter_agent = ReporterAgent(
+            model=self.model,
+            deps_type=None,
+            tools=None,
+            validation_format="Information",
+            validation_type="security assessment"
+        )
+        # context_text = await self.context.get_all_context()
+        prompt_assessment = f"""\
+Summarize the security assessment results from the exploitation phase.
+Return all the vulnerabilities found, what have been tried, and what have not, and also what you suspect
+with the path to reproduce. 
+
+IMPORTANT:
+- Preserve EXACT working payloads character-for-character
+- Include full HTTP requests that succeeded
+- Include response snippets proving vulnerabilities
+- Document filter bypass techniques with exact encoding used
+- Note validation status (reflected vs executed, needs browser test)
+
+## Assessment Data
+{self.context.get_unified_context(max_tokens=100000)}
+"""
+        security_report = await reporter_agent.run(
+            prompt=prompt_assessment,
+            deps=None,
+            usage=RunUsage(),
+            usage_limits=UsageLimits(),
+            deferred_tool_results=None,
+            message_history=""
+        )
+
+        yield security_report
 
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
