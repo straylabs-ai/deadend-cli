@@ -10,12 +10,8 @@ using OpenAI's API, with fallback to parallel individual calls for robustness.
 
 from typing import List, TypeVar, Protocol
 import asyncio
-from typing import Optional
 
-try:
-    import tiktoken
-except Exception:  # pragma: no cover - best-effort optional dependency
-    tiktoken = None
+import tiktoken
 from deadend_agent.models.registry import EmbedderClient
 
 # Generic type for objects that can be embedded
@@ -123,18 +119,13 @@ async def batch_embed_chunks(
     return [obj for obj in results if obj.embeddings is not None]
 
 
-def _get_token_encoder(model_name: Optional[str]):
-    if tiktoken is None:
-        return None
+def _get_token_encoder(model_name: str | None):
     try:
         if model_name:
             return tiktoken.encoding_for_model(model_name)
     except Exception:
         pass
-    try:
-        return tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        return None
+    return tiktoken.get_encoding("cl100k_base")
 
 
 def _estimate_tokens(text: str, encoder) -> int:
