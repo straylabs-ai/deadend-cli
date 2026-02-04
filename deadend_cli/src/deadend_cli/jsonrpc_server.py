@@ -586,6 +586,13 @@ def main(
                 "data": {"message": "Embedding target code..."},
         }
         code_chunks, embed_diff = await agent.embed_target(embedder_client)
+        if embed_diff:
+            changed = len(embed_diff.get("changed_files", []))
+            removed = len(embed_diff.get("removed_files", []))
+            yield {
+                "phase": "init",
+                "data": {"message": f"Embedding diff: changed={changed} removed={removed}"},
+            }
         if rag_db is not None and config.embedding_model:
             if embed_diff:
                 delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])

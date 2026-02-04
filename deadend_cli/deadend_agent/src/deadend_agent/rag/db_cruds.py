@@ -19,6 +19,9 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sess
 from sqlalchemy import text, select, delete
 
 from .models import Base, CodeChunk, KnowledgeBase
+from deadend_agent.logging import get_module_logger
+
+logger = get_module_logger(__name__)
 
 class RetrievalDatabaseConnector:
     """
@@ -218,6 +221,12 @@ class RetrievalDatabaseConnector:
                 result = await session.execute(stmt)
                 total_deleted += result.rowcount or 0
             await session.commit()
+            logger.info(
+                "Deleted %d code chunks for session %s (files=%d)",
+                total_deleted,
+                session_id,
+                len(files),
+            )
             return total_deleted
 
 

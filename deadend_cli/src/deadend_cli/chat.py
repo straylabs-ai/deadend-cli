@@ -474,6 +474,13 @@ Please provide a target URL.[/yellow]")
         embedder_client=embedder_client
 
     )
+    if embed_diff:
+        changed = len(embed_diff.get("changed_files", []))
+        removed = len(embed_diff.get("removed_files", []))
+        console_printer.print(
+            f"[blue]Embedding diff[/blue] changed={changed} removed={removed} "
+            f"(session={deadend_agent.embedding_session_id})"
+        )
 
     # Inserting in database
     if rag_db is not None and config.openai_api_key and config.embedding_model:
@@ -577,6 +584,13 @@ Please provide a target URL.[/yellow]")
                             status="Indexing the different webpage resources for new target...",
                             embedder_client=embedder_client
                         )
+                        if embed_diff:
+                            changed = len(embed_diff.get("changed_files", []))
+                            removed = len(embed_diff.get("removed_files", []))
+                            console_printer.print(
+                                f"[blue]Embedding diff[/blue] changed={changed} removed={removed} "
+                                f"(session={deadend_agent.embedding_session_id})"
+                            )
                         if rag_db is not None and config.openai_api_key and config.embedding_model:
                             if embed_diff:
                                 delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])

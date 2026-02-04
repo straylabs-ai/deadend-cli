@@ -23,6 +23,9 @@ from deadend_agent.tools.web_resource_extractor import WebResourceExtractor
 from deadend_agent.code_indexer.code_splitter import Chunker
 from deadend_agent.embedders.embedders import batch_embed_chunks
 from deadend_agent.models.registry import EmbedderClient
+from deadend_agent.logging import get_module_logger
+
+logger = get_module_logger(__name__)
 
 class SourceCodeIndexer:
     """
@@ -151,15 +154,27 @@ class SourceCodeIndexer:
         previous_manifest = self._load_manifest()
         current_manifest: dict[str, str] = {}
         changed_files: list[dict] = []
+        skipped_files = 0
+        scanned_files = 0
 
         downloaded_files = self._get_downloaded_files()
         files_to_scan: list[str] = []
         if downloaded_files:
             files_to_scan = sorted(downloaded_files)
+            logger.info(
+                "Embedding scan: using downloaded resources (%d files) for session %s",
+                len(files_to_scan),
+                self.session_id,
+            )
         else:
             for subdir, _, files in os.walk(self.source_code_path):
                 for file in files:
                     files_to_scan.append(os.path.join(subdir, file))
+            logger.info(
+                "Embedding scan: using cache directory walk (%d files) for session %s",
+                len(files_to_scan),
+                self.session_id,
+            )
 
         for file_path in files_to_scan:
             file = os.path.basename(file_path)
@@ -168,11 +183,13 @@ class SourceCodeIndexer:
             if not (file.endswith(".js") or file.endswith(".jsx") or file.endswith("html")):
                 continue
 
+            scanned_files += 1
             rel_path = os.path.relpath(file_path, self.source_code_path)
             file_hash = self._hash_file(file_path)
             current_manifest[rel_path] = file_hash
 
             if previous_manifest.get(rel_path) == file_hash:
+                skipped_files += 1
                 continue
 
             url_path = self._relpath_to_url_path(rel_path)
@@ -212,6 +229,14 @@ class SourceCodeIndexer:
 
         self._save_manifest(current_manifest)
         embed_diff = {"changed_files": changed_files, "removed_files": removed_files}
+        logger.info(
+            "Embedding diff for session %s: scanned=%d changed=%d removed=%d skipped=%d",
+            self.session_id,
+            scanned_files,
+            len(changed_files),
+            len(removed_files),
+            skipped_files,
+        )
         return code_sections, embed_diff
 
     async def _embed_chunks(
