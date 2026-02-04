@@ -471,7 +471,8 @@ def main(
             }
 
         agent_id = uuid.uuid4()
-        session_id = deterministic_session_id(target)
+        runtime_session_id = uuid.uuid4()
+        embedding_session_id = deterministic_session_id(target)
 
         available_agents = {
             "requester": (
@@ -487,7 +488,8 @@ def main(
             "router_agent": "Router agent that selects the appropriate specialized agent.",
         }
         deadend_agent = DeadEndAgent(
-            session_id=session_id,
+            session_id=runtime_session_id,
+            embedding_session_id=embedding_session_id,
             model=model,
             available_agents=available_agents,
             max_depth=3
@@ -589,7 +591,7 @@ def main(
                 delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
                 if delete_files:
                     await rag_db.delete_code_chunks_for_files(
-                        session_id=agent.session_id,
+                        session_id=agent.embedding_session_id,
                         files=delete_files
                     )
             yield {

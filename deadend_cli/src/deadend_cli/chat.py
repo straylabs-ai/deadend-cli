@@ -451,9 +451,11 @@ Please provide a target URL.[/yellow]")
                 sys.exit(1)
 
     # Create agent with deterministic session ID per target
-    session_id = deterministic_session_id(target)
+    runtime_session_id = uuid4()
+    embedding_session_id = deterministic_session_id(target)
     deadend_agent = DeadEndAgent(
-        session_id=session_id,
+        session_id=runtime_session_id,
+        embedding_session_id=embedding_session_id,
         model=model,
         available_agents=available_agents,
         max_depth=3
@@ -478,10 +480,10 @@ Please provide a target URL.[/yellow]")
         if embed_diff:
             delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
             if delete_files:
-                await rag_db.delete_code_chunks_for_files(
-                    session_id=deadend_agent.session_id,
-                    files=delete_files
-                )
+                    await rag_db.delete_code_chunks_for_files(
+                        session_id=deadend_agent.embedding_session_id,
+                        files=delete_files
+                    )
         insert = await chat_interface.wait_response(
             func=rag_db.batch_insert_code_chunks,
             status="Syncing DB",
@@ -554,9 +556,11 @@ Please provide a target URL.[/yellow]")
                         target = new_target
                         console_printer.print(f"[green]Target changed to: {target}[/green]")
                         # Recreate agent with deterministic session for new target
-                        session_id = deterministic_session_id(target)
+                        runtime_session_id = uuid4()
+                        embedding_session_id = deterministic_session_id(target)
                         deadend_agent = DeadEndAgent(
-                            session_id=session_id,
+                            session_id=runtime_session_id,
+                            embedding_session_id=embedding_session_id,
                             model=model,
                             available_agents=available_agents,
                             max_depth=3
@@ -578,7 +582,7 @@ Please provide a target URL.[/yellow]")
                                 delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
                                 if delete_files:
                                     await rag_db.delete_code_chunks_for_files(
-                                        session_id=deadend_agent.session_id,
+                                        session_id=deadend_agent.embedding_session_id,
                                         files=delete_files
                                     )
                             insert = await chat_interface.wait_response(

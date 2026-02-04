@@ -138,6 +138,7 @@ class RequesterDeps:
     rag: RetrievalDatabaseConnector
     target: str
     session_id: uuid.UUID
+    embedding_session_id: uuid.UUID | None = None
 
 @dataclass
 class WebappreconDeps:
@@ -160,6 +161,7 @@ class WebappreconDeps:
     target: str
     shell_runner: ShellRunner
     session_id: uuid.UUID
+    embedding_session_id: uuid.UUID | None = None
 
 @dataclass
 class RagDeps:
@@ -179,6 +181,7 @@ class RagDeps:
     rag: RetrievalDatabaseConnector
     target: str
     session_id: uuid.UUID
+    embedding_session_id: uuid.UUID | None = None
 
 @dataclass(frozen=True)
 class TaskPlanner:

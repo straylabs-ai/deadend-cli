@@ -35,6 +35,7 @@ class DeadEndAgent:
     """Main orchestrator for the DeadEnd security research framework."""
 
     session_id: UUID
+    embedding_session_id: UUID
     model: ModelSpec
     embedder_model: EmbedderClient | None = None
     available_agents: Dict[str, str]
@@ -59,6 +60,7 @@ class DeadEndAgent:
     def __init__(
         self,
         session_id: UUID,
+        embedding_session_id: UUID | None = None,
         model: ModelSpec,
         available_agents: Dict[str, str],
         max_depth: int = 3,
@@ -66,6 +68,7 @@ class DeadEndAgent:
         validation_format: str | None = None
     ):
         self.session_id = session_id
+        self.embedding_session_id = embedding_session_id or session_id
         self.max_depth = max_depth
         self.model = model
         self.available_agents = available_agents
@@ -130,7 +133,7 @@ class DeadEndAgent:
         self.context.set_target(target)
         self.code_indexer = SourceCodeIndexer(
             target=self.target,
-            session_id=self.session_id
+            session_id=self.embedding_session_id
         )
 
 
@@ -199,14 +202,16 @@ class DeadEndAgent:
             embedder_client=embedder_client,
             rag=rag_connector,
             target=target_host,
-            session_id=self.session_id
+            session_id=self.session_id,
+            embedding_session_id=self.embedding_session_id
         )
         self.webapprecon_deps = WebappreconDeps(
             embedder_client=embedder_client,
             rag=rag_connector,
             target=target_host,
             shell_runner=shell_runner,
-            session_id=self.session_id
+            session_id=self.session_id,
+            embedding_session_id=self.embedding_session_id
         )
         # setup session key
         host, port = extract_host_port(target_host=self.target)

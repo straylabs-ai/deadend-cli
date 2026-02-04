@@ -39,9 +39,10 @@ async def webapp_code_rag(
     )
     embedding = embedding[0]['embedding']
 
+    session_id = getattr(context.deps, "embedding_session_id", None) or context.deps.session_id
     results = await context.deps.rag.similarity_search_code_chunk(
         query_embedding=embedding,
-        session_id=context.deps.session_id,
+        session_id=session_id,
         limit=5
     )
     for chunk, similarity in results:
