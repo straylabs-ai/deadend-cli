@@ -10,6 +10,12 @@ using OpenAI's API, with fallback to parallel individual calls for robustness.
 
 from typing import List, TypeVar, Protocol
 import asyncio
+from typing import Optional
+
+try:
+    import tiktoken
+except Exception:  # pragma: no cover - best-effort optional dependency
+    tiktoken = None
 from deadend_agent.models.registry import EmbedderClient
 
 # Generic type for objects that can be embedded
@@ -31,7 +37,9 @@ class Embeddable(Protocol):
 async def batch_embed_chunks(
     embedder_client: EmbedderClient,
     embeddable_objects: List[T],
-    batch_name: str = "chunks"
+    batch_name: str = "chunks",
+    max_batch_tokens: int = 250_000,
+    max_batch_items: int = 256,
 ) -> List[T]:
     """Generate embeddings for a list of embeddable objects using batch API calls.
     
@@ -50,34 +58,104 @@ async def batch_embed_chunks(
     """
     if not embeddable_objects:
         return []
-    # Prepare texts for batch embedding
-    embedding_texts = [obj.get_embedding_content() for obj in embeddable_objects]
+    # Prepare texts for batch embedding with token-aware batching
+    encoder = _get_token_encoder(getattr(embedder_client, "model", None))
+    embedding_texts: List[str] = []
+    token_counts: List[int] = []
+    for obj in embeddable_objects:
+        text = obj.get_embedding_content()
+        tokens = _estimate_tokens(text, encoder)
+        if tokens > max_batch_tokens:
+            print(
+                f"Warning: single {batch_name} item exceeds max tokens "
+                f"({tokens} > {max_batch_tokens}). Truncating."
+            )
+            text = _truncate_to_tokens(text, encoder, max_batch_tokens)
+            tokens = max_batch_tokens
+        embedding_texts.append(text)
+        token_counts.append(tokens)
 
+    async def embed_texts(texts: List[str], objs: List[T], label: str) -> List[T]:
+        if not texts:
+            return []
+        try:
+            response = await embedder_client.batch_embed(input=texts)
+            for i, embedding_data in enumerate(response):
+                if i < len(objs):
+                    objs[i].embeddings = embedding_data["embedding"]
+            return objs
+        except Exception as e:
+            if len(objs) == 1:
+                print(f"Failed to embed {label}: {e}")
+                return []
+            mid = len(objs) // 2
+            left = await embed_texts(texts[:mid], objs[:mid], f"{label} (left)")
+            right = await embed_texts(texts[mid:], objs[mid:], f"{label} (right)")
+            return left + right
+
+    # Build batches respecting token and item limits
+    batches: List[tuple[List[str], List[T]]] = []
+    batch_texts: List[str] = []
+    batch_objs: List[T] = []
+    batch_tokens = 0
+    for text, tokens, obj in zip(embedding_texts, token_counts, embeddable_objects):
+        if batch_objs and (
+            batch_tokens + tokens > max_batch_tokens
+            or len(batch_objs) >= max_batch_items
+        ):
+            batches.append((batch_texts, batch_objs))
+            batch_texts = []
+            batch_objs = []
+            batch_tokens = 0
+        batch_texts.append(text)
+        batch_objs.append(obj)
+        batch_tokens += tokens
+
+    if batch_objs:
+        batches.append((batch_texts, batch_objs))
+
+    results: List[T] = []
+    for idx, (texts, objs) in enumerate(batches, start=1):
+        label = f"{batch_name} batch {idx}/{len(batches)}"
+        embedded = await embed_texts(texts, objs, label)
+        results.extend(embedded)
+
+    return [obj for obj in results if obj.embeddings is not None]
+
+
+def _get_token_encoder(model_name: Optional[str]):
+    if tiktoken is None:
+        return None
     try:
-        # response = await openai.embeddings.create(
-        #     input=embedding_texts,
-        #     model=embedding_model
-        # )
+        if model_name:
+            return tiktoken.encoding_for_model(model_name)
+    except Exception:
+        pass
+    try:
+        return tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        return None
 
-        response = await embedder_client.batch_embed(input=embedding_texts)
-        for i, embedding_data in enumerate(response):
-            if i < len(embeddable_objects):
-                embeddable_objects[i].embeddings = embedding_data['embedding']
-        return embeddable_objects
-    except Exception as e:
-        print(f"Batch embedding failed for {batch_name}, falling back to individual calls: {e}")
-        # Fallback to individual embedding calls
-        async def embed_single(obj: T) -> T:
-            try:
-                single_response = await embedder_client.batch_embed(input=[obj.get_embedding_content()])
-                if single_response and len(single_response) > 0:
-                    obj.embeddings = single_response[0]['embedding']
-                return obj
-            except Exception as single_e:
-                print(f"Failed to embed individual chunk: {single_e}")
-                return obj  # Return object with None embeddings
-        
-        # Process all objects in parallel
-        results = await asyncio.gather(*[embed_single(obj) for obj in embeddable_objects])
-        # Filter out objects that failed to embed (embeddings is None)
-        return [obj for obj in results if obj.embeddings is not None]
+
+def _estimate_tokens(text: str, encoder) -> int:
+    if not text:
+        return 0
+    if encoder is not None:
+        try:
+            return len(encoder.encode(text))
+        except Exception:
+            pass
+    # Rough heuristic: ~4 chars per token.
+    return max(1, len(text) // 4)
+
+
+def _truncate_to_tokens(text: str, encoder, max_tokens: int) -> str:
+    if not text:
+        return text
+    if encoder is not None:
+        try:
+            return encoder.decode(encoder.encode(text)[:max_tokens])
+        except Exception:
+            pass
+    # Fallback to rough char-based truncation.
+    return text[: max_tokens * 4]
