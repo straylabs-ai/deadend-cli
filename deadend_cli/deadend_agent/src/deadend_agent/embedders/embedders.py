@@ -55,11 +55,38 @@ async def batch_embed_chunks(
         return []
     encoder = _get_token_encoder(getattr(embedder_client, "model", None))
 
-    # Build batches respecting token limits
-    batches: List[tuple[List[str], List[T]]] = []
+    results: List[T] = []
     batch_texts: List[str] = []
     batch_objs: List[T] = []
     batch_tokens = 0
+    batch_index = 1
+
+    async def flush_batch() -> None:
+        nonlocal batch_texts, batch_objs, batch_tokens, batch_index, results
+        if not batch_objs:
+            return
+        label = f"{batch_name} batch {batch_index}"
+        try:
+            response = await embedder_client.batch_embed(input=batch_texts)
+            for i, embedding_data in enumerate(response):
+                if i < len(batch_objs):
+                    batch_objs[i].embeddings = embedding_data["embedding"]
+            results.extend(batch_objs)
+        except Exception as e:
+            print(f"Batch embedding failed for {label}, falling back to single calls: {e}")
+            for obj, text in zip(batch_objs, batch_texts):
+                try:
+                    single_response = await embedder_client.batch_embed(input=[text])
+                    if single_response and len(single_response) > 0:
+                        obj.embeddings = single_response[0]["embedding"]
+                        results.append(obj)
+                except Exception as single_e:
+                    print(f"Failed to embed individual chunk: {single_e}")
+        batch_texts = []
+        batch_objs = []
+        batch_tokens = 0
+        batch_index += 1
+
     for obj in embeddable_objects:
         text = obj.get_embedding_content()
         tokens = len(encoder.encode(text))
@@ -70,37 +97,15 @@ async def batch_embed_chunks(
             )
             text = encoder.decode(encoder.encode(text)[:max_batch_tokens])
             tokens = max_batch_tokens
+
         if batch_objs and (batch_tokens + tokens > max_batch_tokens):
-            batches.append((batch_texts, batch_objs))
-            batch_texts = []
-            batch_objs = []
-            batch_tokens = 0
+            await flush_batch()
+
         batch_texts.append(text)
         batch_objs.append(obj)
         batch_tokens += tokens
 
-    if batch_objs:
-        batches.append((batch_texts, batch_objs))
-
-    results: List[T] = []
-    for idx, (texts, objs) in enumerate(batches, start=1):
-        label = f"{batch_name} batch {idx}/{len(batches)}"
-        try:
-            response = await embedder_client.batch_embed(input=texts)
-            for i, embedding_data in enumerate(response):
-                if i < len(objs):
-                    objs[i].embeddings = embedding_data["embedding"]
-            results.extend(objs)
-        except Exception as e:
-            print(f"Batch embedding failed for {label}, falling back to single calls: {e}")
-            for obj, text in zip(objs, texts):
-                try:
-                    single_response = await embedder_client.batch_embed(input=[text])
-                    if single_response and len(single_response) > 0:
-                        obj.embeddings = single_response[0]["embedding"]
-                        results.append(obj)
-                except Exception as single_e:
-                    print(f"Failed to embed individual chunk: {single_e}")
+    await flush_batch()
 
     return [obj for obj in results if obj.embeddings is not None]
 
