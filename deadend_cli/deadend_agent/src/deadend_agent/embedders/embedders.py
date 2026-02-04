@@ -35,7 +35,6 @@ async def batch_embed_chunks(
     embeddable_objects: List[T],
     batch_name: str = "chunks",
     max_batch_tokens: int = 250_000,
-    max_batch_items: int = 256,
 ) -> List[T]:
     """Generate embeddings for a list of embeddable objects using batch API calls.
     
@@ -54,33 +53,24 @@ async def batch_embed_chunks(
     """
     if not embeddable_objects:
         return []
-    # Prepare texts for batch embedding with token-aware batching
     encoder = _get_token_encoder(getattr(embedder_client, "model", None))
-    embedding_texts: List[str] = []
-    token_counts: List[int] = []
+
+    # Build batches respecting token limits
+    batches: List[tuple[List[str], List[T]]] = []
+    batch_texts: List[str] = []
+    batch_objs: List[T] = []
+    batch_tokens = 0
     for obj in embeddable_objects:
         text = obj.get_embedding_content()
-        tokens = _estimate_tokens(text, encoder)
+        tokens = len(encoder.encode(text))
         if tokens > max_batch_tokens:
             print(
                 f"Warning: single {batch_name} item exceeds max tokens "
                 f"({tokens} > {max_batch_tokens}). Truncating."
             )
-            text = _truncate_to_tokens(text, encoder, max_batch_tokens)
+            text = encoder.decode(encoder.encode(text)[:max_batch_tokens])
             tokens = max_batch_tokens
-        embedding_texts.append(text)
-        token_counts.append(tokens)
-
-    # Build batches respecting token and item limits
-    batches: List[tuple[List[str], List[T]]] = []
-    batch_texts: List[str] = []
-    batch_objs: List[T] = []
-    batch_tokens = 0
-    for text, tokens, obj in zip(embedding_texts, token_counts, embeddable_objects):
-        if batch_objs and (
-            batch_tokens + tokens > max_batch_tokens
-            or len(batch_objs) >= max_batch_items
-        ):
+        if batch_objs and (batch_tokens + tokens > max_batch_tokens):
             batches.append((batch_texts, batch_objs))
             batch_texts = []
             batch_objs = []
@@ -122,27 +112,3 @@ def _get_token_encoder(model_name: str | None):
     except Exception:
         pass
     return tiktoken.get_encoding("cl100k_base")
-
-
-def _estimate_tokens(text: str, encoder) -> int:
-    if not text:
-        return 0
-    if encoder is not None:
-        try:
-            return len(encoder.encode(text))
-        except Exception:
-            pass
-    # Rough heuristic: ~4 chars per token.
-    return max(1, len(text) // 4)
-
-
-def _truncate_to_tokens(text: str, encoder, max_tokens: int) -> str:
-    if not text:
-        return text
-    if encoder is not None:
-        try:
-            return encoder.decode(encoder.encode(text)[:max_tokens])
-        except Exception:
-            pass
-    # Fallback to rough char-based truncation.
-    return text[: max_tokens * 4]
