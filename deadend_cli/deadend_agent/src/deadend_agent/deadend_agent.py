@@ -60,12 +60,12 @@ class DeadEndAgent:
     def __init__(
         self,
         session_id: UUID,
-        embedding_session_id: UUID | None = None,
         model: ModelSpec,
         available_agents: Dict[str, str],
         max_depth: int = 3,
         validation_type: str | None = None,
-        validation_format: str | None = None
+        validation_format: str | None = None,
+        embedding_session_id: UUID | None = None
     ):
         self.session_id = session_id
         self.embedding_session_id = embedding_session_id or session_id
