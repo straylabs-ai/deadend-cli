@@ -49,6 +49,7 @@ class Resource:
     from_cache: bool = False
     failed: bool = False
     timing: Dict | None = None
+    local_path: str | None = None
 
 class WebResourceExtractor:
     """Extracts and analyzes web resources from a webpage using Playwright.
@@ -313,6 +314,7 @@ class WebResourceExtractor:
 
                     async with aiofiles.open(filepath, 'wb') as f:
                         await f.write(await response.read())
+                    resource.local_path = filepath
 
         except Exception as e:
             print(f"Failed to download {resource.url}: {e}")

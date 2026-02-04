@@ -10,6 +10,7 @@ from pydantic import TypeAdapter
 import typer
 import uuid
 from deadend_agent import DeadEndAgent, Sandbox, config_setup, set_event_hooks
+from deadend_agent.utils.network import deterministic_session_id
 from deadend_agent.tools.tool_wrappers import (
     set_approval_provider,
     enable_approval_mode,
@@ -470,6 +471,7 @@ def main(
             }
 
         agent_id = uuid.uuid4()
+        session_id = deterministic_session_id(target)
 
         available_agents = {
             "requester": (
@@ -485,7 +487,7 @@ def main(
             "router_agent": "Router agent that selects the appropriate specialized agent.",
         }
         deadend_agent = DeadEndAgent(
-            session_id=agent_id,
+            session_id=session_id,
             model=model,
             available_agents=available_agents,
             max_depth=3
@@ -581,8 +583,15 @@ def main(
                 "phase": "init",
                 "data": {"message": "Embedding target code..."},
         }
-        code_chunks = await agent.embed_target(embedder_client)
+        code_chunks, embed_diff = await agent.embed_target(embedder_client)
         if rag_db is not None and config.embedding_model:
+            if embed_diff:
+                delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
+                if delete_files:
+                    await rag_db.delete_code_chunks_for_files(
+                        session_id=agent.session_id,
+                        files=delete_files
+                    )
             yield {
                     "phase": "init",
                     "data": {"message": "Storing embeddings in database..."},

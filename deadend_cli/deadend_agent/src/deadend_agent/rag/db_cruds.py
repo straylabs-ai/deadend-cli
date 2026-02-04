@@ -16,7 +16,7 @@ from typing import List, Optional, Dict, Any, AsyncGenerator
 from contextlib import asynccontextmanager
 # import numpy as np
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import text, select
+from sqlalchemy import text, select, delete
 
 from .models import Base, CodeChunk, KnowledgeBase
 
@@ -28,12 +28,18 @@ class RetrievalDatabaseConnector:
         if database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
+        # Detect localhost connections and disable SSL for macOS compatibility
+        connect_args = {}
+        if any(host in database_url for host in ['localhost', '127.0.0.1', '::1']):
+            connect_args['ssl'] = False
+
         self.engine = create_async_engine(
             database_url,
             pool_size=pool_size,
             max_overflow=max_overflow,
             pool_pre_ping=True,
-            echo=False  # Set to True for SQL debugging
+            echo=False,  # Set to True for SQL debugging
+            connect_args=connect_args
         )
 
         self.async_session = async_sessionmaker(
@@ -184,6 +190,35 @@ class RetrievalDatabaseConnector:
             for chunk in code_chunks:
                 await session.refresh(chunk)
             return code_chunks
+
+    async def delete_code_chunks_for_files(
+        self,
+        session_id: uuid.UUID,
+        files: List[Dict[str, str]]
+    ) -> int:
+        """
+        Delete code chunks for specific files (by file_path and language).
+
+        Args:
+            session_id: Session identifier to scope deletions.
+            files: List of dicts with keys: file_path, language.
+        Returns:
+            Number of deleted rows.
+        """
+        if not files:
+            return 0
+        async with self.get_session() as session:
+            total_deleted = 0
+            for file_ref in files:
+                stmt = delete(CodeChunk).where(
+                    CodeChunk.session_id == session_id,
+                    CodeChunk.file_path == file_ref.get("file_path", ""),
+                    CodeChunk.language == file_ref.get("language", ""),
+                )
+                result = await session.execute(stmt)
+                total_deleted += result.rowcount or 0
+            await session.commit()
+            return total_deleted
 
 
     async def similarity_search_code_chunk(self,

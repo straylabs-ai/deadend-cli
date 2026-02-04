@@ -178,10 +178,17 @@ async def eval_deadend_agent(
     if with_code_indexing:
         deadend_agent.init_webtarget_indexer(target_host)
         web_resources_crawler = await deadend_agent.crawl_target()
-        code_chunks = await deadend_agent.embed_target(
+        code_chunks, embed_diff = await deadend_agent.embed_target(
             embedder_client=embedder_client
         )
 
+        if embed_diff:
+            delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
+            if delete_files:
+                await code_indexer_db.delete_code_chunks_for_files(
+                    session_id=deadend_agent.session_id,
+                    files=delete_files
+                )
         insert = await code_indexer_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
         # console_printer.print("Sync completed.", end="\r")
 
