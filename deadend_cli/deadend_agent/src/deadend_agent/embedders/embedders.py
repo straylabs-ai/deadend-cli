@@ -71,24 +71,6 @@ async def batch_embed_chunks(
         embedding_texts.append(text)
         token_counts.append(tokens)
 
-    async def embed_texts(texts: List[str], objs: List[T], label: str) -> List[T]:
-        if not texts:
-            return []
-        try:
-            response = await embedder_client.batch_embed(input=texts)
-            for i, embedding_data in enumerate(response):
-                if i < len(objs):
-                    objs[i].embeddings = embedding_data["embedding"]
-            return objs
-        except Exception as e:
-            if len(objs) == 1:
-                print(f"Failed to embed {label}: {e}")
-                return []
-            mid = len(objs) // 2
-            left = await embed_texts(texts[:mid], objs[:mid], f"{label} (left)")
-            right = await embed_texts(texts[mid:], objs[mid:], f"{label} (right)")
-            return left + right
-
     # Build batches respecting token and item limits
     batches: List[tuple[List[str], List[T]]] = []
     batch_texts: List[str] = []
@@ -113,8 +95,22 @@ async def batch_embed_chunks(
     results: List[T] = []
     for idx, (texts, objs) in enumerate(batches, start=1):
         label = f"{batch_name} batch {idx}/{len(batches)}"
-        embedded = await embed_texts(texts, objs, label)
-        results.extend(embedded)
+        try:
+            response = await embedder_client.batch_embed(input=texts)
+            for i, embedding_data in enumerate(response):
+                if i < len(objs):
+                    objs[i].embeddings = embedding_data["embedding"]
+            results.extend(objs)
+        except Exception as e:
+            print(f"Batch embedding failed for {label}, falling back to single calls: {e}")
+            for obj, text in zip(objs, texts):
+                try:
+                    single_response = await embedder_client.batch_embed(input=[text])
+                    if single_response and len(single_response) > 0:
+                        obj.embeddings = single_response[0]["embedding"]
+                        results.append(obj)
+                except Exception as single_e:
+                    print(f"Failed to embed individual chunk: {single_e}")
 
     return [obj for obj in results if obj.embeddings is not None]
 
