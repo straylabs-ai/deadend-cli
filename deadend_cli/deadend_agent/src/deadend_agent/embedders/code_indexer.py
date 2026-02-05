@@ -190,17 +190,7 @@ class SourceCodeIndexer:
 
             if previous_manifest.get(rel_path) == file_hash:
                 skipped_files += 1
-                logger.info("TEMP LOG cache_hit file=%s", rel_path)
                 continue
-            logger.info("TEMP LOG cache_miss file=%s", rel_path)
-
-            preview = self._preview_file(file_path)
-            logger.info(
-                "TEMP LOG indexing_file file=%s ext=%s preview=%s",
-                rel_path,
-                Path(file).suffix,
-                preview,
-            )
 
             url_path = self._relpath_to_url_path(rel_path)
             changed_files.append({"file_path": url_path, "language": file})
@@ -222,11 +212,6 @@ class SourceCodeIndexer:
 
             file_chunks = code_chunker.chunk_file(2000)
             if file_chunks is not None:
-                logger.info(
-                    "TEMP LOG chunked file=%s chunks=%d",
-                    rel_path,
-                    len(file_chunks),
-                )
                 new_cs = await self._embed_chunks(
                     embedding_client=embedder_client,
                     url_path=url_path,
@@ -300,27 +285,11 @@ class SourceCodeIndexer:
             code_sections.append(code_section)
 
         # Use the generic batch embedding function
-        embedded = await batch_embed_chunks(
+        return await batch_embed_chunks(
             embedder_client=embedding_client,
             embeddable_objects=code_sections,
             batch_name=f"{title} chunks"
         )
-        if embedded:
-            sample = embedded[0]
-            embed_input = sample.get_embedding_content()
-            if len(embed_input) > 400:
-                embed_input = embed_input[:400] + "..."
-            embed_input = embed_input.replace("\n", "\\n")
-            embedding_len = len(sample.embeddings) if sample.embeddings else 0
-            embedding_head = sample.embeddings[:5] if sample.embeddings else []
-            logger.info(
-                "TEMP LOG embedded_sample title=%s input=%s embedding_len=%d embedding_head=%s",
-                title,
-                embed_input,
-                embedding_len,
-                embedding_head,
-            )
-        return embedded
 
     def _load_patterns(self):
         """
@@ -403,19 +372,3 @@ class SourceCodeIndexer:
             for resource in self.resources
             if resource.local_path
         }
-
-    def _preview_file(self, file_path: str, max_lines: int = 5, max_chars: int = 400) -> str:
-        try:
-            lines: list[str] = []
-            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                for _ in range(max_lines):
-                    line = f.readline()
-                    if not line:
-                        break
-                    lines.append(line.rstrip("\n"))
-            text = "\n".join(lines)
-            if len(text) > max_chars:
-                text = text[:max_chars] + "..."
-            return text.replace("\n", "\\n")
-        except OSError as exc:
-            return f"<preview failed: {exc}>"
