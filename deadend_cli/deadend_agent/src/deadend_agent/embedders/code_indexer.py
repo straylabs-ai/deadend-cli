@@ -237,6 +237,13 @@ class SourceCodeIndexer:
             len(removed_files),
             skipped_files,
         )
+        reused_pct = (skipped_files / scanned_files * 100.0) if scanned_files else 0.0
+        logger.info(
+            "Embed reuse ratio: reused_files=%d new_files=%d reused_pct=%.1f",
+            skipped_files,
+            len(changed_files),
+            reused_pct,
+        )
         return code_sections, embed_diff
 
     async def _embed_chunks(

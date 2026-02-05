@@ -14,6 +14,7 @@ from typing import List
 import docker
 import logfire
 import typer
+import logging
 from docker.errors import DockerException
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
@@ -29,6 +30,7 @@ from deadend_agent import config_setup
 from deadend_agent.core import start_python_sandbox
 
 from .banner import print_banner
+from .cli_logging import setup_logging
 from .init import init_cli_config, check_docker, \
     check_pgvector_container, stop_pgvector_container, setup_pgvector_database
 from .component_manager import ComponentManager
@@ -95,6 +97,9 @@ def chat(
 
     # Init configuration
     config = config_setup()
+    log_level_name = str(config.log_level or "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    setup_logging(level=log_level)
     print_banner(config=config)
     # Monitoring
     # logfire.configure(scrubbing=False, console=None)
@@ -166,6 +171,9 @@ def eval_agent(
             raise typer.Exit(1)
 
     config = config_setup()
+    log_level_name = str(config.log_level or "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    setup_logging(level=log_level)
     python_process = start_python_sandbox()
     console.print(f"Python sandbox started: {python_process}")
     # start eval
