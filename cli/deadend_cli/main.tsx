@@ -1,14 +1,14 @@
 import { render, Box, Text } from "ink";
 import { useState, useEffect, useRef, useMemo } from "react";
-import { logger } from "./lib/logger.ts";
+import { logger } from "./runtime/logger.ts";
 import { Banner } from "./components/Banner.tsx";
 import { Chat } from "./components/chat.tsx";
 import { PresetupWizard } from "./components/PresetupWizard.tsx";
 import { DirectStatusLine } from "./components/DirectStatusLine.tsx";
-import { DeadEndRpcClient } from "./lib/deadend-rpc-client.ts";
-import { configExists } from "./lib/config.ts";
+import { DeadEndRpcClient } from "./runtime/deadend-rpc-client.ts";
+import { configExists } from "./runtime/config.ts";
 import { configManager } from "./config/manager.ts";
-import { parseArgs, showHelp, type CliArgs } from "./lib/cli-args.ts";
+import { parseArgs, showHelp, type CliArgs } from "./runtime/cli-args.ts";
 import type { InitResult } from "./types/rpc.ts";
 
 interface AppProps {

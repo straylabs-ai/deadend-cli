@@ -10,21 +10,21 @@
  */
 
 import { useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
-import { logger } from "../lib/logger.ts";
+import { logger } from "../runtime/logger.ts";
 import { Box, useInput, Static } from "ink";
 import type { Message } from "../types/message.ts";
 import { ChatMessage } from "./ChatMessage.tsx";
 import { createMessage } from "../types/message.ts";
-import { parseCommand, isCommand } from "../lib/commands/command-parser.ts";
-import { executeCommand } from "../lib/commands/command-handler.ts";
+import { parseCommand, isCommand } from "../runtime/commands/command-parser.ts";
+import { executeCommand } from "../runtime/commands/command-handler.ts";
 import type { RpcClient, InitResult } from "../types/rpc.ts";
-import { setTarget as setTargetLocal, TARGET_SET_PREFIX } from "../lib/commands/handlers/target.ts";
-import type { CliArgs } from "../lib/cli-args.ts";
-import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
+import { setTarget as setTargetLocal, TARGET_SET_PREFIX } from "../runtime/commands/handlers/target.ts";
+import type { CliArgs } from "../runtime/cli-args.ts";
+import type { DeadEndRpcClient } from "../runtime/deadend-rpc-client.ts";
 import { StatusArea, type StatusNotification } from "./StatusArea.tsx";
 import { InputArea } from "./InputArea.tsx";
 import { useTaskRunner } from "../hooks/useTaskRunner.ts";
-import { loadSettings, type CliSettings } from "../lib/settings.ts";
+import { loadSettings, type CliSettings } from "../runtime/settings.ts";
 
 /**
  * Execution mode for security testing.

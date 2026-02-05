@@ -1,5 +1,5 @@
 import { AppConfig, DefaultSettings, ProviderSpec, ConfigJson, ProviderConfigEntry } from "./types.ts";
-import { getConfigFile, getConfigDirPath } from "../lib/config.ts";
+import { getConfigFile, getConfigDirPath } from "../runtime/config.ts";
 
 class ConfigManager {
     private config: AppConfig | null = null;
