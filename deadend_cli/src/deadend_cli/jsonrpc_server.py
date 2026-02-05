@@ -22,7 +22,6 @@ from deadend_cli.component_manager import ComponentManager
 from deadend_cli.jsonrpc.rpc_server import RPCServer
 from deadend_cli.jsonrpc.event_bus import EventBus
 from deadend_cli.jsonrpc.hooks_adapter import EventBusHooksAdapter
-from deadend_cli.embedding_sync import summarize_embed_diff, delete_stale_embeddings
 
 
 def main(
@@ -588,17 +587,20 @@ def main(
         }
         code_chunks, embed_diff = await agent.embed_target(embedder_client)
         if embed_diff:
-            changed, removed = summarize_embed_diff(embed_diff)
+            changed = len(embed_diff.get("changed_files", []))
+            removed = len(embed_diff.get("removed_files", []))
             yield {
                 "phase": "init",
                 "data": {"message": f"Embedding diff: changed={changed} removed={removed}"},
             }
         if rag_db is not None and config.embedding_model:
-            await delete_stale_embeddings(
-                rag_db,
-                agent.embedding_session_id,
-                embed_diff,
-            )
+            if embed_diff:
+                delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
+                if delete_files:
+                    await rag_db.delete_code_chunks_for_files(
+                        session_id=agent.embedding_session_id,
+                        files=delete_files
+                    )
             yield {
                     "phase": "init",
                     "data": {"message": "Storing embeddings in database..."},

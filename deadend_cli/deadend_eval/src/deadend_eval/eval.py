@@ -177,7 +177,7 @@ async def eval_deadend_agent(
 
     if with_code_indexing:
         deadend_agent.init_webtarget_indexer(target_host)
-        await deadend_agent.crawl_target()
+        web_resources_crawler = await deadend_agent.crawl_target()
         code_chunks, embed_diff = await deadend_agent.embed_target(
             embedder_client=embedder_client
         )

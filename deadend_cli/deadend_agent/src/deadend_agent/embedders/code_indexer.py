@@ -195,13 +195,20 @@ class SourceCodeIndexer:
             url_path = self._relpath_to_url_path(rel_path)
             changed_files.append({"file_path": url_path, "language": file})
 
-            language = "javascript" if file.endswith((".js", ".jsx")) else "html"
-            code_chunker = Chunker(
-                file_path,
-                language,
-                True,
-                tiktoken_model='gpt-4o-mini'
-            )
+            if file.endswith(".js") or file.endswith(".jsx"):
+                code_chunker = Chunker(
+                    file_path,
+                    'javascript',
+                    True,
+                    tiktoken_model='gpt-4o-mini'
+                )
+            else:
+                code_chunker = Chunker(
+                    file_path,
+                    'html',
+                    True,
+                    tiktoken_model='gpt-4o-mini'
+                )
 
             file_chunks = code_chunker.chunk_file(2000)
             if file_chunks is not None:
