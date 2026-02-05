@@ -40,6 +40,7 @@ from deadend_agent.agents import RequesterOutput
 from deadend_agent.agents.judge import JudgeOutput
 from deadend_agent.utils.network import check_target_alive, deterministic_session_id
 from .console import console_printer
+from .embedding_sync import summarize_embed_diff, delete_stale_embeddings
 
 # Defining Agent modes
 class Modes(str, Enum):
@@ -464,7 +465,7 @@ Please provide a target URL.[/yellow]")
 
     # Indexing webtarget
     deadend_agent.init_webtarget_indexer(target=target)
-    web_ressource_crawl = await chat_interface.wait_response(
+    await chat_interface.wait_response(
         func=deadend_agent.crawl_target,
         status="Gathering webpage resources..."
     )
@@ -475,8 +476,7 @@ Please provide a target URL.[/yellow]")
 
     )
     if embed_diff:
-        changed = len(embed_diff.get("changed_files", []))
-        removed = len(embed_diff.get("removed_files", []))
+        changed, removed = summarize_embed_diff(embed_diff)
         console_printer.print(
             f"[blue]Embedding diff[/blue] changed={changed} removed={removed} "
             f"(session={deadend_agent.embedding_session_id})"
@@ -484,13 +484,11 @@ Please provide a target URL.[/yellow]")
 
     # Inserting in database
     if rag_db is not None and config.openai_api_key and config.embedding_model:
-        if embed_diff:
-            delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
-            if delete_files:
-                    await rag_db.delete_code_chunks_for_files(
-                        session_id=deadend_agent.embedding_session_id,
-                        files=delete_files
-                    )
+        await delete_stale_embeddings(
+            rag_db,
+            deadend_agent.embedding_session_id,
+            embed_diff,
+        )
         insert = await chat_interface.wait_response(
             func=rag_db.batch_insert_code_chunks,
             status="Syncing DB",
@@ -575,7 +573,7 @@ Please provide a target URL.[/yellow]")
                         deadend_agent.set_approval_callback(approval_callback)
                         # Re-initialize with new target
                         deadend_agent.init_webtarget_indexer(target=target)
-                        web_ressource_crawl = await chat_interface.wait_response(
+                        await chat_interface.wait_response(
                             func=deadend_agent.crawl_target,
                             status="Gathering webpage resources for new target..."
                         )
@@ -585,20 +583,17 @@ Please provide a target URL.[/yellow]")
                             embedder_client=embedder_client
                         )
                         if embed_diff:
-                            changed = len(embed_diff.get("changed_files", []))
-                            removed = len(embed_diff.get("removed_files", []))
+                            changed, removed = summarize_embed_diff(embed_diff)
                             console_printer.print(
                                 f"[blue]Embedding diff[/blue] changed={changed} removed={removed} "
                                 f"(session={deadend_agent.embedding_session_id})"
                             )
                         if rag_db is not None and config.openai_api_key and config.embedding_model:
-                            if embed_diff:
-                                delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
-                                if delete_files:
-                                    await rag_db.delete_code_chunks_for_files(
-                                        session_id=deadend_agent.embedding_session_id,
-                                        files=delete_files
-                                    )
+                            await delete_stale_embeddings(
+                                rag_db,
+                                deadend_agent.embedding_session_id,
+                                embed_diff,
+                            )
                             insert = await chat_interface.wait_response(
                                 func=rag_db.batch_insert_code_chunks,
                                 status="Syncing DB with new target data",

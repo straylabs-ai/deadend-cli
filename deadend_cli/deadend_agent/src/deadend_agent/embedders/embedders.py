@@ -9,7 +9,6 @@ using OpenAI's API, with fallback to parallel individual calls for robustness.
 """
 
 from typing import List, TypeVar, Protocol
-import asyncio
 
 import tiktoken
 from deadend_agent.models.registry import EmbedderClient
