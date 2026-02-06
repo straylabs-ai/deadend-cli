@@ -68,6 +68,8 @@ class ShellAgent(AgentRunner):
         usage: RunUsage | None,
         usage_limits: UsageLimits | None,
         deferred_tool_results: DeferredToolResults | None = None,
+        *args,
+        **kwargs
     ):
         return await super().run(
             prompt=prompt,

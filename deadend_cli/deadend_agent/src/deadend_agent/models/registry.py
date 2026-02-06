@@ -318,7 +318,7 @@ class ModelRegistry:
             all_models[provider] = provider_models
 
         return all_models
-
+    
     def add_model_provider(
         self,
         provider: str,

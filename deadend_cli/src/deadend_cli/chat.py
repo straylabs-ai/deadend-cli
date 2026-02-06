@@ -342,7 +342,7 @@ class ChatInterface:
 
             return await app.run_async()
         except KeyboardInterrupt:
-            return None
+            return ""
 
 async def chat_interface(
         config: Config,

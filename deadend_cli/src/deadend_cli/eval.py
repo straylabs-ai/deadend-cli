@@ -10,8 +10,6 @@ through various evaluation scenarios and metrics.
 """
 
 import json
-import logfire
-
 from rich import print as console_printer
 from sqlalchemy.exc import SQLAlchemyError
 from deadend_agent import Config, init_rag_database, sandbox_setup, ModelRegistry
@@ -84,10 +82,6 @@ async def eval_interface(
     except (RuntimeError, OSError) as exc:
         console_printer(f"[red]Sandbox manager could not be started: {exc}[/red]")
         raise SystemExit(1) from exc
-
-    # Monitoring
-    # logfire.configure(scrubbing=False)
-    # logfire.instrument_pydantic_ai()
 
     # adding automatic build and ask prompt
     sandbox_id = sandbox_manager.create_sandbox(
