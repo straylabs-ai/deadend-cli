@@ -103,7 +103,6 @@ class CodeSection:
     async def embed_content(
         self,
         embedder_client: EmbedderClient,
-        # embedding_model: str
     ):
         """Generate embeddings for the code section content.
         
@@ -116,15 +115,8 @@ class CodeSection:
             The method handles BadRequestError exceptions gracefully.
         """
         try:
-            # response = await openai.embeddings.create(
-            #     input=str(self.content),
-            #     model=embedding_model
-            # )
-            # assert len(response.data) == 1, (
-            #     f'Expected 1 embedding, got {len(response.data)}, file : {self.title}'
-            # )
-            # self.embeddings = response.data[0].embedding
-            self.embeddings = embedder_client.batch_embed(input=str(self.content))
+            batch_embeddings = await embedder_client.batch_embed(input_texts=[str(self.content)])
+            self.embeddings = batch_embeddings[0]['embedding']
         except BadRequestError as e:
             pprint(f"File {self.title} with content : {self.content} not embedded: {e}")
             self.embeddings = None

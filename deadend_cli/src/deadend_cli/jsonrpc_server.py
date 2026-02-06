@@ -3,7 +3,7 @@
 # See LICENSE file for full license information.
 
 """ JsonRPC server interface """
-from typing import Any, Dict
+from typing import Any, Dict, AsyncGenerator
 import json
 from dataclasses import asdict, is_dataclass
 from pydantic import TypeAdapter
@@ -254,7 +254,7 @@ def main(
         _request_id: Any,
         _params: Dict[str, Any],
         event_bus: EventBus
-    ) -> Dict[str, Any]:
+    ) -> AsyncGenerator[Dict[str, Any]]:
         async for event in event_bus.subscribe():
             yield event.model_dump()
 

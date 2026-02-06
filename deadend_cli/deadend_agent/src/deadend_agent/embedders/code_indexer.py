@@ -299,7 +299,6 @@ class SourceCodeIndexer:
         identifying and filtering out vendor-specific files (like jQuery, Bootstrap)
         that should not be indexed for security analysis.
         """
-        import json
         import importlib.resources
 
         # Get the path to the data file within the package
@@ -328,7 +327,7 @@ class SourceCodeIndexer:
         triggered_patterns = []
         for pattern in common_patterns:
             res = re.search(pattern=pattern, string=filename)
-            if res != None:
+            if res is not None:
                 triggered_patterns.append(res.group())
         if len(triggered_patterns)>0:
             return True 

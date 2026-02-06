@@ -12,10 +12,9 @@ objects that are consumed by the CoreAgent and other components.
 
 from typing import Dict
 import aiohttp
-
-from deadend_agent.config.settings import Config, ModelSpec, EmbeddingSpec, ProvidersList
 from pydantic import BaseModel
-from deadend_cli.cli_logging import logger
+from deadend_agent.config.settings import Config, ModelSpec, EmbeddingSpec, ProvidersList
+from deadend_agent.logging import logger
 
 class EmbedderClient:
     """Client for generating embeddings using various embedding API providers.
@@ -30,10 +29,10 @@ class EmbedderClient:
         base_url: Base URL for the embedding API endpoint.
     """
     model: str
-    api_key: str
+    api_key: str | None
     base_url: str
 
-    def __init__(self, model_name: str, api_key: str, base_url: str) -> None:
+    def __init__(self, model_name: str, api_key: str | None, base_url: str) -> None:
         """Initialize the EmbedderClient with provider configuration.
         
         Args:
@@ -45,7 +44,7 @@ class EmbedderClient:
         self.api_key = api_key
         self.base_url = base_url
 
-    async def batch_embed(self, input: list) -> list:
+    async def batch_embed(self, input_texts: list[str]) -> list[dict]:
         """Generate embeddings for a batch of input texts.
         
         Sends a batch embedding request to the configured API endpoint and
@@ -53,7 +52,7 @@ class EmbedderClient:
         and other providers with different response structures.
         
         Args:
-            input: List of text strings to embed. Each string will be
+            input_texts: List of text strings to embed. Each string will be
                 embedded into a vector representation.
         
         Returns:
@@ -74,7 +73,7 @@ class EmbedderClient:
                     },
                     json={
                         "model": self.model,
-                        "input": input
+                        "input": input_texts
                     }
                 )
 
@@ -96,7 +95,8 @@ class EmbedderClient:
             elif isinstance(data, dict) and 'error' in data:
                 # API returned an error
                 error_info = data.get('error', {})
-                error_msg = error_info.get('message', str(error_info)) if isinstance(error_info, dict) else str(error_info)
+                error_msg = error_info.get('message', str(error_info)) \
+                    if isinstance(error_info, dict) else str(error_info)
                 raise ValueError(f"Embedding API error: {error_msg}")
             else:
                 # Try to find embeddings in the response
@@ -107,6 +107,12 @@ class EmbedderClient:
         return embeddings if embeddings else []
 
 class ModelInfo(BaseModel):
+    """Lightweight representation of a configured model.
+
+    This is used by `ModelRegistry.get_all_models()` to expose a simplified
+    view of all available models without leaking the full internal
+    `ModelSpec` objects.
+    """
     provider: str
     model_name: str
     type_model:  str | None = None
@@ -160,7 +166,7 @@ class ModelRegistry:
             for spec in providers_list.model_providers:
                 if isinstance(spec, EmbeddingSpec):
                     # Use the first embedding spec we encounter as the embedder client
-                    if self.embedder_model is None:
+                    if self.embedder_model is None and spec.base_url is not None:
                         # api_key, base_url = self._resolve_embedding_credentials(spec)
                         self.embedder_model = EmbedderClient(
                             model_name=spec.model_name,
@@ -292,7 +298,7 @@ class ModelRegistry:
         """Return True if at least one model provider is configured."""
         return len(self._models) > 0
 
-    def get_all_models(self) -> Dict[str, list[ModelSpec]]:
+    def get_all_models(self) -> Dict[str, list[ModelInfo]]:
         """Get a dictionary of all initialized model specifications.
         
         Returns a copy of the internal models dictionary, allowing access
@@ -305,11 +311,14 @@ class ModelRegistry:
         all_models: Dict[str, list[ModelInfo]] = {}
 
         for provider, model_specs in self._models.items():
-            provider_models = [ModelInfo(provider=spec.provider, model_name=spec.model_name, type_model=None) for spec in model_specs]
+            provider_models = [ModelInfo(
+                provider=spec.provider,
+                model_name=spec.model_name,
+                type_model=None) for spec in model_specs]
             all_models[provider] = provider_models
 
         return all_models
-    
+
     def add_model_provider(
         self,
         provider: str,
@@ -348,6 +357,20 @@ class ModelRegistry:
         new_model: str,
         api_key: str | None
     ):
+        """Update an existing model configuration and refresh the registry.
+
+        This looks up an existing `ModelSpec` by its current provider/model
+        pair, applies the requested changes through the underlying `Config`,
+        and then leaves the registry ready to be re-initialized or queried
+        with the updated settings.
+
+        Args:
+            selected_provider: Current provider name of the model to update.
+            selected_model: Current model name to identify the spec.
+            new_provider: New provider name to set on the model.
+            new_model: New model name to set on the model.
+            api_key: Optional new API key for the updated model.
+        """
         selected_model_spec = self._find_spec_by_model_name(
             model_name=selected_model,
             selected_provider=selected_provider
@@ -357,5 +380,7 @@ class ModelRegistry:
             updated_provider=selected_model_spec,
             provider=new_provider,
             model_name=new_model,
-            api_key=api_key
+            api_key=api_key,
+            type_model=None,
+            vec_dim=None
         )

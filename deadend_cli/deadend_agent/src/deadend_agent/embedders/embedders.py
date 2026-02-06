@@ -9,8 +9,6 @@ using OpenAI's API, with fallback to parallel individual calls for robustness.
 """
 
 from typing import List, TypeVar, Protocol
-import asyncio
-
 import tiktoken
 from deadend_agent.models.registry import EmbedderClient
 
@@ -25,7 +23,7 @@ class Embeddable(Protocol):
     - A method to get embedding content as string
     """
     embeddings: List[float] | None
-    
+
     def get_embedding_content(self) -> str:
         """Return the content to be embedded as a string."""
         ...
@@ -67,7 +65,7 @@ async def batch_embed_chunks(
             return
         label = f"{batch_name} batch {batch_index}"
         try:
-            response = await embedder_client.batch_embed(input=batch_texts)
+            response = await embedder_client.batch_embed(input_texts=batch_texts)
             for i, embedding_data in enumerate(response):
                 if i < len(batch_objs):
                     batch_objs[i].embeddings = embedding_data["embedding"]
@@ -76,7 +74,7 @@ async def batch_embed_chunks(
             print(f"Batch embedding failed for {label}, falling back to single calls: {e}")
             for obj, text in zip(batch_objs, batch_texts):
                 try:
-                    single_response = await embedder_client.batch_embed(input=[text])
+                    single_response = await embedder_client.batch_embed(input_texts=[text])
                     if single_response and len(single_response) > 0:
                         obj.embeddings = single_response[0]["embedding"]
                         results.append(obj)

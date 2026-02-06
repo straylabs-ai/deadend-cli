@@ -34,11 +34,12 @@ from prompt_toolkit.layout import Dimension as D
 from pydantic import BaseModel
 from pydantic_ai import DeferredToolRequests
 from sqlalchemy.exc import SQLAlchemyError
-from deadend_agent import Config, DeadEndAgent, init_rag_database, sandbox_setup, ModelRegistry
+
 from deadend_agent.utils.structures import Task
 from deadend_agent.agents import RequesterOutput
 from deadend_agent.agents.judge import JudgeOutput
 from deadend_agent.utils.network import check_target_alive, deterministic_session_id
+from deadend_agent import Config, DeadEndAgent, init_rag_database, sandbox_setup, ModelRegistry
 from .console import console_printer
 
 # Defining Agent modes
@@ -395,7 +396,7 @@ async def chat_interface(
         'shell': "Agent that gives access to a terminal bash shell. Run linux commands here.",
         'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
     }
-    deadend_agent = None
+
 
     # Set up approval callback to use Prompt Toolkit
     async def approval_callback():

@@ -31,8 +31,8 @@ async def webapp_code_rag(
         search_query += '\n The target supplied is: ' + context.deps.target
 
     embedding = await context.deps.embedder_client.batch_embed(
-        input=search_query,
-    ) 
+        input_texts=[search_query],
+    )
 
     assert len(embedding) == 1, (
         f'Expected 1 embedding, got {len(embedding)}, doc query: {search_query!r}'
