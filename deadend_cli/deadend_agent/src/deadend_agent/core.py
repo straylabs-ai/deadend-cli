@@ -66,9 +66,10 @@ def sandbox_setup() -> SandboxManager:
     sandbox_manager = SandboxManager()
     return sandbox_manager
 
-def setup_model_registry(config: Config) -> ModelRegistry:
+async def setup_model_registry(config: Config) -> ModelRegistry:
     """Setup Model registry"""
     model_registry = ModelRegistry(config=config)
+    await model_registry.initialize()
     return model_registry
 
 def _file_matches_sha256(path: Path, expected_hash: str) -> bool:

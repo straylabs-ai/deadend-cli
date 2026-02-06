@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any, AsyncGenerator
 from contextlib import asynccontextmanager
+from urllib.parse import urlparse
 # import numpy as np
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy import text, select
@@ -28,12 +29,20 @@ class RetrievalDatabaseConnector:
         if database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
+        # Disable SSL for localhost connections to fix macOS asyncpg issues
+        # asyncpg requires ssl=False instead of sslmode URL parameter
+        parsed = urlparse(database_url)
+        connect_args = {}
+        if parsed.hostname in ('localhost', '127.0.0.1', '::1'):
+            connect_args['ssl'] = False
+
         self.engine = create_async_engine(
             database_url,
             pool_size=pool_size,
             max_overflow=max_overflow,
             pool_pre_ping=True,
-            echo=False  # Set to True for SQL debugging
+            echo=False,  # Set to True for SQL debugging
+            connect_args=connect_args
         )
 
         self.async_session = async_sessionmaker(
