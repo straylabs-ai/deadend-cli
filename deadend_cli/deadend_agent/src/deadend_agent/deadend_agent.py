@@ -35,6 +35,7 @@ class DeadEndAgent:
     """Main orchestrator for the DeadEnd security research framework."""
 
     session_id: UUID
+    embedding_session_id: UUID
     model: ModelSpec
     embedder_model: EmbedderClient | None = None
     available_agents: Dict[str, str]
@@ -63,9 +64,11 @@ class DeadEndAgent:
         available_agents: Dict[str, str],
         max_depth: int = 3,
         validation_type: str | None = None,
-        validation_format: str | None = None
+        validation_format: str | None = None,
+        embedding_session_id: UUID | None = None
     ):
         self.session_id = session_id
+        self.embedding_session_id = embedding_session_id or session_id
         self.max_depth = max_depth
         self.model = model
         self.available_agents = available_agents
@@ -130,7 +133,7 @@ class DeadEndAgent:
         self.context.set_target(target)
         self.code_indexer = SourceCodeIndexer(
             target=self.target,
-            session_id=self.session_id
+            session_id=self.embedding_session_id
         )
 
 
@@ -149,6 +152,11 @@ class DeadEndAgent:
         Note:
             Requires init_webtarget_indexer() to be called first.
         """
+        if self.code_indexer is None:
+            raise ValueError(
+                "Web target indexer is not initialized. "
+                "Call init_webtarget_indexer() before crawl_target()."
+            )
         return await self.code_indexer.crawl_target()
 
     async def embed_target(self, embedder_client: EmbedderClient):
@@ -157,6 +165,11 @@ class DeadEndAgent:
         Returns:
             Serialized embedded code sections
         """
+        if self.code_indexer is None:
+            raise ValueError(
+                "Web target indexer is not initialized. "
+                "Call init_webtarget_indexer() before serialized_embedded_code()."
+            )
         return await self.code_indexer.serialized_embedded_code(
             embedder_client=embedder_client
         )
@@ -199,24 +212,22 @@ class DeadEndAgent:
             embedder_client=embedder_client,
             rag=rag_connector,
             target=target_host,
-            session_id=self.session_id
+            session_id=self.session_id,
+            embedding_session_id=self.embedding_session_id
         )
         self.webapprecon_deps = WebappreconDeps(
             embedder_client=embedder_client,
             rag=rag_connector,
             target=target_host,
             shell_runner=shell_runner,
-            session_id=self.session_id
+            session_id=self.session_id,
+            embedding_session_id=self.embedding_session_id
         )
-        # setup session key
-        host, port = extract_host_port(target_host=self.target)
-        session_key = f"{host}_{port}"
-
         self.executor = AgentExecutor(
             model=self.model,
             context=self.context,
             available_agents=self.available_agents,
-            session_id=session_key
+            session_id=self._target_session_key()
         )
 
         self.executor.set_dependencies(
@@ -289,7 +300,7 @@ Critical rules:
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
         ):
-            traces.append(event)
+            traces.append(event.model_dump())
             if isinstance(event, ResultEvent):
                 confidence_score = event.confidence_score
                 context = event.context
@@ -369,7 +380,7 @@ Critical rules:
             children=[]
         )
 
-        self.context.set_root_task(task_root)
+        self.context.set_root_task(task_root.task)
 
         target_context =f"Target : {self.context.target}"
         context = {}
@@ -424,10 +435,6 @@ IMPORTANT:
 
     async def run_exploitation(self, threat_model: str, task: str):
         """Runs the exploitation workflow"""
-        # setup session key for exploit agent
-        host, port = extract_host_port(target_host=self.target)
-        session_key = f"{host}_{port}"
-
         # Create exploit agent as planner
         self.exploit_agent = PlannerExploitAgent(
             model=self.model,
@@ -444,7 +451,7 @@ IMPORTANT:
         self.context.structured.clear_current_log()
 
         # Pass session_key as deps for the exploit agent
-        self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
+        self.planner = Planner(planner_agent=self.exploit_agent, deps=self._target_session_key())
         self.adapt_agent = ADaPTAgent(
             session_id=self.session_id,
             context=self.context,
@@ -496,10 +503,6 @@ The flag that you need to find has the following format : FLAG{{}}.
 
     async def start_testing_stream(self, threat_model: str, task: str):
         """Runs the exploitation workflow"""
-        # setup session key for exploit agent
-        host, port = extract_host_port(target_host=self.target)
-        session_key = f"{host}_{port}"
-
         # Create exploit agent as planner
         self.exploit_agent = PlannerExploitAgent(
             model=self.model,
@@ -510,7 +513,7 @@ The flag that you need to find has the following format : FLAG{{}}.
         self.context.reset()
 
         # Pass session_key as deps for the exploit agent
-        self.planner = Planner(planner_agent=self.exploit_agent, deps=session_key)
+        self.planner = Planner(planner_agent=self.exploit_agent, deps=self._target_session_key())
         self.adapt_agent = ADaPTAgent(
             session_id=self.session_id,
             context=self.context,
@@ -573,3 +576,15 @@ IMPORTANT:
 
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
+
+    def _target_session_key(self) -> str:
+        """Build a normalized session key from the current target host and port.
+
+        Raises:
+            ValueError: If `self.target` has not been set.
+        """
+        if self.target is None:
+            raise ValueError("target must be provided before initializing dependencies.")
+
+        host, port = extract_host_port(target_host=self.target)
+        return f"{host}_{port}"

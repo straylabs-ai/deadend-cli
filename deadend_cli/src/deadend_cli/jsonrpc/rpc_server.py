@@ -21,7 +21,6 @@ import logging
 import os
 import signal
 import sys
-import uuid
 from dataclasses import asdict, is_dataclass
 
 from deadend_agent.core_agent import (

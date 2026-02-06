@@ -201,7 +201,7 @@ class Config:
 
     # # Application settings
     # app_env: str = _cfg("APP_ENV", "development") or "development"
-    # log_level: str = _cfg("LOG_LEVEL", "INFO") or "INFO"
+    log_level: str = _cfg("LOG_LEVEL", "INFO") or "INFO"
 
     @classmethod
     def configure(cls, env_file: str = ".env"):

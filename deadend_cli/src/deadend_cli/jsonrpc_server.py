@@ -3,13 +3,14 @@
 # See LICENSE file for full license information.
 
 """ JsonRPC server interface """
-from typing import Any, Dict
+from typing import Any, Dict, AsyncGenerator
 import json
 from dataclasses import asdict, is_dataclass
 from pydantic import TypeAdapter
 import typer
 import uuid
 from deadend_agent import DeadEndAgent, Sandbox, config_setup, set_event_hooks
+from deadend_agent.utils.network import deterministic_session_id
 from deadend_agent.tools.tool_wrappers import (
     set_approval_provider,
     enable_approval_mode,
@@ -253,7 +254,7 @@ def main(
         _request_id: Any,
         _params: Dict[str, Any],
         event_bus: EventBus
-    ) -> Dict[str, Any]:
+    ) -> AsyncGenerator[Dict[str, Any]]:
         async for event in event_bus.subscribe():
             yield event.model_dump()
 
@@ -470,6 +471,8 @@ def main(
             }
 
         agent_id = uuid.uuid4()
+        runtime_session_id = uuid.uuid4()
+        embedding_session_id = deterministic_session_id(target)
 
         available_agents = {
             "requester": (
@@ -485,7 +488,8 @@ def main(
             "router_agent": "Router agent that selects the appropriate specialized agent.",
         }
         deadend_agent = DeadEndAgent(
-            session_id=agent_id,
+            session_id=runtime_session_id,
+            embedding_session_id=embedding_session_id,
             model=model,
             available_agents=available_agents,
             max_depth=3
@@ -581,8 +585,22 @@ def main(
                 "phase": "init",
                 "data": {"message": "Embedding target code..."},
         }
-        code_chunks = await agent.embed_target(embedder_client)
+        code_chunks, embed_diff = await agent.embed_target(embedder_client)
+        if embed_diff:
+            changed = len(embed_diff.get("changed_files", []))
+            removed = len(embed_diff.get("removed_files", []))
+            yield {
+                "phase": "init",
+                "data": {"message": f"Embedding diff: changed={changed} removed={removed}"},
+            }
         if rag_db is not None and config.embedding_model:
+            if embed_diff:
+                delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
+                if delete_files:
+                    await rag_db.delete_code_chunks_for_files(
+                        session_id=agent.embedding_session_id,
+                        files=delete_files
+                    )
             yield {
                     "phase": "init",
                     "data": {"message": "Storing embeddings in database..."},

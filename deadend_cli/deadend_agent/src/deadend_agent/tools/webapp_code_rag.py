@@ -31,17 +31,18 @@ async def webapp_code_rag(
         search_query += '\n The target supplied is: ' + context.deps.target
 
     embedding = await context.deps.embedder_client.batch_embed(
-        input=search_query,
-    ) 
+        input_texts=[search_query],
+    )
 
     assert len(embedding) == 1, (
         f'Expected 1 embedding, got {len(embedding)}, doc query: {search_query!r}'
     )
     embedding = embedding[0]['embedding']
 
+    session_id = getattr(context.deps, "embedding_session_id", None) or context.deps.session_id
     results = await context.deps.rag.similarity_search_code_chunk(
         query_embedding=embedding,
-        session_id=context.deps.session_id,
+        session_id=session_id,
         limit=5
     )
     for chunk, similarity in results:

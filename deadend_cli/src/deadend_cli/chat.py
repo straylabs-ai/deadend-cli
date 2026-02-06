@@ -34,11 +34,12 @@ from prompt_toolkit.layout import Dimension as D
 from pydantic import BaseModel
 from pydantic_ai import DeferredToolRequests
 from sqlalchemy.exc import SQLAlchemyError
-from deadend_agent import Config, DeadEndAgent, init_rag_database, sandbox_setup, ModelRegistry
+
 from deadend_agent.utils.structures import Task
 from deadend_agent.agents import RequesterOutput
 from deadend_agent.agents.judge import JudgeOutput
-from deadend_agent.utils.network import check_target_alive
+from deadend_agent.utils.network import check_target_alive, deterministic_session_id
+from deadend_agent import Config, DeadEndAgent, init_rag_database, sandbox_setup, ModelRegistry
 from .console import console_printer
 
 # Defining Agent modes
@@ -395,19 +396,11 @@ async def chat_interface(
         'shell': "Agent that gives access to a terminal bash shell. Run linux commands here.",
         'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
     }
-    session_id = uuid4()
-    deadend_agent = DeadEndAgent(
-        session_id=session_id,
-        model=model,
-        available_agents=available_agents,
-        max_depth=3
-    )
+
 
     # Set up approval callback to use Prompt Toolkit
     async def approval_callback():
         return await chat_interface.ask_for_approval_panel("Tool Execution Approval Required")
-
-    deadend_agent.set_approval_callback(approval_callback)
 
     # {
     #     'webapp_recon': "Expert cybersecurity agent that enumerates a web \
@@ -458,21 +451,47 @@ Please provide a target URL.[/yellow]")
                 console_printer.print("[red]No target provided. Exiting application...[/red]")
                 sys.exit(1)
 
+    # Create agent with deterministic session ID per target
+    runtime_session_id = uuid4()
+    embedding_session_id = deterministic_session_id(target)
+    deadend_agent = DeadEndAgent(
+        session_id=runtime_session_id,
+        embedding_session_id=embedding_session_id,
+        model=model,
+        available_agents=available_agents,
+        max_depth=3
+    )
+    deadend_agent.set_approval_callback(approval_callback)
+
     # Indexing webtarget
     deadend_agent.init_webtarget_indexer(target=target)
     web_ressource_crawl = await chat_interface.wait_response(
         func=deadend_agent.crawl_target,
         status="Gathering webpage resources..."
     )
-    code_chunks = await chat_interface.wait_response(
+    code_chunks, embed_diff = await chat_interface.wait_response(
         func=deadend_agent.embed_target,
         status="Indexing the different webpage resources...",
         embedder_client=embedder_client
 
     )
+    if embed_diff:
+        changed = len(embed_diff.get("changed_files", []))
+        removed = len(embed_diff.get("removed_files", []))
+        console_printer.print(
+            f"[blue]Embedding diff[/blue] changed={changed} removed={removed} "
+            f"(session={deadend_agent.embedding_session_id})"
+        )
 
     # Inserting in database
     if rag_db is not None and config.openai_api_key and config.embedding_model:
+        if embed_diff:
+            delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
+            if delete_files:
+                    await rag_db.delete_code_chunks_for_files(
+                        session_id=deadend_agent.embedding_session_id,
+                        files=delete_files
+                    )
         insert = await chat_interface.wait_response(
             func=rag_db.batch_insert_code_chunks,
             status="Syncing DB",
@@ -544,18 +563,43 @@ Please provide a target URL.[/yellow]")
                     if new_target and new_target != "__CLEAR__" and new_target != "__NEW_TARGET__":
                         target = new_target
                         console_printer.print(f"[green]Target changed to: {target}[/green]")
+                        # Recreate agent with deterministic session for new target
+                        runtime_session_id = uuid4()
+                        embedding_session_id = deterministic_session_id(target)
+                        deadend_agent = DeadEndAgent(
+                            session_id=runtime_session_id,
+                            embedding_session_id=embedding_session_id,
+                            model=model,
+                            available_agents=available_agents,
+                            max_depth=3
+                        )
+                        deadend_agent.set_approval_callback(approval_callback)
                         # Re-initialize with new target
                         deadend_agent.init_webtarget_indexer(target=target)
                         web_ressource_crawl = await chat_interface.wait_response(
                             func=deadend_agent.crawl_target,
                             status="Gathering webpage resources for new target..."
                         )
-                        code_chunks = await chat_interface.wait_response(
+                        code_chunks, embed_diff = await chat_interface.wait_response(
                             func=deadend_agent.embed_target,
                             status="Indexing the different webpage resources for new target...",
                             embedder_client=embedder_client
                         )
+                        if embed_diff:
+                            changed = len(embed_diff.get("changed_files", []))
+                            removed = len(embed_diff.get("removed_files", []))
+                            console_printer.print(
+                                f"[blue]Embedding diff[/blue] changed={changed} removed={removed} "
+                                f"(session={deadend_agent.embedding_session_id})"
+                            )
                         if rag_db is not None and config.openai_api_key and config.embedding_model:
+                            if embed_diff:
+                                delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
+                                if delete_files:
+                                    await rag_db.delete_code_chunks_for_files(
+                                        session_id=deadend_agent.embedding_session_id,
+                                        files=delete_files
+                                    )
                             insert = await chat_interface.wait_response(
                                 func=rag_db.batch_insert_code_chunks,
                                 status="Syncing DB with new target data",

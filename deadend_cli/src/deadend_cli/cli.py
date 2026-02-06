@@ -10,14 +10,20 @@ import asyncio
 import importlib.metadata
 import os
 from typing import List
-
+import logging
 import docker
-import logfire
 import typer
+
 from docker.errors import DockerException
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-import logfire
+from deadend_agent import config_setup
+from deadend_agent.core import start_python_sandbox
+from .banner import print_banner
+from .cli_logging import setup_logging
+from .init import init_cli_config, check_docker, \
+    check_pgvector_container, stop_pgvector_container, setup_pgvector_database
+from .chat import Modes, chat_interface
+from .eval import eval_interface
 
 # Fix Docker socket path if default doesn't exist
 if not os.path.exists("/var/run/docker.sock"):
@@ -25,17 +31,6 @@ if not os.path.exists("/var/run/docker.sock"):
     if os.path.exists(docker_socket):
         os.environ["DOCKER_HOST"] = f"unix://{docker_socket}"
 
-from deadend_agent import config_setup
-from deadend_agent.core import start_python_sandbox
-
-from .banner import print_banner
-from .init import init_cli_config, check_docker, \
-    check_pgvector_container, stop_pgvector_container, setup_pgvector_database
-from .component_manager import ComponentManager
-from .chat import Modes, chat_interface
-from .eval import eval_interface
-from .init import (check_docker, check_pgvector_container, init_cli_config,
-                   setup_pgvector_database, stop_pgvector_container)
 
 console = Console()
 
@@ -95,10 +90,11 @@ def chat(
 
     # Init configuration
     config = config_setup()
+    log_level_name = str(config.log_level or "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    setup_logging(level=log_level)
     print_banner(config=config)
-    # Monitoring
-    # logfire.configure(scrubbing=False, console=None)
-    # logfire.instrument_pydantic_ai()
+
     python_process = start_python_sandbox()
     console.print(f"Python sandbox started: {python_process}")
     try:
@@ -166,6 +162,9 @@ def eval_agent(
             raise typer.Exit(1)
 
     config = config_setup()
+    log_level_name = str(config.log_level or "INFO").upper()
+    log_level = getattr(logging, log_level_name, logging.INFO)
+    setup_logging(level=log_level)
     python_process = start_python_sandbox()
     console.print(f"Python sandbox started: {python_process}")
     # start eval

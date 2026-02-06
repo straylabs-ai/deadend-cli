@@ -9,7 +9,7 @@ using OpenAI's API, with fallback to parallel individual calls for robustness.
 """
 
 from typing import List, TypeVar, Protocol
-import asyncio
+import tiktoken
 from deadend_agent.models.registry import EmbedderClient
 
 # Generic type for objects that can be embedded
@@ -23,7 +23,7 @@ class Embeddable(Protocol):
     - A method to get embedding content as string
     """
     embeddings: List[float] | None
-    
+
     def get_embedding_content(self) -> str:
         """Return the content to be embedded as a string."""
         ...
@@ -31,7 +31,8 @@ class Embeddable(Protocol):
 async def batch_embed_chunks(
     embedder_client: EmbedderClient,
     embeddable_objects: List[T],
-    batch_name: str = "chunks"
+    batch_name: str = "chunks",
+    max_batch_tokens: int = 250_000,
 ) -> List[T]:
     """Generate embeddings for a list of embeddable objects using batch API calls.
     
@@ -50,34 +51,67 @@ async def batch_embed_chunks(
     """
     if not embeddable_objects:
         return []
-    # Prepare texts for batch embedding
-    embedding_texts = [obj.get_embedding_content() for obj in embeddable_objects]
+    encoder = _get_token_encoder(getattr(embedder_client, "model", None))
 
+    results: List[T] = []
+    batch_texts: List[str] = []
+    batch_objs: List[T] = []
+    batch_tokens = 0
+    batch_index = 1
+
+    async def flush_batch() -> None:
+        nonlocal batch_texts, batch_objs, batch_tokens, batch_index, results
+        if not batch_objs:
+            return
+        label = f"{batch_name} batch {batch_index}"
+        try:
+            response = await embedder_client.batch_embed(input_texts=batch_texts)
+            for i, embedding_data in enumerate(response):
+                if i < len(batch_objs):
+                    batch_objs[i].embeddings = embedding_data["embedding"]
+            results.extend(batch_objs)
+        except Exception as e:
+            print(f"Batch embedding failed for {label}, falling back to single calls: {e}")
+            for obj, text in zip(batch_objs, batch_texts):
+                try:
+                    single_response = await embedder_client.batch_embed(input_texts=[text])
+                    if single_response and len(single_response) > 0:
+                        obj.embeddings = single_response[0]["embedding"]
+                        results.append(obj)
+                except Exception as single_e:
+                    print(f"Failed to embed individual chunk: {single_e}")
+        batch_texts = []
+        batch_objs = []
+        batch_tokens = 0
+        batch_index += 1
+
+    for obj in embeddable_objects:
+        text = obj.get_embedding_content()
+        tokens = len(encoder.encode(text))
+        if tokens > max_batch_tokens:
+            print(
+                f"Warning: single {batch_name} item exceeds max tokens "
+                f"({tokens} > {max_batch_tokens}). Truncating."
+            )
+            text = encoder.decode(encoder.encode(text)[:max_batch_tokens])
+            tokens = max_batch_tokens
+
+        if batch_objs and (batch_tokens + tokens > max_batch_tokens):
+            await flush_batch()
+
+        batch_texts.append(text)
+        batch_objs.append(obj)
+        batch_tokens += tokens
+
+    await flush_batch()
+
+    return [obj for obj in results if obj.embeddings is not None]
+
+
+def _get_token_encoder(model_name: str | None):
     try:
-        # response = await openai.embeddings.create(
-        #     input=embedding_texts,
-        #     model=embedding_model
-        # )
-
-        response = await embedder_client.batch_embed(input=embedding_texts)
-        for i, embedding_data in enumerate(response):
-            if i < len(embeddable_objects):
-                embeddable_objects[i].embeddings = embedding_data['embedding']
-        return embeddable_objects
-    except Exception as e:
-        print(f"Batch embedding failed for {batch_name}, falling back to individual calls: {e}")
-        # Fallback to individual embedding calls
-        async def embed_single(obj: T) -> T:
-            try:
-                single_response = await embedder_client.batch_embed(input=[obj.get_embedding_content()])
-                if single_response and len(single_response) > 0:
-                    obj.embeddings = single_response[0]['embedding']
-                return obj
-            except Exception as single_e:
-                print(f"Failed to embed individual chunk: {single_e}")
-                return obj  # Return object with None embeddings
-        
-        # Process all objects in parallel
-        results = await asyncio.gather(*[embed_single(obj) for obj in embeddable_objects])
-        # Filter out objects that failed to embed (embeddings is None)
-        return [obj for obj in results if obj.embeddings is not None]
+        if model_name:
+            return tiktoken.encoding_for_model(model_name)
+    except Exception:
+        pass
+    return tiktoken.get_encoding("cl100k_base")

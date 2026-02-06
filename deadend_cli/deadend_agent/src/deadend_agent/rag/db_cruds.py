@@ -16,9 +16,12 @@ from typing import List, Optional, Dict, Any, AsyncGenerator
 from contextlib import asynccontextmanager
 # import numpy as np
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import text, select
+from sqlalchemy import text, select, delete
 
 from .models import Base, CodeChunk, KnowledgeBase
+from deadend_agent.logging import get_module_logger
+
+logger = get_module_logger(__name__)
 
 class RetrievalDatabaseConnector:
     """
@@ -28,12 +31,18 @@ class RetrievalDatabaseConnector:
         if database_url.startswith("postgresql://"):
             database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
+        # Detect localhost connections and disable SSL for macOS compatibility
+        connect_args = {}
+        if any(host in database_url for host in ['localhost', '127.0.0.1', '::1']):
+            connect_args['ssl'] = False
+
         self.engine = create_async_engine(
             database_url,
             pool_size=pool_size,
             max_overflow=max_overflow,
             pool_pre_ping=True,
-            echo=False  # Set to True for SQL debugging
+            echo=False,  # Set to True for SQL debugging
+            connect_args=connect_args
         )
 
         self.async_session = async_sessionmaker(
@@ -184,6 +193,41 @@ class RetrievalDatabaseConnector:
             for chunk in code_chunks:
                 await session.refresh(chunk)
             return code_chunks
+
+    async def delete_code_chunks_for_files(
+        self,
+        session_id: uuid.UUID,
+        files: List[Dict[str, str]]
+    ) -> int:
+        """
+        Delete code chunks for specific files (by file_path and language).
+
+        Args:
+            session_id: Session identifier to scope deletions.
+            files: List of dicts with keys: file_path, language.
+        Returns:
+            Number of deleted rows.
+        """
+        if not files:
+            return 0
+        async with self.get_session() as session:
+            total_deleted = 0
+            for file_ref in files:
+                stmt = delete(CodeChunk).where(
+                    CodeChunk.session_id == session_id,
+                    CodeChunk.file_path == file_ref.get("file_path", ""),
+                    CodeChunk.language == file_ref.get("language", ""),
+                )
+                result = await session.execute(stmt)
+                total_deleted += result.rowcount or 0
+            await session.commit()
+            logger.info(
+                "Deleted %d code chunks for session %s (files=%d)",
+                total_deleted,
+                session_id,
+                len(files),
+            )
+            return total_deleted
 
 
     async def similarity_search_code_chunk(self,
@@ -380,8 +424,8 @@ class AsyncCodeSearchService:
     def __init__(self, repository: RetrievalDatabaseConnector):
         self.repo = repository
 
-    async def process_code_files_concurrently(self, 
-                                            code_files: List[Dict[str, Any]], 
+    async def process_code_files_concurrently(self,
+                                            code_files: List[Dict[str, Any]],
                                             embedding_function,
                                             max_concurrent: int = 10) -> List[CodeChunk]:
         """
@@ -424,107 +468,11 @@ class AsyncCodeSearchService:
         for chunk, score in semantic_results:
             combined_results[chunk.id] = (chunk, score, 'semantic')
 
-        # for chunk, score in text_results:
-        #     if chunk.id not in combined_results:
-        #         combined_results[chunk.id] = (chunk, score, 'text')
-
         # Sort by score and return top results
         sorted_results = sorted(
-            combined_results.values(), 
-            key=lambda x: x[1] if x[1] is not None else 0, 
+            combined_results.values(),
+            key=lambda x: x[1] if x[1] is not None else 0,
             reverse=True
         )
 
         return [(chunk, score) for chunk, score, _ in sorted_results[:limit]]
-
-# Example usage
-# async def async_example_usage():
-#     """
-#     Example of how to use the RetrievalDatabaseConnector.
-#     """
-#     # Initialize repository
-#     DATABASE_URL = "postgresql://username:password@localhost/database"
-#     repo = RetrievalDatabaseConnector(DATABASE_URL)
-
-#     # Initialize database
-#     await repo.initialize_database()
-
-#     # Example: Insert a code chunk
-#     sample_code = """
-#     def calculate_similarity(vec1, vec2):
-#         '''Calculate cosine similarity between two vectors.'''
-#         import numpy as np
-#         return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
-#     """
-#     # Generate a dummy embedding (in real use, use OpenAI, Sentence Transformers, etc.)
-#     dummy_embedding = np.random.rand(1536).tolist()
-
-#     # Insert code chunk
-#     chunk = await repo.insert_code_chunk(
-#         session_id=uuid.uuid4(),
-#         file_path="utils/similarity.py",
-#         code_content=sample_code,
-#         embedding=dummy_embedding,
-#         language="python",
-#         # function_name="calculate_similarity",
-#         # start_line=10,
-#         # end_line=15
-#     )
-
-#     print(f"Inserted chunk: {chunk.id}")
-
-#     # Search for similar code
-#     query_embedding = np.random.rand(1536).tolist()
-#     results = await repo.similarity_search_code_chunk(
-#         query_embedding=query_embedding,
-#         session_id=chunk.session_id,
-#         limit=5,
-#         language="python"
-#     )
-
-#     print(f"Found {len(results)} similar chunks:")
-#     for chunk, similarity in results:
-#         print(f"  - {chunk.file_path} (similarity: {similarity:.3f})")
-
-#     # Batch processing example
-#     example_session_id = uuid.uuid4()
-#     code_files = [
-#         {
-#             "session_id": example_session_id,
-#             "file_path": f"example_{i}.py",
-#             "code_content": f"def function_{i}(): pass",
-#             "embedding": np.random.rand(1536).tolist(),
-#             "language": "python",
-#             # "function_name": f"function_{i}"
-#         }
-#         for i in range(100)
-#     ]
-
-#     # Batch insert
-#     chunks = await repo.batch_insert_code_chunks(code_files)
-#     print(f"Batch inserted {len(chunks)} chunks")
-
-#     # Stream processing example
-#     async for batch in repo.stream_all_chunks(batch_size=50):
-#         print(f"Processing batch of {len(batch)} chunks")
-#         # Process each batch
-#         break  # Just show first batch
-
-#     # High-level service usage
-#     service = AsyncCodeSearchService(repo)
-
-#     # Hybrid search
-#     hybrid_results = await service.hybrid_search(
-#         query_embedding=query_embedding,
-#         session_id=example_session_id,
-#         limit=10
-#     )
-
-#     print(f"Hybrid search found {len(hybrid_results)} results")
-
-#     # Get statistics
-#     # stats = await repo.get_statistics()
-#     # print(f"Database stats: {stats}")
-
-#     # Close repository
-#     await repo.close()

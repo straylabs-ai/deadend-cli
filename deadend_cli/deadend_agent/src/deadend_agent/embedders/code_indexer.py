@@ -12,6 +12,8 @@ for security research and vulnerability identification.
 import os
 import re
 import uuid
+import json
+import hashlib
 from uuid import uuid4
 from pathlib import Path
 from typing import List
@@ -21,6 +23,9 @@ from deadend_agent.tools.web_resource_extractor import WebResourceExtractor
 from deadend_agent.code_indexer.code_splitter import Chunker
 from deadend_agent.embedders.embedders import batch_embed_chunks
 from deadend_agent.models.registry import EmbedderClient
+from deadend_agent.logging import get_module_logger
+
+logger = get_module_logger(__name__)
 
 class SourceCodeIndexer:
     """
@@ -87,6 +92,7 @@ class SourceCodeIndexer:
 
         self.source_code_path = self.cache_path.joinpath(str(self.session_id))
         Path(self.source_code_path).mkdir(parents=True, exist_ok=True)
+        self.manifest_path = self.source_code_path.joinpath(".manifest.json")
 
     def _add_chunk_directory(self):
         """
@@ -114,7 +120,7 @@ class SourceCodeIndexer:
         Returns:
             List[dict]: List of code chunk dictionaries ready for database storage
         """
-        code_sections = await self.embed_webpage(
+        code_sections, embed_diff = await self.embed_webpage(
             embedder_client=embedder_client
         )
         code_chunks = []
@@ -127,8 +133,9 @@ class SourceCodeIndexer:
                     "embedding": code_section.embeddings
                 }
             code_chunks.append(chunk)
-        return code_chunks
-    async def embed_webpage(self, embedder_client: EmbedderClient) -> List[CodeSection]:
+        return code_chunks, embed_diff
+
+    async def embed_webpage(self, embedder_client: EmbedderClient) -> tuple[List[CodeSection], dict]:
         """
         Process and embed all JavaScript and HTML files from the crawled webpage.
         
@@ -143,52 +150,101 @@ class SourceCodeIndexer:
         Returns:
             List[CodeSection]: List of embedded code sections ready for RAG queries
         """
-        files_ignored = []
-        code_sections = []
+        code_sections: List[CodeSection] = []
+        previous_manifest = self._load_manifest()
+        current_manifest: dict[str, str] = {}
+        changed_files: list[dict] = []
+        skipped_files = 0
+        scanned_files = 0
 
-        for subdir, dirs, files in os.walk(self.source_code_path):
-            for file in files:
-                if not self.is_file_vendor_specific(file):
-                    if file.endswith(".js") or file.endswith(".jsx"):
-                        code_chunker = Chunker(
-                            '/'.join([subdir, file]),
-                            'javascript',
-                            True,
-                            tiktoken_model='gpt-4o-mini'
-                        )
-                        file_chunks = code_chunker.chunk_file(2000)
-                        url_path = subdir.replace(str(self.source_code_path), "")
-                        if file_chunks is not None:
-                            new_cs = await self._embed_chunks(
-                                embedding_client=embedder_client,
-                                url_path=url_path,
-                                title=file,
-                                chunks=file_chunks
-                            )
-                            if new_cs is not None:
-                                code_sections.extend(new_cs)
+        downloaded_files = self._get_downloaded_files()
+        files_to_scan: list[str] = []
+        if downloaded_files:
+            files_to_scan = sorted(downloaded_files)
+            logger.info(
+                "Embedding scan: using downloaded resources (%d files) for session %s",
+                len(files_to_scan),
+                self.session_id,
+            )
+        else:
+            for subdir, _, files in os.walk(self.source_code_path):
+                for file in files:
+                    files_to_scan.append(os.path.join(subdir, file))
+            logger.info(
+                "Embedding scan: using cache directory walk (%d files) for session %s",
+                len(files_to_scan),
+                self.session_id,
+            )
 
-                    elif file.endswith("html"):
-                        code_chunker = Chunker(
-                            '/'.join([subdir, file]),
-                            'html',
-                            True,
-                            tiktoken_model='gpt-4o-mini'
-                        )
-                        file_chunks = code_chunker.chunk_file(2000)
-                        url_path = subdir.replace(str(self.source_code_path), "")
-                        if file_chunks is not None:
-                            new_cs = await self._embed_chunks(
-                                embedding_client=embedder_client,
-                                url_path=url_path,
-                                title=file,
-                                chunks=file_chunks
-                            )
-                            if new_cs is not None:
-                                code_sections.extend(new_cs)
-                    else:
-                        files_ignored.append(file)
-        return code_sections
+        for file_path in files_to_scan:
+            file = os.path.basename(file_path)
+            if self.is_file_vendor_specific(file):
+                continue
+            if not (file.endswith(".js") or file.endswith(".jsx") or file.endswith("html")):
+                continue
+
+            scanned_files += 1
+            rel_path = os.path.relpath(file_path, self.source_code_path)
+            file_hash = self._hash_file(file_path)
+            current_manifest[rel_path] = file_hash
+
+            if previous_manifest.get(rel_path) == file_hash:
+                skipped_files += 1
+                continue
+
+            url_path = self._relpath_to_url_path(rel_path)
+            changed_files.append({"file_path": url_path, "language": file})
+
+            if file.endswith(".js") or file.endswith(".jsx"):
+                code_chunker = Chunker(
+                    file_path,
+                    'javascript',
+                    True,
+                    tiktoken_model='gpt-4o-mini'
+                )
+            else:
+                code_chunker = Chunker(
+                    file_path,
+                    'html',
+                    True,
+                    tiktoken_model='gpt-4o-mini'
+                )
+
+            file_chunks = code_chunker.chunk_file(2000)
+            if file_chunks is not None:
+                new_cs = await self._embed_chunks(
+                    embedding_client=embedder_client,
+                    url_path=url_path,
+                    title=file,
+                    chunks=file_chunks
+                )
+                if new_cs is not None:
+                    code_sections.extend(new_cs)
+
+        removed_files = []
+        for rel_path in set(previous_manifest) - set(current_manifest):
+            file = os.path.basename(rel_path)
+            url_path = self._relpath_to_url_path(rel_path)
+            removed_files.append({"file_path": url_path, "language": file})
+
+        self._save_manifest(current_manifest)
+        embed_diff = {"changed_files": changed_files, "removed_files": removed_files}
+        logger.info(
+            "Embedding diff for session %s: scanned=%d changed=%d removed=%d skipped=%d",
+            self.session_id,
+            scanned_files,
+            len(changed_files),
+            len(removed_files),
+            skipped_files,
+        )
+        reused_pct = (skipped_files / scanned_files * 100.0) if scanned_files else 0.0
+        logger.info(
+            "Embed reuse ratio: reused_files=%d new_files=%d reused_pct=%.1f",
+            skipped_files,
+            len(changed_files),
+            reused_pct,
+        )
+        return code_sections, embed_diff
 
     async def _embed_chunks(
         self,
@@ -243,7 +299,6 @@ class SourceCodeIndexer:
         identifying and filtering out vendor-specific files (like jQuery, Bootstrap)
         that should not be indexed for security analysis.
         """
-        import json
         import importlib.resources
 
         # Get the path to the data file within the package
@@ -272,9 +327,47 @@ class SourceCodeIndexer:
         triggered_patterns = []
         for pattern in common_patterns:
             res = re.search(pattern=pattern, string=filename)
-            if res != None:
+            if res is not None:
                 triggered_patterns.append(res.group())
         if len(triggered_patterns)>0:
             return True 
         else:
             return False
+
+    def _load_manifest(self) -> dict:
+        if not self.manifest_path.exists():
+            return {}
+        try:
+            with open(self.manifest_path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    def _save_manifest(self, manifest: dict) -> None:
+        try:
+            with open(self.manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f)
+        except OSError:
+            pass
+
+    def _hash_file(self, file_path: str) -> str:
+        hasher = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+
+    def _relpath_to_url_path(self, rel_path: str) -> str:
+        rel_dir = os.path.dirname(rel_path)
+        if rel_dir in (".", ""):
+            return ""
+        return f"/{rel_dir.replace(os.sep, '/')}"
+
+    def _get_downloaded_files(self) -> set[str]:
+        if not getattr(self, "resources", None):
+            return set()
+        return {
+            resource.local_path
+            for resource in self.resources
+            if resource.local_path
+        }
