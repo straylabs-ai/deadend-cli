@@ -12,7 +12,7 @@ COMPATIBILITY LAYER: AgentRunner now wraps the new CoreAgent implementation
 while maintaining the same interface as Pydantic AI for backward compatibility.
 """
 from __future__ import annotations
-from typing import Any, List
+from typing import Any
 from pydantic import BaseModel
 from pydantic_ai import DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits

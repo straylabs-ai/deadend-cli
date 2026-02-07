@@ -14,15 +14,11 @@ class WebAppAnalyzerAgent(AgentRunner):
 
     def __init__(
         self,
-        name: str,
         model: ModelSpec,
-        instructions: str | None,
         deps_type: Any | None,
-        output_type: Any | None,
-        tools: list
     ):
         tools_metadata = {
-
+            "webapp_analyzer": render_tool_description("webapp_analyzer")
         }
 
         self.instructions = render_agent_instructions(
@@ -33,7 +29,7 @@ class WebAppAnalyzerAgent(AgentRunner):
         super().__init__(
             name="webapp_analyzer",
             model=model,
-            instructions=instructions,
+            instructions=self.instructions,
             deps_type=deps_type,
             output_type=[AgentOutput, DeferredToolRequests],
             tools=[

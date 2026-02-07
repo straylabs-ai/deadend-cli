@@ -254,7 +254,7 @@ def main(
         _request_id: Any,
         _params: Dict[str, Any],
         event_bus: EventBus
-    ) -> AsyncGenerator[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         async for event in event_bus.subscribe():
             yield event.model_dump()
 
@@ -486,6 +486,11 @@ def main(
             ),
             "shell": "Agent providing access to a bash shell for running Linux commands.",
             "router_agent": "Router agent that selects the appropriate specialized agent.",
+            "webapp_analyzer": (
+                "Front-end webapp analyzer. This agent is specialized in looking into the web application"
+                "to be able to extract information about the logic details of the application. "
+                "We can look for forms, API endpoints, website logic and forms"
+            )
         }
         deadend_agent = DeadEndAgent(
             session_id=runtime_session_id,
@@ -593,7 +598,7 @@ def main(
                 "phase": "init",
                 "data": {"message": f"Embedding diff: changed={changed} removed={removed}"},
             }
-        if rag_db is not None and config.embedding_model:
+        if rag_db is not None:
             if embed_diff:
                 delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
                 if delete_files:
@@ -601,11 +606,12 @@ def main(
                         session_id=agent.embedding_session_id,
                         files=delete_files
                     )
+            await rag_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
+
             yield {
                     "phase": "init",
                     "data": {"message": "Storing embeddings in database..."},
             }
-            await rag_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
         
         # Yield final completion message with "done" phase to signal stream end
         yield {

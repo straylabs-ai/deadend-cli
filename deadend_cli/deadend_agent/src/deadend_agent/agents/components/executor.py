@@ -7,7 +7,8 @@ from deadend_agent.agents import (
     SupervisorAgent, SupervisorOutput,
     RequesterAgent,
     ShellAgent,
-    PythonInterpreterAgent, AgentOutput
+    PythonInterpreterAgent, AgentOutput,
+    WebAppAnalyzerAgent
 )
 from deadend_agent.agents.components.planner import TaskNode
 from deadend_agent.context import ContextEngine
@@ -38,6 +39,7 @@ class SupervisorDeps:
     shell_agent: ShellAgent | None
     shell_deps: ShellDeps | None
     python_interpreter_agent: PythonInterpreterAgent
+    webapp_analyzer_agent: WebAppAnalyzerAgent
     session_id: str
     message_history: list | None
     usage_limits: UsageLimits
@@ -104,8 +106,8 @@ class AgentExecutor:
         if webapprecon_deps is not None:
             self.webapprecon_deps = webapprecon_deps
 
-    def _executor_message_yield(self, message) -> SupervisorOutput | AgentOutput | LogEvent | ResultEvent:
-        pass
+    # def _executor_message_yield(self, message) -> SupervisorOutput | AgentOutput | LogEvent | ResultEvent:
+    #     pass
 
     # async def execute(
     #     self,
@@ -287,6 +289,12 @@ class AgentExecutor:
                 deps_type=str,
             )
 
+            webapp_analyzer_agent = WebAppAnalyzerAgent(
+                model=self.model,
+                deps_type=RequesterDeps,
+
+            )
+
             # Create supervisor dependencies
             supervisor_deps = SupervisorDeps(
                 requester_agent=requester_agent,
@@ -294,6 +302,7 @@ class AgentExecutor:
                 shell_agent=shell_agent,
                 shell_deps=self.shell_deps,
                 python_interpreter_agent=python_interpreter_agent,
+                webapp_analyzer_agent=webapp_analyzer_agent,
                 session_id=self.session_id or "",
                 message_history=message_history,
                 usage_limits=usage_limits,
@@ -419,6 +428,21 @@ class AgentExecutor:
                     )
                     return f"Shell agent result: {result.output.model_dump()}"
                 return str(result.output) if hasattr(result, 'output') else str(result)
+            
+            @supervisor.agent.tool
+            async def call_webapp_analyzer_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
+                
+                print(ctx.deps.requester_deps)
+                result = await ctx.deps.webapp_analyzer_agent.run(
+                    prompt,
+                    deps=ctx.deps.requester_deps,
+                    message_history=ctx.deps.message_history,
+                    usage=ctx.usage,
+                    usage_limits=ctx.deps.usage_limits,
+                    deferred_tool_results=ctx.deps.deferred_tool_results 
+                )
+
+                return str(result.output.model_dump())
 
             @supervisor.agent.tool
             async def call_python_interpreter_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:

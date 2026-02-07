@@ -47,7 +47,7 @@ async def webapp_analyzer(
     )
     embedding = embedding[0]['embedding']
 
-    session_id = getattr(context.deps, "embedding_session_id", None) or context.deps.session_id
+    session_id = context.deps.embedding_session_id
     results = await context.deps.rag.similarity_search_code_chunk(
         query_embedding=embedding,
         session_id=session_id,
