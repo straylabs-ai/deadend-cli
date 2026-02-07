@@ -69,7 +69,7 @@ function App({ cliArgs }: AppProps) {
         await client.start();
 
         // Test connection with ping
-        setInitStatus("Connecting to RPC server...");
+        setInitStatus("Agent startup...");
         const isAlive = await client.ping();
         if (!isAlive) {
           throw new Error("RPC server not responding");

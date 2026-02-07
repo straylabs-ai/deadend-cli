@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 import { memo } from "react";
 import type { Message } from "../types/message.ts";
+import { MarkdownRenderer } from "./MarkdownRenderer.tsx";
 import type {
   ToolCallStartData,
   ToolCallEndData,
@@ -66,7 +67,7 @@ function ChatMessageComponent({ message }: ChatMessageProps) {
         <Text color="gray" dimColor>
           [{time}]{" "}
         </Text>
-        <Text color="white" bold>
+        <Text color="#2845d6" bold>
           {">"} {message.content}
         </Text>
       </Box>
@@ -112,23 +113,30 @@ function ChatMessageComponent({ message }: ChatMessageProps) {
 
     case "error":
       return (
-        <Box marginBottom={1}>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
-          </Text>
-          <Text color="red">{"✗ "}{message.content}</Text>
+        <Box marginBottom={1} flexDirection="column">
+          <Box>
+            <Text color="gray" dimColor>
+              [{time}]{" "}
+            </Text>
+            <Text color="red">{"✗ "}</Text>
+          </Box>
+          <Box marginLeft={4}>
+            <MarkdownRenderer>{message.content}</MarkdownRenderer>
+          </Box>
         </Box>
       );
 
     case "info":
       return (
-        <Box marginBottom={1}>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
-          </Text>
-          <Text color="gray" italic>
-            {message.content}
-          </Text>
+        <Box marginBottom={1} flexDirection="column">
+          <Box>
+            <Text color="gray" dimColor>
+              [{time}]{" "}
+            </Text>
+          </Box>
+          <Box marginLeft={8}>
+            <MarkdownRenderer>{message.content}</MarkdownRenderer>
+          </Box>
         </Box>
       );
 
@@ -147,14 +155,18 @@ function ChatMessageComponent({ message }: ChatMessageProps) {
       const prefix = message.role === "assistant" ? "AI: " : "";
       const color = message.role === "assistant" ? "red" : "yellow";
       return (
-        <Box marginBottom={1}>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
-          </Text>
-          <Text color={color} bold={message.role === "assistant"}>
-            {prefix}
-          </Text>
-          <Text color="white">{message.content}</Text>
+        <Box marginBottom={1} flexDirection="column">
+          <Box>
+            <Text color="gray" dimColor>
+              [{time}]{" "}
+            </Text>
+            <Text color={color} bold={message.role === "assistant"}>
+              {prefix}
+            </Text>
+          </Box>
+          <Box marginLeft={prefix ? 8 : 0}>
+            <MarkdownRenderer>{message.content}</MarkdownRenderer>
+          </Box>
         </Box>
       );
     }
@@ -232,13 +244,11 @@ function ToolCallMessage({ message, time }: { message: Message; time: string }) 
   return null;
 }
 
-// Agent thought message - shows LLM response content
+  // Agent thought message - shows LLM response content
 function AgentThoughtMessage({ message, time }: { message: Message; time: string }) {
   const data = message.eventData?.data as unknown as AgentThoughtData | undefined;
   // Prefer the full thought over summary for better visibility
   const displayText = data?.thought || data?.summary || message.content;
-  // Wrap across multiple lines (up to 25 lines of 100 chars)
-  const wrappedText = wrapText(displayText, 100, 25);
 
   return (
     <Box flexDirection="column" marginBottom={1}>
@@ -246,10 +256,7 @@ function AgentThoughtMessage({ message, time }: { message: Message; time: string
         <Text color="gray" dimColor>
           [{time}]{" "}
         </Text>
-        <Text color="magenta">{"💭 LLM Response:"}</Text>
-      </Box>
-      <Box marginLeft={10}>
-        <Text color="white">{wrappedText}</Text>
+        <MarkdownRenderer>{displayText}</MarkdownRenderer>
       </Box>
     </Box>
   );

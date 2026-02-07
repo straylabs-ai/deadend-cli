@@ -9,6 +9,8 @@
     "@types/react-dom": "npm:@types/react-dom@^19.2.3",
     "ink": "npm:ink@^6.5.1",
     "ink-text-input": "npm:ink-text-input@^5.0.0",
+    "marked": "npm:marked@^9.1.6",
+    "marked-terminal": "npm:marked-terminal@^5.2.0",
     "react": "npm:react@^19.2.1",
     "react/jsx-runtime": "npm:react@^19.2.1/jsx-runtime",
     "@types/react": "npm:@types/react@^19.2.7",
