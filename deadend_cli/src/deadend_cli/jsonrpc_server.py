@@ -700,9 +700,66 @@ def main(
 
     @server.add_method("run_agent_supervisor")
     async def run_agent_supervisor(
-
+        _request_id: Any,
+        params: Dict[str, Any],
+        deadend_agent_refs: Dict[str, DeadEndAgent]
     ):
-        pass
+        try:
+            agent_id = params.get("agent_id")
+            if not agent_id:
+                yield {
+                    "phase": "error",
+                    "data": {
+                        "message": "Must supply an agent_id",
+                        "error_type": "ValueError",
+                    },
+                }
+                return
+            
+            prompt = params.get("prompt")
+            if not prompt:
+                yield {
+                    "phase": "error",
+                    "data": {
+                        "message": "No prompt supplied",
+                        "error_type": "ValueError",
+                    },
+                }
+                return
+
+            deadend_agent = deadend_agent_refs.get(agent_id)
+            if deadend_agent is None:
+                yield {
+                    "phase": "error",
+                    "data": {
+                        "message": f"Agent with id {agent_id} not found",
+                        "error_type": "ValueError",
+                    },
+                }
+                return
+            yield {
+                "phase": "supervising",
+                "data": {"message": "looking and testing..."},
+            }
+            supervising_text = ""
+
+            async for item in deadend_agent.start_supervisor(task=prompt):
+                supervising_text += object_to_string(item)
+                yield {
+                    "phase": "recon",
+                    "data": TypeAdapter(dict).dump_json(item),
+                }
+
+        except Exception as exc:
+            logger.exception("Error in run_agent_supervisor: %s", exc)
+            yield {
+                "phase": "error",
+                "data": {
+                    "message": str(exc),
+                    "error_type": type(exc).__name__,
+                },
+            }
+            raise
 
     @server.add_method("run_agent_ask")
     async def run_agent_ask(
