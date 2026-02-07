@@ -1,7 +1,7 @@
 import { Box, Text } from "ink";
 import { useEffect } from "react";
 import { useComponentHealth } from "../hooks/useComponentHealth.ts";
-import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
+import type { DeadEndRpcClient } from "../runtime/deadend-rpc-client.ts";
 import { LoadingSpinner } from "./LoadingSpinner.tsx";
 
 export interface ComponentHealthProps {

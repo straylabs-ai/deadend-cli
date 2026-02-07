@@ -12,8 +12,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
-import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
-import { getConfigFile } from "../lib/config.ts";
+import type { DeadEndRpcClient } from "../runtime/deadend-rpc-client.ts";
+import { getConfigFile } from "../runtime/config.ts";
 
 interface LlmSelectorProps {
   rpcClient: DeadEndRpcClient;

@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { Box, Text, useInput } from "ink";
 import TextInput from "ink-text-input";
-import { getConfigFile, createConfigDir } from "../lib/config.ts";
+import { getConfigFile, createConfigDir } from "../runtime/config.ts";
 
 interface ConfigSetupProps {
   onComplete: () => void;

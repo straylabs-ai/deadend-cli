@@ -79,7 +79,7 @@ export function InputArea({
             (shift+tab to switch)
           </Text>
           {isLoading && (
-            <Text color="cyan" dimColor>
+            <Text color="#2845d6" dimColor>
               {" "}
               | Running...
             </Text>

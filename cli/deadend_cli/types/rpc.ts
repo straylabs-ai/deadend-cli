@@ -287,10 +287,11 @@ export interface RpcService {
  * 1. **init**: Initialization and setup progress
  * 2. **recon**: Reconnaissance and threat modeling
  * 3. **exploit**: Active security testing
- * 4. **done**: Task completion
- * 5. **error**: Error occurred during execution
+ * 4. **supervising**: Supervisor mode execution (supervisor mode only)
+ * 5. **done**: Task completion
+ * 6. **error**: Error occurred during execution
  */
-export type TaskPhase = "init" | "recon" | "exploit" | "done" | "error";
+export type TaskPhase = "init" | "recon" | "exploit" | "supervising" | "done" | "error";
 
 /**
  * Parameters for running a security testing task.

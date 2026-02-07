@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import type { AllHealthResult, HealthResult, InitResult } from "../types/rpc.ts";
-import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
+import type { DeadEndRpcClient } from "../runtime/deadend-rpc-client.ts";
 
 export type ComponentName =
   | "docker"

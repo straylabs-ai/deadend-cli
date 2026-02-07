@@ -2,7 +2,7 @@ import { Box, Text } from "ink";
 import type { InitResult } from "../types/rpc.ts";
 import { DirectStatusLine } from "./DirectStatusLine.tsx";
 
-export type TaskPhase = "init" | "recon" | "exploit" | "done" | "error";
+export type TaskPhase = "init" | "recon" | "exploit" | "supervising" | "done" | "error";
 
 export interface StatusNotification {
   id: string;
@@ -29,14 +29,16 @@ const phaseLabels: Record<TaskPhase, string> = {
   init: "Initializing",
   recon: "Reconnaissance",
   exploit: "Exploitation",
+  supervising: "Supervising",
   done: "Completed",
   error: "Error",
 };
 
 const phaseColors: Record<TaskPhase, string> = {
-  init: "cyan",
-  recon: "magenta",
+  init: "grey",
+  recon: "#1a2ca3",
   exploit: "red",
+  supervising: "#f2e3bb",
   done: "green",
   error: "red",
 };

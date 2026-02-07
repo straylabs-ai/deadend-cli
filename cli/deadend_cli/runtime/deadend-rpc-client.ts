@@ -156,6 +156,22 @@ export interface ExploitEvent {
 }
 
 /**
+ * Event emitted during the supervising phase (supervisor mode only).
+ *
+ * The supervising phase includes:
+ * - Step-by-step execution with approval workflow
+ * - Agent reasoning and planning
+ * - Tool call requests awaiting approval
+ *
+ * @property phase - Always "supervising" to identify this event type
+ * @property data - Supervision data (agent thoughts, tool requests, etc.)
+ */
+export interface SupervisingEvent {
+  phase: "supervising";
+  data: unknown;
+}
+
+/**
  * Event emitted when a task completes.
  *
  * The done event signals the end of task execution and contains
@@ -211,6 +227,9 @@ export interface ErrorEvent {
  *     case "exploit":
  *       handleExploit(event.data);
  *       break;
+ *     case "supervising":
+ *       handleSupervising(event.data);
+ *       break;
  *     case "done":
  *       handleDone(event);
  *       break;
@@ -221,7 +240,7 @@ export interface ErrorEvent {
  * }
  * ```
  */
-export type DeadEndTaskEvent = InitEvent | ReconEvent | ExploitEvent | DoneEvent | ErrorEvent;
+export type DeadEndTaskEvent = InitEvent | ReconEvent | ExploitEvent | SupervisingEvent | DoneEvent | ErrorEvent;
 
 // =============================================================================
 // Client Options
@@ -909,6 +928,79 @@ export class DeadEndRpcClient {
                 options.onExploit(taskEvent.data);
               }
               yield { phase: "exploit", data: taskEvent.data } as ExploitEvent;
+              break;
+            }
+
+            case "error": {
+              // Error event contains details before stream errors
+              const errorData = taskEvent.data as { message: string; error_type: string };
+              yield { phase: "error", data: errorData } as ErrorEvent;
+              break;
+            }
+          }
+        }
+      }()),
+      abort,
+    };
+  }
+
+  /**
+   * Runs the agent in supervisor mode (step-by-step with approval workflow).
+   *
+   * This method executes the security testing workflow in supervisor mode:
+   * 1. Supervising phase: Step-by-step execution with approval requests
+   * 2. Recon phase: Reconnaissance and analysis results
+   *
+   * This is a streaming method that yields events for each phase.
+   *
+   * @param agentId - The agent ID from instantiateAgent
+   * @param prompt - The task prompt describing what to test
+   * @returns Object with generator and abort function
+   *
+   * @example
+   * ```typescript
+   * const { generator, abort } = client.runAgentSupervisor(agentId, "Find SQL injection");
+   * for await (const event of generator) {
+   *   if (event.phase === "supervising") {
+   *     console.log("Supervising:", event.data);
+   *   } else if (event.phase === "recon") {
+   *     console.log("Recon:", event.data);
+   *   }
+   * }
+   * ```
+   */
+  runAgentSupervisor(
+    agentId: string,
+    prompt: string
+  ): { generator: AsyncGenerator<DeadEndTaskEvent>; abort: () => void } {
+    const { generator, abort } = this.client.stream<TaskEvent>("run_agent_supervisor", {
+      agent_id: agentId,
+      prompt,
+    });
+    const options = this.options;
+    
+    return {
+      generator: (async function* () {
+        for await (const event of generator) {
+          const taskEvent = event as TaskEvent;
+
+          switch (taskEvent.phase) {
+            case "supervising": {
+              // Invoke callback before yielding (using onRecon for supervising events)
+              if (options.onRecon) {
+                options.onRecon(taskEvent.data);
+              }
+              yield { phase: "supervising", data: taskEvent.data } as SupervisingEvent;
+              break;
+            }
+
+            case "recon": {
+              // In supervisor mode, "recon" events are part of the supervising workflow
+              // Map them to "supervising" phase to keep UI consistent
+              if (options.onRecon) {
+                options.onRecon(taskEvent.data);
+              }
+              yield { phase: "supervising", data: taskEvent.data } as SupervisingEvent;
               break;
             }
 

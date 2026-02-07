@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { Box, Text } from "ink";
 import TextInput from "ink-text-input";
 import type { EmbeddingConfig } from "../config/types.ts";
-import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
+import type { DeadEndRpcClient } from "../runtime/deadend-rpc-client.ts";
 import { configManager } from "../config/manager.ts";
 
 interface PresetupWizardProps {

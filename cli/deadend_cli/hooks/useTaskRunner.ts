@@ -1,10 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
+import type { DeadEndRpcClient } from "../runtime/deadend-rpc-client.ts";
 import type { Message } from "../types/message.ts";
 import { createMessage, agentEventToMessage } from "../types/message.ts";
 import type { TaskPhase } from "../components/StatusArea.tsx";
 import { useLlmDefaults } from "./useLlmDefaults.ts";
-import { stringify } from "node:querystring";
 
 export type ExecutionMode = "yolo" | "supervisor";
 
@@ -342,6 +341,7 @@ export function useTaskRunner(
           rpcClient,
           taskState.agentId,
           task,
+          _mode,
           cancelledRef,
           setTaskState,
           onMessage,
@@ -491,18 +491,22 @@ function startEventSubscription(
 }
 
 /**
- * Execute task with agent (recon + exploit phases)
+ * Execute task with agent (recon + exploit phases for yolo, supervising + recon for supervisor)
  */
 async function executeTask(
   rpcClient: DeadEndRpcClient,
   agentId: string,
   task: string,
+  mode: ExecutionMode,
   cancelledRef: React.RefObject<boolean>,
   setTaskState: React.Dispatch<React.SetStateAction<TaskState>>,
   onMessage: (message: Message) => void,
   onError?: (error: string) => void
 ): Promise<void> {
-  const { generator, abort } = rpcClient.runAgentRecursive(agentId, task);
+  // Route to appropriate method based on mode
+  const { generator, abort } = mode === "supervisor"
+    ? rpcClient.runAgentSupervisor(agentId, task)
+    : rpcClient.runAgentRecursive(agentId, task);
 
   try {
     for await (const event of generator) {
@@ -519,6 +523,10 @@ async function executeTask(
 
         case "exploit":
           setTaskState((prev) => ({ ...prev, phase: "exploit" }));
+          break;
+
+        case "supervising":
+          setTaskState((prev) => ({ ...prev, phase: "supervising" }));
           break;
 
         case "error": {

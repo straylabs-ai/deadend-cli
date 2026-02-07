@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { AgentEvent, EventType } from "../types/rpc.ts";
-import type { DeadEndRpcClient } from "../lib/deadend-rpc-client.ts";
+import type { DeadEndRpcClient } from "../runtime/deadend-rpc-client.ts";
 
 export interface UseEventStreamOptions {
   /** Filter events by type - only these types will be collected */
