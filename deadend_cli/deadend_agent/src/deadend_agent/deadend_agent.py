@@ -588,3 +588,107 @@ IMPORTANT:
 
         host, port = extract_host_port(target_host=self.target)
         return f"{host}_{port}"
+
+
+    async def start_supervisor(self, task: str):
+        """Execute the threat modeling and orchestration workflow.
+
+        Args:
+            task: The security testing task to perform
+            context: Optional context dictionary
+
+        Returns:
+            TaskNode with the execution plan and results
+        """
+        prompt_task = f"""
+Your goal is to achieve the following task: {task}
+
+## Approach
+1. **Gather necessary information**: Use the tools at hand to collect information needed to understand the target and identify potential vulnerabilities
+2. **Precisely define the vulnerability**: Based on the gathered information, refine and precisely define what specific vulnerability you need to find to achieve the task
+3. **Find the vulnerability**: Systematically search for and identify the vulnerability using the available tools
+
+## Actions to take:
+- Discover and map endpoints relevant to the task, understanding how to use them
+- Identify what data/parameters each endpoint requires
+- Determine authentication requirements (which endpoints need auth, which don't)
+- Understand session management and authentication mechanisms
+- Analyze application behavior, error messages, and response patterns
+- Test for vulnerabilities systematically using the available tools
+- **If vulnerability is found**: Document it clearly with proof of concept, payloads, and impact
+- **If vulnerability is NOT found**: Explain all tasks performed, testing approaches tried, and provide possible hints or next steps that could lead to finding the vulnerability
+
+## Critical rules:
+- Do NOT use nmap or similar scanning on localhost (127.0.0.1)
+- Make requests to the target and analyze responses
+- Follow forms, links, and endpoints to discover relevant information
+- Extract endpoints, authentication info, and secrets from actual tool responses
+- Do NOT invent or guess endpoints - only use what is discovered
+- Use gathered information to precisely define the vulnerability type you're looking for
+- Systematically test and verify the vulnerability once identified
+- Return when you have either: (1) successfully found and documented the vulnerability with proof, or (2) exhausted reasonable testing approaches and can explain what was done along with possible hints for finding the vulnerability
+
+## The previous context if available is :
+{self.context.get_unified_context()}
+"""
+        validation_token: str = ""
+        task_root = TaskNode(
+            task=prompt_task,
+            depth=0,
+            confidence_score=0.7,
+            status="pending",
+            parent=None,
+            children=[]
+        )
+
+        self.context.set_root_task(task_root.task)
+
+        target_context =f"Target : {self.context.target}"
+        context = {}
+        confidence_score = 0.0 
+         # Run the supervisor directly
+        async for event in self.executor.execute_supervisor(
+            task_node=task_root,
+            agent_context=target_context,
+            usage=RunUsage(),
+            usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
+        ):
+            if isinstance(event, ResultEvent):
+                confidence_score = event.confidence_score
+                context = event.context
+                yield event.context
+
+        task_root.confidence_score = confidence_score
+        task_root.status = "completed"
+
+        reporter_agent = ReporterAgent(
+            model=self.model,
+            deps_type=None,
+            tools=None,
+            validation_format="Information",
+            validation_type="security assessment"
+        )
+        # context_text = await self.context.get_all_context()
+        prompt_assessment = f"""\
+Summarize the security assessment results from the reconnaissance phase.
+
+IMPORTANT:
+- Preserve EXACT working payloads character-for-character
+- Include full HTTP requests that succeeded
+- Include response snippets proving vulnerabilities
+- Document filter bypass techniques with exact encoding used
+- Note validation status (reflected vs executed, needs browser test)
+
+## Assessment Data
+{context}
+"""
+        threat_model_data = await reporter_agent.run(
+            prompt=prompt_assessment,
+            deps=None,
+            usage=RunUsage(),
+            usage_limits=UsageLimits(),
+            deferred_tool_results=None,
+            message_history=""
+        )
+
+        yield threat_model_data

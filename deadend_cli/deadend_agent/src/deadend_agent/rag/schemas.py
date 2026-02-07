@@ -30,7 +30,7 @@ class WebResourceChunkPatch(BaseModel):
     code_content: str| None
     language: str | None
     embedding: list[float] | None
-    updated_at: datetime 
+    updated_at: datetime
 
 class WebResourceChunkDelete(BaseModel):
     id: uuid.UUID
@@ -43,10 +43,10 @@ class CodebaseChunk(BaseModel):
     project_name: str
     file_path: str
     function_name: str | None
-    class_name: str | None 
+    class_name: str | None
     struct_name: str | None
     language: str
-    code_content: str 
+    code_content: str
     embedding: list[float]
     created_at: datetime
     updated_at: datetime
@@ -54,12 +54,12 @@ class CodebaseChunk(BaseModel):
 class CodeBaseChunkPatch(BaseModel):
     file_path: str | None
     function_name: str | None
-    class_name: str | None 
+    class_name: str | None
     struct_name: str | None
-    language: str | None 
-    code_content: str | None 
+    language: str | None
+    code_content: str | None
     embedding: list[float] | None
-    updated_at: datetime 
+    updated_at: datetime
 
 class CodeBaseChunkDelete(BaseModel):
     id: uuid.UUID

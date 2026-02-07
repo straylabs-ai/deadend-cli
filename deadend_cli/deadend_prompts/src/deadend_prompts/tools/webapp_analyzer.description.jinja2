@@ -1,0 +1,38 @@
+Semantic search over indexed client-side code from target web application.
+
+## RETURNS
+
+- **Endpoints**: API URLs, routes, fetch/XHR/axios calls, form actions
+- **Architecture**: Page structure, routing logic, component organization
+- **Forms**: Input fields, parameter names, validation rules, types
+
+## WHEN TO USE
+
+- Find API endpoints/routes in client-side code
+- Identify form inputs and parameter names
+- Understand client-side architecture and routing
+- Discover authentication/storage patterns (localStorage, cookies)
+
+## USAGE
+
+One simple query per call. Use keywords relevant to what you're searching for:
+
+**Query Patterns**:
+- API/endpoints: `"API endpoints"`, `"fetch axios XMLHttpRequest"`
+- Forms: `"forms input fields"`, `"form validation"`
+- Auth: `"authentication"`, `"localStorage sessionStorage cookie"`
+- File uploads: `"file upload FileReader FormData"`
+- Events: `"event listeners onclick onsubmit"`
+
+## LIMITATIONS
+
+- **Client-side only**: No server-side source code
+- **Pre-indexed**: Previously downloaded content only (not real-time)
+- **Discovery not exploitation**: Returns observed facts, not attack guidance
+
+## NOTES
+
+- Keep queries simple and focused (3-5 keywords)
+- Stop when you have needed information - don't over-query
+- If same results returned repeatedly, that's all available information
+- For real-time testing, use send_payload instead

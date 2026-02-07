@@ -22,7 +22,6 @@ dependencies = [
     "google-genai>=1.18.0",
     "httptools>=0.6.4",
     "jsbeautifier>=1.15.4",
-    "logfire>=4.3.3",
     "logging>=0.4.9.6",
     "lxml>=6.0.0",
     "nest-asyncio>=1.6.0",

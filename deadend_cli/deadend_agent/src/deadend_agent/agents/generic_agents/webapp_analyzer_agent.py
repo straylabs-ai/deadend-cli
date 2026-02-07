@@ -1,62 +1,39 @@
 # Copyright (C) 2025 Yassine Bargach
 # Licensed under the GNU Affero General Public License v3
 # See LICENSE file for full license information.
-
-"""Reconnaissance shell agent for command-line reconnaissance and analysis.
-
-This module implements an AI agent that performs reconnaissance tasks using
-shell commands within a sandboxed environment, including system enumeration,
-network scanning, file system analysis, and other command-line security tools
-for comprehensive security assessments.
-"""
 from typing import Any
 from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.config.settings import ModelSpec
 from deadend_agent.agents.factory import AgentRunner, AgentOutput
-from deadend_agent.tools import sandboxed_shell_tool
+from deadend_agent.tools import webapp_analyzer
 from deadend_prompts import render_agent_instructions, render_tool_description
 
 
-class ShellOutput(AgentOutput):
-    """Output model for shell agent execution results.
-
-    Inherits from AgentOutput: detailed_summary, proofs, confidence_score, thoughts
-    """
-    pass
-
-class ShellAgent(AgentRunner):
-    """
-    The recon shell agent is responsible for performing reconnaissance tasks
-    using shell commands within a sandboxed environment. The goal is to gather
-    system information, enumerate services, analyze file systems, and perform
-    various command-line security assessments.
-    """
+class WebAppAnalyzerAgent(AgentRunner):
 
     def __init__(
         self,
         model: ModelSpec,
         deps_type: Any | None,
-        target_information: str,
-        requires_approval: bool,
     ):
         tools_metadata = {
-            "sandboxed_shell_tool": render_tool_description("sandboxed_shell_tool"),
+            "webapp_analyzer": render_tool_description("webapp_analyzer")
         }
 
         self.instructions = render_agent_instructions(
-            agent_name="shell",
-            tools=tools_metadata,
-            target=target_information
+            agent_name="webapp_analyzer",
+            tools=tools_metadata
         )
+
         super().__init__(
-            name="shell",
+            name="webapp_analyzer",
             model=model,
             instructions=self.instructions,
             deps_type=deps_type,
-            output_type=[ShellOutput, DeferredToolRequests],
+            output_type=[AgentOutput, DeferredToolRequests],
             tools=[
-                Tool(sandboxed_shell_tool, requires_approval=requires_approval),
+                Tool(webapp_analyzer)
             ]
         )
 

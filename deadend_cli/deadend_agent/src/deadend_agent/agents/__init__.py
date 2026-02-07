@@ -9,6 +9,7 @@ from .factory import AgentRunner, AgentOutput
 from .generic_agents.shell_agent import ShellAgent, ShellOutput
 from .generic_agents.python_interpreter_agent import PythonInterpreterAgent, PythonInterpreterOutput
 from .generic_agents.request_agent import RequesterAgent, RequesterOutput
+from .generic_agents.webapp_analyzer_agent import WebAppAnalyzerAgent
 
 __all__ = [
             "AgentRunner", "AgentOutput",
@@ -18,6 +19,7 @@ __all__ = [
             # Generic agents
             "ShellAgent", "ShellOutput",
             "PythonInterpreterAgent", "PythonInterpreterOutput",
-            "RequesterAgent", "RequesterOutput"
+            "RequesterAgent", "RequesterOutput",
+            "WebAppAnalyzerAgent"
 
 ]

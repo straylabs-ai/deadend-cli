@@ -12,7 +12,7 @@ COMPATIBILITY LAYER: AgentRunner now wraps the new CoreAgent implementation
 while maintaining the same interface as Pydantic AI for backward compatibility.
 """
 from __future__ import annotations
-from typing import Any, List
+from typing import Any
 from pydantic import BaseModel
 from pydantic_ai import DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
@@ -210,7 +210,7 @@ class AgentRunner:
         # Create CoreAgent instance
         self.agent = CoreAgent(
             model=model_name,
-            instructions=instructions,
+            instructions=instructions if instructions is not None else "",
             tools=tool_functions,
             output_schema=output_schema,
             api_key=api_key,
@@ -227,7 +227,8 @@ class AgentRunner:
         message_history,
         usage: RunUsage | None,
         usage_limits: UsageLimits | None,
-        deferred_tool_results: DeferredToolResults | None = None
+        deferred_tool_results: DeferredToolResults | None = None,
+        *args, **kwargs
     ):
         """Execute the agent with the given prompt and parameters.
 

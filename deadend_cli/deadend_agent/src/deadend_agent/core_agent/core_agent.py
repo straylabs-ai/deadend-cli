@@ -785,8 +785,9 @@ class CoreAgent:
                 if "deps" in params:
                     args["deps"] = deps
 
-                # Inject ctx if function expects it
+                # Inject ctx or context if function expects it
                 # This provides compatibility with @agent.tool decorated functions
+                # Support both "ctx" and "context" parameter names
                 if "ctx" in params:
                     # Create a RunContext-compatible wrapper
                     # deps should be a dataclass/object with the actual dependencies
@@ -795,6 +796,13 @@ class CoreAgent:
                         usage=RunUsage(requests=self.request_count)
                     )
                     args["ctx"] = ctx
+                elif "context" in params:
+                    # Support "context" parameter name as well (used by some tools)
+                    ctx = RunContextCompat(
+                        deps=deps,
+                        usage=RunUsage(requests=self.request_count)
+                    )
+                    args["context"] = ctx
 
                 # Execute tool with telemetry
                 # Handle both sync and async functions

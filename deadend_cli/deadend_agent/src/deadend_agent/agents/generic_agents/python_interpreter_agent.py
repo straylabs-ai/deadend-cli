@@ -78,10 +78,12 @@ class PythonInterpreterAgent(AgentRunner):
         prompt,
         deps,
         message_history,
-        session_key: str,
         usage: RunUsage | None,
         usage_limits: UsageLimits | None,
-        deferred_tool_results: DeferredToolResults | None = None
+        deferred_tool_results: DeferredToolResults | None = None,
+        *args,
+        session_key: str | None = None,
+        **kwargs
     ):
         """Execute the agent with a user prompt and optional memory handling.
         
@@ -110,7 +112,7 @@ class PythonInterpreterAgent(AgentRunner):
 """
         print(f"deps are : {deps}")
         print(f"prompt python_interpreter: {prompt_with_auth}")
-        agent_response = await super().run(
+        agent_response = await super(PythonInterpreterAgent, self).run(
             prompt_with_auth,
             deps,
             message_history,

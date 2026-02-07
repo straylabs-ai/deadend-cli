@@ -194,18 +194,18 @@ function App({ cliArgs }: AppProps) {
       </Text>
       <Box marginTop={1}>
         {cliArgs.mode && (
-          <Text color="yellow">[{cliArgs.mode}] </Text>
+          <Text color="orange">[{cliArgs.mode}] </Text>
         )}
         {cliArgs.target && (
-          <Text color="cyan">{cliArgs.target} </Text>
+          <Text color="red">{cliArgs.target} </Text>
         )}
         {cliArgs.prompt && (
-          <Text color="green">→ {cliArgs.prompt}</Text>
+          <Text color="#ff9191">→ {cliArgs.prompt}</Text>
         )}
       </Box>
 
       {/* Separator */}
-      <Text color="red" dimColor>{"─".repeat(60)}</Text>
+      <Text color="white" dimColor>{"─".repeat(60)}</Text>
     </Box>
   ), [cliArgs.mode, cliArgs.target, cliArgs.codebase, cliArgs.prompt]);
 
