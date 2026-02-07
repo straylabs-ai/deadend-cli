@@ -254,9 +254,9 @@ function AgentThoughtMessage({ message, time }: { message: Message; time: string
     <Box flexDirection="column" marginBottom={1}>
       <Box>
         <Text color="gray" dimColor>
-          [{time}]{" "}
+          [{time}]{"  "}<MarkdownRenderer>{displayText}</MarkdownRenderer>
         </Text>
-        <MarkdownRenderer>{displayText}</MarkdownRenderer>
+        
       </Box>
     </Box>
   );

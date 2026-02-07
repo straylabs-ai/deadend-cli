@@ -301,13 +301,13 @@ class CoreAgent:
                     pass
 
                 # Emit event for CLI
-                hooks.emit_log_message(
-                    session_id=session_id,
-                    message=f"LLM Request: iteration {iteration}, {len(messages)} messages",
-                    level="info",
-                    source="llm",
-                    agent_name=self.name,
-                )
+                # hooks.emit_log_message(
+                #     session_id=session_id,
+                #     message=f"LLM Request: iteration {iteration}, {len(messages)} messages",
+                #     level="info",
+                #     source="llm",
+                #     agent_name=self.name,
+                # )
 
                 # Rate limit check
                 if self.rate_limiter:
