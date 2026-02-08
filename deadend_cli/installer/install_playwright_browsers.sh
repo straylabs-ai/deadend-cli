@@ -19,12 +19,17 @@ mkdir -p "$BROWSER_PATH"
 
 # Detect if we're on macOS (which requires --break-system-packages)
 PIP_FLAGS=""
+IS_MACOS=false
 if [[ "$(uname -s)" == "Darwin" ]]; then
     PIP_FLAGS="--break-system-packages"
+    IS_MACOS=true
 fi
 
 # Install playwright to get the driver and browser installation script
-python3 -m pip install --upgrade pip $PIP_FLAGS
+# Skip pip upgrade on macOS as it's managed by Homebrew and can't be upgraded via pip
+if [ "$IS_MACOS" = false ]; then
+    python3 -m pip install --upgrade pip $PIP_FLAGS
+fi
 python3 -m pip install playwright $PIP_FLAGS
 
 # First, install browsers to default location to get the version
