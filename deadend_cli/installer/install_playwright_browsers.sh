@@ -17,9 +17,15 @@ BROWSER_BASE_PATH="${BUILD_DIR}/lib/playwright/driver/package"
 BROWSER_PATH="${BROWSER_BASE_PATH}/.local-browsers"
 mkdir -p "$BROWSER_PATH"
 
+# Detect if we're on macOS (which requires --break-system-packages)
+PIP_FLAGS=""
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    PIP_FLAGS="--break-system-packages"
+fi
+
 # Install playwright to get the driver and browser installation script
-python3 -m pip install --upgrade pip
-python3 -m pip install playwright
+python3 -m pip install --upgrade pip $PIP_FLAGS
+python3 -m pip install playwright $PIP_FLAGS
 
 # First, install browsers to default location to get the version
 python3 -m playwright install chromium

@@ -48,11 +48,11 @@ detect_platform() {
         TARGET="x86_64-unknown-linux-gnu"
     else
         PLATFORM="macos"
-        if [ "$arch" == "aarch64" ]; then
-            TARGET="aarch64-apple-darwin"
-        else
-            TARGET="x86_64-apple-darwin"
+        # Only support ARM64 for macOS
+        if [ "$arch" != "aarch64" ]; then
+            echo -e "${YELLOW}Warning: x86_64 macOS is not supported. Using ARM64 build.${NC}"
         fi
+        TARGET="aarch64-apple-darwin"
     fi
     
     PACKAGE_NAME="deadend-${PLATFORM}-${TARGET}"

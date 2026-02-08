@@ -26,11 +26,6 @@ jobs:
             archive_cmd: tar -czf
           - os: macos-latest
             platform: macos
-            target: x86_64-apple-darwin
-            archive_ext: tar.gz
-            archive_cmd: tar -czf
-          - os: macos-latest
-            platform: macos
             target: aarch64-apple-darwin
             archive_ext: tar.gz
             archive_cmd: tar -czf
@@ -164,9 +159,6 @@ jobs:
             
             **Linux (x86_64):**
             - `deadend-linux-x86_64-unknown-linux-gnu.tar.gz`
-            
-            **macOS (x86_64):**
-            - `deadend-macos-x86_64-apple-darwin.tar.gz`
             
             **macOS (ARM64):**
             - `deadend-macos-aarch64-apple-darwin.tar.gz`
