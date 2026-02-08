@@ -373,25 +373,25 @@ The CLI interface reads from `settings.json` to determine which model to use by 
 ## Current Status & Roadmap
 
 ### Stable (v0.1.0)
-✅ New architecture
-✅ XBOW benchmark evaluation (78%)
-✅ Custom sandboxed tools
-✅ Multi-model support with liteLLM
-✅ Two-phase execution (recon + exploitation)
-✅ **CLI Redesign** with React/Ink interface
-✅ Interactive chat interface with command system
-✅ Supervisor and YOLO execution modes
-✅ Real-time event streaming and component health monitoring
-✅ Presetup wizard for configuration
+- ✅ New architecture
+- ✅ XBOW benchmark evaluation (78%)
+- ✅ Custom sandboxed tools
+- ✅ Multi-model support with liteLLM
+- ✅ Two-phase execution (recon + exploitation)
+- ✅ **CLI Redesign** with React/Ink interface
+- ✅ Interactive chat interface with command system
+- ✅ Supervisor and YOLO execution modes
+- ✅ Real-time event streaming and component health monitoring
+- ✅ Presetup wizard for configuration
 
 ### In Progress
-🚧 Codebase analysis support (white-box testing)
-🚧 Preset configuration workflows (API testing, web apps, auth bypass)
-🚧 Workflow automation (save/replay attack chains)
-🚧 Context optimization (reduce redundant tool calls)
-🚧 Secrets management improvements
-🚧 Report generation with templating (`/report`)
-🚧 Plan mode (review strategies before execution via `/plan`)
+- 🚧 Codebase analysis support (white-box testing)
+- 🚧 Preset configuration workflows (API testing, web apps, auth bypass)
+- 🚧 Workflow automation (save/replay attack chains)
+- 🚧 Context optimization (reduce redundant tool calls)
+- 🚧 Secrets management improvements
+- 🚧 Report generation with templating (`/report`)
+- 🚧 Plan mode (review strategies before execution via `/plan`)
 
 
 ### Future roadmap
