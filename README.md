@@ -51,10 +51,6 @@ Deadend CLI is an autonomous web application penetration testing agent that uses
 
 [Read the architecture breakdown in our technical article →](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01)
 
----
-
----
-
 ## Architecture Summary
 
 The agent uses a two-phase approach (reconnaissance → exploitation) with a supervisor-subagent hierarchy:
@@ -67,7 +63,6 @@ The agent uses a two-phase approach (reconnaissance → exploitation) with a sup
 
 [Read full architecture details →](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01)
 
----
 
 ## Benchmark Results
 
@@ -95,8 +90,6 @@ The framework focuses on **intelligent security analysis** through:
 - **🎯 Source/Sink Detection**: Intelligent identification of entry points and vulnerable functions
 - **🔗 Contextual Tool Integration**: Smart connection to specialized tools for testing complex logic patterns
 - **🧠 AI-Driven Reasoning**: Context-aware analysis that mimics expert security thinking
-
----
 
 ## 🔧 Custom Pentesting Tools
 
