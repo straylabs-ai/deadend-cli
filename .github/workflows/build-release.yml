@@ -18,7 +18,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         include:
           - os: ubuntu-latest
             platform: linux
@@ -30,6 +29,11 @@ jobs:
             target: x86_64-apple-darwin
             archive_ext: tar.gz
             archive_cmd: tar -czf
+          - os: macos-latest
+            platform: macos
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+            archive_cmd: tar -czf
 
     steps:
       - name: Checkout code
@@ -37,10 +41,6 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Install PyOxidizer
-        run: |
-          cargo install pyoxidizer
 
       - name: Install uv
         uses: astral-sh/setup-uv@v6
@@ -51,6 +51,7 @@ jobs:
       - name: Install dependencies
         working-directory: deadend_cli
         run: |
+          uv add pyoxidizer
           uv sync
 
       - name: Build with PyOxidizer
@@ -66,11 +67,7 @@ jobs:
         working-directory: deadend_cli/installer
         shell: bash
         run: |
-          if [ "${{ matrix.platform }}" == "linux" ]; then
-            BUILD_DIR="build/x86_64-unknown-linux-gnu/release/install"
-          else
-            BUILD_DIR="build/x86_64-apple-darwin/release/install"
-          fi
+          BUILD_DIR="build/${{ matrix.target }}/release/install"
           echo "build_dir=$BUILD_DIR" >> $GITHUB_OUTPUT
           echo "Build directory: $BUILD_DIR"
 
@@ -170,6 +167,9 @@ jobs:
             
             **macOS (x86_64):**
             - `deadend-macos-x86_64-apple-darwin.tar.gz`
+            
+            **macOS (ARM64):**
+            - `deadend-macos-aarch64-apple-darwin.tar.gz`
             
             ### Installation
             

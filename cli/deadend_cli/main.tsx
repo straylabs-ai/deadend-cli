@@ -46,26 +46,56 @@ function App({ cliArgs }: AppProps) {
   useEffect(() => {
     const initClient = async () => {
       try {
-        // Try to create and start the real RPC client
-        // Use uv to run the Python RPC server module
-        // The Python package is in ../../deadend_cli relative to this file
-        const scriptDir = import.meta.dirname ?? Deno.cwd();
-        const pythonPkgDir = `${scriptDir}/../../deadend_cli`;
-
-        setInitStatus("Starting RPC server...");
+        setInitStatus("Starting server...");
         
         // Set up log file path for RPC server stderr output
         const homeDir = Deno.env.get("HOME") || Deno.env.get("USERPROFILE") || "~";
         const logDir = `${homeDir}/.cache/deadend/logs`;
         const logFile = `${logDir}/rpc-server-${Date.now()}.log`;
         
-        // TODO: How the jsonrpc server is ran needs to be changed.
-        const client = new DeadEndRpcClient({
-          pythonCommand: "uv",
-          commandArgs: ["run", "python", "-m", "deadend_cli.jsonrpc_server", "--log-file", logFile],
-          cwd: pythonPkgDir,
-          logFile: logFile,
-        });
+        // Determine if we're in dev/debug mode or production
+        const isDevMode = Deno.env.get("DENO_TASK") === "dev" || 
+                         Deno.env.get("DENO_TASK") === "debug" ||
+                         Deno.env.get("DEBUG") === "true" ||
+                         Deno.args.includes("--dev");
+        
+        let client: DeadEndRpcClient;
+        
+        if (isDevMode) {
+          // Development mode: use uv to run Python module
+          const scriptDir = import.meta.dirname ?? Deno.cwd();
+          const pythonPkgDir = `${scriptDir}/../../deadend_cli`;
+          
+          client = new DeadEndRpcClient({
+            pythonCommand: "uv",
+            commandArgs: ["run", "python", "-m", "deadend_cli.jsonrpc_server", "--log-file", logFile],
+            cwd: pythonPkgDir,
+            logFile: logFile,
+          });
+        } else {
+          // Production mode: use deadend.sh from installed package
+          const rpcBinary = Deno.env.get("DEADEND_RPC_BINARY") ?? 
+                           `${homeDir}/.cache/server/deadend.sh`;
+          
+          // Check if deadend.sh exists
+          try {
+            await Deno.stat(rpcBinary);
+          } catch {
+            throw new Error(
+              `Server binary not found at ${rpcBinary}. ` +
+              `Please run the install script to download it: ` +
+              `curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh | bash`
+            );
+          }
+          
+          client = new DeadEndRpcClient({
+            pythonCommand: rpcBinary,
+            commandArgs: ["--log-file", logFile],
+            cwd: Deno.cwd(),
+            logFile: logFile,
+          });
+        }
+        
         await client.start();
 
         // Test connection with ping
