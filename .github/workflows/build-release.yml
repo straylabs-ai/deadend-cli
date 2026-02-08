@@ -211,9 +211,26 @@ jobs:
         shell: bash
         run: |
           cd artifacts
-          for file in deadend-server-*/*.tar.gz; do
-            if [ -f "$file" ]; then
-              sha256sum "$file" > "${file}.sha256"
+          for dir in deadend-server-*; do
+            if [ -d "$dir" ]; then
+              for file in "$dir"/*.tar.gz; do
+                if [ -f "$file" ]; then
+                  # Create checksum with just the filename (not the path)
+                  filename=$(basename "$file")
+                  (cd "$dir" && sha256sum "$filename" > "${filename}.sha256")
+                fi
+              done
+            fi
+          done
+          # Also create checksums for CLI packages
+          for dir in deadend-cli-*; do
+            if [ -d "$dir" ]; then
+              for file in "$dir"/*.tar.gz; do
+                if [ -f "$file" ]; then
+                  filename=$(basename "$file")
+                  (cd "$dir" && sha256sum "$filename" > "${filename}.sha256")
+                fi
+              done
             fi
           done
 
@@ -245,7 +262,7 @@ jobs:
             
             Download and run the install script:
             ```bash
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash -s -- --version ${{ steps.version.outputs.version }}
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ steps.version.outputs.version }}/install.sh | bash -s -- --version ${{ steps.version.outputs.version }}
             ```
             
             Or manually extract and install:

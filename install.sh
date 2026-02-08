@@ -125,6 +125,12 @@ install() {
     if curl -fsSL -o "${TEMP_DIR}/${PACKAGE_NAME}.tar.gz.sha256" "$CHECKSUM_URL" 2>/dev/null; then
         echo -e "${YELLOW}Verifying checksum...${NC}"
         cd "$TEMP_DIR"
+        # Fix checksum file if it contains a path - replace with just the filename
+        if grep -q "/" "${PACKAGE_NAME}.tar.gz.sha256" 2>/dev/null; then
+            # Extract hash and filename, then rewrite with just filename
+            hash=$(awk '{print $1}' "${PACKAGE_NAME}.tar.gz.sha256" | head -1)
+            echo "${hash}  ${PACKAGE_NAME}.tar.gz" > "${PACKAGE_NAME}.tar.gz.sha256"
+        fi
         if command -v sha256sum >/dev/null 2>&1; then
             sha256sum -c "${PACKAGE_NAME}.tar.gz.sha256" || {
                 echo -e "${RED}Error: Checksum verification failed${NC}"
