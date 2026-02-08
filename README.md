@@ -1,8 +1,9 @@
 # Deadend CLI
 **Autonomous pentesting agent using feedback-driven iteration**
 Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic architecture.
-![Deadend CLI](./assets/demo_gif.gif)
 
+
+![Deadend CLI](./assets/demo_gif.gif)
 
 *Like the project or want to know more? Feel free to [reach out](#contact)!*
 
@@ -10,8 +11,28 @@ Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic a
 > **Active Development**: This project is undergoing active development. Current features are functional but the interface and workflows are being improved based on new architecture and features.
 
 
-
 📄 [Read Technical Deep Dive](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01) | 📊 [Benchmark Results (use VScode ANSI colors to view)](https://github.com/xoxruns/deadend-cli/tree/main/benchmarks-results/xbow)
+
+## Table of Contents
+
+- [What is Deadend CLI?](#what-is-deadend-cli)
+- [Core Analysis Capabilities](#core-analysis-capabilities)
+- [Custom Pentesting Tools](#-custom-pentesting-tools)
+- [Quick Start](#quick-start)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [First Run](#first-run)
+  - [Development](#development)
+- [Usage Examples](#usage-examples)
+- [Commands](#commands)
+- [Model Settings and Configuration](#model-settings-and-configuration)
+- [Architecture Summary](#architecture-summary)
+- [Benchmark Results](#benchmark-results)
+- [Technology Stack](#technology-stack)
+- [Current Status & Roadmap](#current-status--roadmap)
+- [Contributing](#contributing)
+- [Citation](#citation)
+- [Contact](#contact)
 
 ---
 
@@ -80,35 +101,44 @@ The installer will:
 - Install the CLI binary to `~/.local/bin` (or `/usr/local/bin` on macOS)
 - Set up Playwright browsers automatically
 
-**Alternative: Build from source**
+### First Run
+
+In the first run we will be greeted with a presetup view to initialize the model you want to use and 
+
+# Start the cli
+```bash
+deadend  --target "http://localhost:3000" --prompt "find SQL injection vulnerabilities"
+```
+
+**Note:** If `deadend` is not found, ensure the installation directory is in your PATH:
+- Linux: `~/.local/bin`
+- macOS: `/usr/local/bin`
+
+```bash
+# Linux
+export PATH="$HOME/.local/bin:$PATH"
+# macOS
+export PATH="/usr/local/bin:$PATH"
+# Add to ~/.bashrc or ~/.zshrc to make it permanent
+```
+
+### Development
+
+**Build from source**
 
 ```bash
 git clone https://github.com/xoxruns/deadend-cli.git
 cd deadend-cli
-uv sync && uv build
+uv sync
 ```
 
-**Legacy: Install via pipx**
+**Run CLI with Deno**
+
+To run the CLI interface directly with Deno for development:
 
 ```bash
-pipx install deadend_cli
-```
-
-### First Run
-```bash
-# Initialize configuration
-deadend init
-
-# Start testing
-deadend chat \
-  --target "http://localhost:3000" \
-  --prompt "find SQL injection vulnerabilities"
-```
-
-**Note:** If `deadend` is not found, ensure `~/.local/bin` is in your PATH:
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-# Add to ~/.bashrc or ~/.zshrc to make it permanent
+cd cli/deadend_cli
+deno task dev
 ```
 
 ---
@@ -120,48 +150,173 @@ export PATH="$HOME/.local/bin:$PATH"
 # Test OWASP Juice Shop
 docker run -p 3000:3000 bkimminich/juice-shop
 
-deadend chat \
-  --target "http://localhost:3000" \
-  --prompt "test the login endpoint for SQL injection"
+deadend --target http://localhost:3000 --prompt "test the login endpoint for SQL injection"
 ```
 
 ### API Security Testing
 ```bash
-deadend chat \
-  --target "https://api.example.com" \
-  --prompt "test authentication endpoints"
-```
-
-### Autonomous Mode
-```bash
-# Run without approval prompts (CTFs/labs only)
-deadend chat \
-  --target "http://ctf.example.com" \
-  --mode yolo \
-  --prompt "find and exploit all vulnerabilities"
+deadend --target https://api.example.com --prompt "test authentication for broken access control"
 ```
 
 ---
 
 ## Commands
 
-### `deadend init`
-Initialize configuration and set up pgvector database
-
-### `deadend chat`
+### `deadend`
 Start interactive security testing session
-- `--target`: Target URL
-- `--prompt`: Initial testing prompt
-- `--mode`: `hacker` (approval required) or `yolo` (autonomous)
+- `--target`, `-t`: Target URL
+- `--prompt`, `-p`: Initial testing prompt
+- `--mode`, `-m`: `hacker` (approval required) or `yolo` (autonomous)
+- `--codebase`, `-c`: Codebase destination folder (⚠️ **Coming soon** - not implemented yet)
 
-### `deadend eval-agent`
-Run evaluation against challenge datasets
-- `--eval-metadata-file`: Challenge dataset file
-- `--llm-providers`: AI model providers to test
-- `--guided`: Run with subtask decomposition
+---
 
-### `deadend version`
-Display current version
+## Model Settings and Configuration
+
+The configuration file containing model specifications and API keys is located at `~/.cache/deadend/config.json`. This file handles both text generation models (for agent reasoning) and text embedding models (for RAG/vector search).
+
+### Configuration File Location
+
+- **Path**: `~/.cache/deadend/config.json`
+- **Format**: JSON
+- **Initial Setup**: The presetup wizard will guide you through initial configuration on first run
+
+### Model Schema
+
+When defining a model, use the following schema. The key format `<provider>:<model_name>` follows [LiteLLM's naming convention](https://docs.litellm.ai/docs/providers):
+
+```json
+"<provider>:<model_name>": {
+  "provider": "<provider>",        // Provider name (e.g., openai, anthropic, ollama)
+  "model_name": "<model_name>",    // Model identifier (e.g., claude-sonnet-4-5, gpt-4)
+  "api_key": "<api_key>",          // API key (optional if ENV var is set, but recommended to add here)
+  "base_url": "<base_url>",        // Base URL for custom gateways or providers (e.g., Ollama)
+  "type_model": null,              // Set to "embeddings" only for embedding models
+  "vec_dim": null                  // Vector dimension for embedding models (defaults to 1536)
+}
+```
+
+**Key Format**: The JSON key must be in the format `<provider>:<model_name>` where:
+- `<provider>` matches the LiteLLM provider identifier (see [supported providers](https://docs.litellm.ai/docs/providers))
+- `<model_name>` is the specific model identifier for that provider
+
+### Example Configuration
+
+Here's an example `config.json` with both a text generation model and an embedding model:
+
+```json
+{
+  "anthropic:claude-sonnet-4-5": {
+    "provider": "anthropic",
+    "model_name": "claude-sonnet-4-5",
+    "api_key": "sk-ant-api03-...",
+    "base_url": null,
+    "type_model": null,
+    "vec_dim": null
+  },
+  "openrouter:qwen/qwen3-embedding-8b": {
+    "provider": "openrouter",
+    "model_name": "qwen/qwen3-embedding-8b",
+    "api_key": "sk-or-v1-...",
+    "base_url": "https://openrouter.ai/api/v1/embeddings",
+    "type_model": "embeddings",
+    "vec_dim": 4096
+  }
+}
+```
+
+### Model Types
+
+**Text Generation Models** (`type_model: null`):
+- Used for agent reasoning, task planning, and payload generation
+- Examples: Claude Sonnet 4.5, GPT-4, Llama 3, etc.
+- Required for core agent functionality
+
+**Embedding Models** (`type_model: "embeddings"`):
+- Used for RAG (Retrieval-Augmented Generation) and vector search
+- Requires `vec_dim` to specify vector space dimension
+- Optional but recommended for better context retrieval
+
+### Adding Models
+
+1. **Via Presetup Wizard** (Recommended): Run `deadend` without configuration to launch the interactive setup
+2. **Manual Configuration**: Edit `~/.cache/deadend/config.json` directly using the schema above
+3. **Environment Variables**: API keys can be set via environment variables, but storing them in `config.json` is recommended for convenience
+
+### Supported Providers
+
+Deadend CLI uses [LiteLLM](https://docs.litellm.ai/) for model abstraction, which provides a unified interface to multiple LLM providers. Models follow LiteLLM's naming convention: `provider:model_name`.
+
+#### Model Format
+
+Models are specified using the format `<provider>:<model_name>` in both `config.json` and `settings.json`. The provider name corresponds to the LiteLLM provider identifier.
+
+**Examples:**
+- `anthropic:claude-sonnet-4-5` - Anthropic's Claude Sonnet 4.5
+- `openai:gpt-4` - OpenAI's GPT-4
+- `openrouter:qwen/qwen3-embedding-8b` - Qwen embedding model via OpenRouter
+- `ollama:llama3` - Llama 3 via local Ollama instance
+
+#### Supported Providers
+
+Deadend CLI supports all providers compatible with LiteLLM. For a complete list of supported providers and their model names, see the [LiteLLM Providers Documentation](https://docs.litellm.ai/docs/providers).
+
+**Popular providers include:**
+- **OpenAI**: `openai:gpt-4`, `openai:gpt-3.5-turbo`, `openai:gpt-4o`, etc.
+- **Anthropic**: `anthropic:claude-3-opus`, `anthropic:claude-sonnet-4-5`, `anthropic:claude-3-haiku`, etc.
+- **Ollama**: `ollama:llama3`, `ollama:mistral`, `ollama:codellama`, etc. (requires `base_url` in config)
+- **OpenRouter**: `openrouter:meta-llama/llama-3-70b-instruct`, `openrouter:google/gemini-pro`, etc.
+- **HuggingFace**: `huggingface/meta-llama/Llama-2-7b-chat-hf` (requires `base_url`)
+
+**For embedding models**, use the same format and set `type_model: "embeddings"` in `config.json`:
+- `openai:text-embedding-ada-002`
+- `openrouter:qwen/qwen3-embedding-8b`
+- `ollama:nomic-embed-text`
+
+> **Note**: Some providers may require additional configuration such as `base_url` or specific API key formats. Refer to the [LiteLLM Provider Documentation](https://docs.litellm.ai/docs/providers) for provider-specific setup instructions.
+
+### CLI Interface Settings (`settings.json`)
+
+The CLI interface uses a separate `settings.json` file located at `~/.cache/deadend/settings.json` to store default preferences and UI settings. This file contains:
+
+- **Default model selection**: Which provider and model to use by default
+- **Execution mode**: Default execution mode (yolo or supervisor)
+- **UI preferences**: Component status display and auto-collapse settings
+- **Last target**: Remembers the last target URL used
+- **Embedding model**: Default embedding model for RAG operations
+
+#### Settings Schema
+
+```json
+{
+  "provider": "anthropic",                    // Default LLM provider
+  "model": "claude-sonnet-4-5",              // Default model name
+  "executionMode": "yolo",                   // Default execution mode: "yolo" or "supervisor"
+  "showComponentStatus": true,                // Show component health status in UI
+  "autoCollapseStatus": false,                // Auto-collapse status messages
+  "lastTarget": "",                          // Last target URL used
+  "embedding": {                              // Default embedding model configuration
+    "provider": "openrouter",
+    "model": "qwen/qwen3-embedding-8b"
+  }
+}
+```
+
+#### Settings File Location
+
+- **Path**: `~/.cache/deadend/settings.json`
+- **Format**: JSON
+- **Auto-created**: Created automatically when you configure models via the presetup wizard
+- **Separate from config.json**: This file stores CLI preferences, while `config.json` stores model API keys and specifications
+
+#### Key Differences
+
+| File | Purpose | Contains |
+|------|---------|----------|
+| `config.json` | Model specifications | API keys, model definitions, base URLs, vector dimensions |
+| `settings.json` | CLI preferences | Default model selection, execution mode, UI settings, embedding defaults |
+
+The CLI interface reads from `settings.json` to determine which model to use by default, while `config.json` provides the actual API keys and connection details for those models.
 
 ---
 
@@ -199,22 +354,9 @@ Perfect scores: GraphQL, SSRF, NoSQL injection, HTTP method tampering (100%)
 
 ---
 
-## Operating Modes
-
-**Hacker Mode (default):** Requires approval for dangerous operations
-```bash
-deadend chat --target URL --mode hacker
-```
-
-**YOLO Mode:** Autonomous execution (CTFs/labs only)
-```bash
-deadend chat --target URL --mode yolo
-```
-
----
-
 ## Technology Stack
 
+**Backend/Agent:**
 - **LiteLLM**: Multi-provider model abstraction (OpenAI, Anthropic, Ollama)
 - **Instructor**: Structured LLM outputs
 - **pgvector**: Vector database for context
@@ -223,31 +365,39 @@ deadend chat --target URL --mode yolo
 - **Docker**: Shell command isolation
 - **PyOxidizer**: Standalone binary packaging
 
----
-
-## Configuration
-
-Configuration is managed via `~/.cache/deadend/config.toml`. Run `deadend init` to set up your configuration interactively.
+**CLI Interface:**
+- **Deno**: Runtime environment for the CLI
+- **React**: UI framework (v19)
+- **Ink**: React-based terminal UI framework
+- **TypeScript/TSX**: Type-safe development
+- **Commander**: CLI argument parsing
+- **Marked**: Markdown parsing and rendering
+- **marked-terminal**: Terminal markdown display
 
 ---
 
 ## Current Status & Roadmap
 
-### Stable (v0.0.15)
+### Stable (v0.1.0)
 ✅ New architecture
 ✅ XBOW benchmark evaluation (78%)
 ✅ Custom sandboxed tools
 ✅ Multi-model support with liteLLM
 ✅ Two-phase execution (recon + exploitation)
+✅ **CLI Redesign** with React/Ink interface
+✅ Interactive chat interface with command system
+✅ Supervisor and YOLO execution modes
+✅ Real-time event streaming and component health monitoring
+✅ Presetup wizard for configuration
 
-### In Progress (v0.1.0)
-🚧 **CLI Redesign** with enhanced workflows:
-- Plan mode (review strategies before execution)
-- Preset configuration workflows (API testing, web apps, auth bypass)
-- Workflow automation (save/replay attack chains)
-
+### In Progress
+🚧 Codebase analysis support (white-box testing)
+🚧 Preset configuration workflows (API testing, web apps, auth bypass)
+🚧 Workflow automation (save/replay attack chains)
 🚧 Context optimization (reduce redundant tool calls)
 🚧 Secrets management improvements
+🚧 Report generation with templating (`/report`)
+🚧 Plan mode (review strategies before execution via `/plan`)
 
 
 ### Future roadmap
