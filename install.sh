@@ -105,58 +105,89 @@ get_latest_version() {
 
 # Install
 install() {
-    echo -e "${GREEN}Installing Deadend CLI Server ${VERSION} for ${PLATFORM}...${NC}"
+    echo -e "${GREEN}Installing Deadend CLI ${VERSION} for ${PLATFORM}...${NC}"
     
     # Create temporary directory
     TEMP_DIR=$(mktemp -d)
     trap "rm -rf $TEMP_DIR" EXIT
     
-    # Download the release
-    DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PACKAGE_NAME}.tar.gz"
-    echo -e "${YELLOW}Downloading from: ${DOWNLOAD_URL}${NC}"
+    # Determine CLI package name
+    if [ "$PLATFORM" == "linux" ]; then
+        CLI_PACKAGE_NAME="deadend-cli-linux-x86_64"
+    else
+        CLI_PACKAGE_NAME="deadend-cli-macos-aarch64"
+    fi
     
-    if ! curl -fsSL -o "${TEMP_DIR}/${PACKAGE_NAME}.tar.gz" "$DOWNLOAD_URL"; then
-        echo -e "${RED}Error: Failed to download release${NC}"
+    # Download the server package
+    SERVER_DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PACKAGE_NAME}.tar.gz"
+    echo -e "${YELLOW}Downloading server package...${NC}"
+    echo ""
+    
+    if ! curl -fSL --progress-bar -o "${TEMP_DIR}/${PACKAGE_NAME}.tar.gz" "$SERVER_DOWNLOAD_URL"; then
+        echo -e "${RED}Error: Failed to download server package${NC}"
         exit 1
     fi
+    echo ""
     
-    # Verify checksum if available
-    CHECKSUM_URL="https://github.com/${REPO}/releases/download/${VERSION}/${PACKAGE_NAME}.tar.gz.sha256"
-    if curl -fsSL -o "${TEMP_DIR}/${PACKAGE_NAME}.tar.gz.sha256" "$CHECKSUM_URL" 2>/dev/null; then
-        echo -e "${YELLOW}Verifying checksum...${NC}"
-        cd "$TEMP_DIR"
-        # Fix checksum file if it contains a path - replace with just the filename
-        if grep -q "/" "${PACKAGE_NAME}.tar.gz.sha256" 2>/dev/null; then
-            # Extract hash and filename, then rewrite with just filename
-            hash=$(awk '{print $1}' "${PACKAGE_NAME}.tar.gz.sha256" | head -1)
-            echo "${hash}  ${PACKAGE_NAME}.tar.gz" > "${PACKAGE_NAME}.tar.gz.sha256"
-        fi
-        if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum -c "${PACKAGE_NAME}.tar.gz.sha256" || {
-                echo -e "${RED}Error: Checksum verification failed${NC}"
-                exit 1
-            }
-        elif command -v shasum >/dev/null 2>&1; then
-            shasum -a 256 -c "${PACKAGE_NAME}.tar.gz.sha256" || {
-                echo -e "${RED}Error: Checksum verification failed${NC}"
-                exit 1
-            }
-        fi
-        echo -e "${GREEN}Checksum verified${NC}"
-    else
-        echo -e "${YELLOW}Warning: Checksum file not found, skipping verification${NC}"
+    # Download the CLI binary
+    CLI_DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${CLI_PACKAGE_NAME}.tar.gz"
+    echo -e "${YELLOW}Downloading CLI binary...${NC}"
+    echo ""
+    
+    if ! curl -fSL --progress-bar -o "${TEMP_DIR}/${CLI_PACKAGE_NAME}.tar.gz" "$CLI_DOWNLOAD_URL"; then
+        echo -e "${RED}Error: Failed to download CLI package${NC}"
+        exit 1
     fi
+    echo ""
+    echo ""
     
-    # Extract
-    echo -e "${YELLOW}Extracting package...${NC}"
+    # Verify checksums if available
+    verify_checksum() {
+        local file="$1"
+        local checksum_url="https://github.com/${REPO}/releases/download/${VERSION}/${file}.sha256"
+        if curl -fsSL --progress-bar -o "${TEMP_DIR}/${file}.sha256" "$checksum_url" 2>/dev/null; then
+            cd "$TEMP_DIR"
+            # Fix checksum file if it contains a path - replace with just the filename
+            if grep -q "/" "${file}.sha256" 2>/dev/null; then
+                hash=$(awk '{print $1}' "${file}.sha256" | head -1)
+                echo "${hash}  ${file}" > "${file}.sha256"
+            fi
+            if command -v sha256sum >/dev/null 2>&1; then
+                sha256sum -c "${file}.sha256" || return 1
+            elif command -v shasum >/dev/null 2>&1; then
+                shasum -a 256 -c "${file}.sha256" || return 1
+            fi
+            return 0
+        fi
+        return 2
+    }
+    
+    echo -e "${YELLOW}Verifying checksums...${NC}"
+    verify_checksum "${PACKAGE_NAME}.tar.gz"
+    case $? in
+        0) echo -e "${GREEN}Server package checksum verified${NC}" ;;
+        1) echo -e "${RED}Error: Server package checksum verification failed${NC}"; exit 1 ;;
+        2) echo -e "${YELLOW}Warning: Server package checksum file not found, skipping verification${NC}" ;;
+    esac
+    
+    verify_checksum "${CLI_PACKAGE_NAME}.tar.gz"
+    case $? in
+        0) echo -e "${GREEN}CLI package checksum verified${NC}" ;;
+        1) echo -e "${RED}Error: CLI package checksum verification failed${NC}"; exit 1 ;;
+        2) echo -e "${YELLOW}Warning: CLI package checksum file not found, skipping verification${NC}" ;;
+    esac
+    
+    # Extract packages
+    echo -e "${YELLOW}Extracting packages...${NC}"
     cd "$TEMP_DIR"
     tar -xzf "${PACKAGE_NAME}.tar.gz"
+    tar -xzf "${CLI_PACKAGE_NAME}.tar.gz"
     
-    # Create installation directory
-    echo -e "${YELLOW}Installing to ${INSTALL_DIR}...${NC}"
+    # Install server package
+    echo -e "${YELLOW}Installing server to ${INSTALL_DIR}...${NC}"
     mkdir -p "$INSTALL_DIR"
     
-    # Copy entire package contents (includes deadend binary, deadend.sh, lib/, etc.)
+    # Copy entire server package contents (includes deadend binary, deadend.sh, lib/, etc.)
     if [ -d "${PACKAGE_NAME}" ]; then
         cp -r "${PACKAGE_NAME}"/* "${INSTALL_DIR}/"
         chmod +x "${INSTALL_DIR}/deadend" 2>/dev/null || true
@@ -167,10 +198,65 @@ install() {
             chmod +x "${INSTALL_DIR}/lib/playwright/driver/node"
         fi
         
-        echo -e "${GREEN}Package installed to ${INSTALL_DIR}${NC}"
+        echo -e "${GREEN}Server installed to ${INSTALL_DIR}${NC}"
     else
-        echo -e "${RED}Error: Package directory not found${NC}"
+        echo -e "${RED}Error: Server package directory not found${NC}"
         exit 1
+    fi
+    
+    # Install CLI binary to PATH
+    echo -e "${YELLOW}Installing CLI binary...${NC}"
+    
+    # Determine the best location for the CLI binary
+    if [ "$PLATFORM" == "linux" ]; then
+        CLI_BIN_DIR="$HOME/.local/bin"
+    else
+        # macOS: use ~/.local/bin or /usr/local/bin
+        CLI_BIN_DIR="$HOME/.local/bin"
+        # Try /usr/local/bin if ~/.local/bin doesn't exist and we have write access
+        if [ ! -d "$HOME/.local" ] && [ -w "/usr/local/bin" ]; then
+            CLI_BIN_DIR="/usr/local/bin"
+        fi
+    fi
+    
+    mkdir -p "$CLI_BIN_DIR"
+    
+    # Find and copy the CLI binary
+    if [ -d "${CLI_PACKAGE_NAME}" ]; then
+        CLI_BINARY=""
+        # Look for the binary (could be named deadend-cli or deadend)
+        for bin in "${CLI_PACKAGE_NAME}"/deadend-cli "${CLI_PACKAGE_NAME}"/deadend "${CLI_PACKAGE_NAME}"/*; do
+            if [ -f "$bin" ] && [ -x "$bin" ] || [ -f "$bin" ]; then
+                CLI_BINARY="$bin"
+                break
+            fi
+        done
+        
+        if [ -n "$CLI_BINARY" ] && [ -f "$CLI_BINARY" ]; then
+            cp "$CLI_BINARY" "${CLI_BIN_DIR}/deadend"
+            chmod +x "${CLI_BIN_DIR}/deadend"
+            echo -e "${GREEN}CLI binary installed to ${CLI_BIN_DIR}/deadend${NC}"
+        else
+            echo -e "${YELLOW}Warning: Could not find CLI binary in package${NC}"
+        fi
+    else
+        echo -e "${RED}Error: CLI package directory not found${NC}"
+        exit 1
+    fi
+    
+    # Check if CLI_BIN_DIR is in PATH
+    if [[ ":$PATH:" != *":$CLI_BIN_DIR:"* ]]; then
+        echo ""
+        echo -e "${YELLOW}Note: ${CLI_BIN_DIR} is not in your PATH${NC}"
+        echo -e "${YELLOW}Add it by running:${NC}"
+        echo -e "  export PATH=\"${CLI_BIN_DIR}:\$PATH\""
+        echo ""
+        echo -e "${YELLOW}Or add to your shell configuration file:${NC}"
+        if [ "$PLATFORM" == "linux" ]; then
+            echo -e "  echo 'export PATH=\"${CLI_BIN_DIR}:\$PATH\"' >> ~/.bashrc"
+        else
+            echo -e "  echo 'export PATH=\"${CLI_BIN_DIR}:\$PATH\"' >> ~/.zshrc"
+        fi
     fi
     
     echo ""
@@ -179,7 +265,16 @@ install() {
     echo "The Deadend CLI server is installed at:"
     echo "  ${INSTALL_DIR}/deadend.sh"
     echo ""
-    echo "You can set DEADEND_RPC_BINARY environment variable to use a custom path:"
+    if [ -f "${CLI_BIN_DIR}/deadend" ]; then
+        echo "The Deadend CLI command is available at:"
+        echo "  ${CLI_BIN_DIR}/deadend"
+        if [[ ":$PATH:" == *":$CLI_BIN_DIR:"* ]]; then
+            echo ""
+            echo "You can now run: deadend"
+        fi
+    fi
+    echo ""
+    echo "You can set DEADEND_RPC_BINARY environment variable to use a custom server path:"
     echo "  export DEADEND_RPC_BINARY=\"${INSTALL_DIR}/deadend.sh\""
     echo ""
 }
