@@ -233,7 +233,7 @@ try:
     resources.files = _patched_files
 except Exception:
     pass
-from deadend_cli.entrypoints import jsonrpc_server; jsonrpc_server()
+from deadend_cli.jsonrpc_server import main; main()
 """
 
     # Produce a PythonExecutable from a Python distribution, embedded
@@ -312,8 +312,6 @@ from deadend_cli.entrypoints import jsonrpc_server; jsonrpc_server()
             # Note: "logging" is Python's built-in module, no need to install from PyPI
             "lxml>=6.0.0",
             "nest-asyncio>=1.6.0",
-            # Note: numpy>=2.3.1 requires Python >=3.11, but PyOxidizer uses Python 3.10
-            # Use numpy 2.2.x which is the latest compatible with Python 3.10
             "numpy>=2.0.0,<2.3.0",
             "opentelemetry-api>=1.39.1",
             "opentelemetry-exporter-otlp>=1.39.1",
