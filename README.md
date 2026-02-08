@@ -56,18 +56,41 @@ The framework focuses on **intelligent security analysis** through:
 
 ### Prerequisites
 - Docker (required)
-- Python 3.11+
-- Playwright: `playwright install`
+- curl (for installation script)
 
 ### Installation
-```bash
-# Install via pipx (recommended)
-pipx install deadend_cli
 
-# Or build from source
+**Recommended: Install from release (Linux x86_64 / macOS ARM64)**
+
+```bash
+# Install latest release
+curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh | bash
+
+# Or install a specific version
+curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh | bash -s -- --version v1.0.0
+
+# Custom installation directory (default: ~/.cache/server)
+curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh | bash -s -- --install-dir /path/to/install
+```
+
+The installer will:
+- Download pre-built binaries for your platform
+- Install the RPC server to `~/.cache/server` (or custom directory)
+- Install the CLI binary to `~/.local/bin` (or `/usr/local/bin` on macOS)
+- Set up Playwright browsers automatically
+
+**Alternative: Build from source**
+
+```bash
 git clone https://github.com/xoxruns/deadend-cli.git
 cd deadend-cli
 uv sync && uv build
+```
+
+**Legacy: Install via pipx**
+
+```bash
+pipx install deadend_cli
 ```
 
 ### First Run
@@ -79,6 +102,12 @@ deadend init
 deadend chat \
   --target "http://localhost:3000" \
   --prompt "find SQL injection vulnerabilities"
+```
+
+**Note:** If `deadend` is not found, ensure `~/.local/bin` is in your PATH:
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+# Add to ~/.bashrc or ~/.zshrc to make it permanent
 ```
 
 ---
@@ -189,8 +218,9 @@ deadend chat --target URL --mode yolo
 - **Instructor**: Structured LLM outputs
 - **pgvector**: Vector database for context
 - **Pyodide/WebAssembly**: Python sandbox
-- **Playwright**: HTTP request generation
+- **Playwright**: HTTP request generation (bundled with browser binaries)
 - **Docker**: Shell command isolation
+- **PyOxidizer**: Standalone binary packaging
 
 ---
 
