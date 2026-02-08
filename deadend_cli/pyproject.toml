@@ -6,7 +6,7 @@ authors = [
 ]
 description = "AI agent CLI for security research"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = [
     "deadend-agent",
     "deadend-prompts",
@@ -25,7 +25,7 @@ dependencies = [
     "logging>=0.4.9.6",
     "lxml>=6.0.0",
     "nest-asyncio>=1.6.0",
-    "numpy>=2.3.1",
+    "numpy>=2.0.0,<2.3.0",
     "pgvector>=0.4.1",
     "playwright>=1.56.0",
     "prompt-toolkit>=3.0.51",
@@ -46,10 +46,10 @@ dependencies = [
     "tree-sitter-markdown>=0.5.1",
     "tree-sitter-typescript>=0.23.2",
     "typer>=0.15.4",
-    "zaproxy>=0.4.0",
     "jinja2>=3.1.6",
     "typing-extensions>=4.15.0",
     "python-frontmatter>=1.1.0",
+    "pyoxidizer>=0.24.0",
 ]
 
 [project.scripts]
