@@ -21,7 +21,6 @@ dependencies = [
     "instructor>=1.8.0",
     "jsbeautifier>=1.15.4",
     "litellm>=1.55.0",
-    "logfire>=4.3.3",
     "logging>=0.4.9.6",
     "lxml>=6.0.0",
     "nest-asyncio>=1.6.0",
@@ -51,7 +50,6 @@ dependencies = [
     "tree-sitter-typescript>=0.23.2",
     "typer>=0.15.4",
     "typing-extensions>=4.15.0",
-    "zaproxy>=0.4.0",
 ]
 
 [build-system]

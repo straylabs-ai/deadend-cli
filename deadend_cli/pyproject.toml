@@ -54,7 +54,7 @@ dependencies = [
 
 [project.scripts]
 deadend = "deadend_cli:main"
-deadend-jsonrpc-server = "deadend_cli.entrypoints:jsonrpc_server"
+deadend-jsonrpc-server = "deadend_cli.jsonrpc_server:main"
 
 [dependency-groups]
 dev = [
