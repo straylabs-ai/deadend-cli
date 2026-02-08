@@ -1,0 +1,192 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+            archive_cmd: tar -czf
+          - os: macos-latest
+            platform: macos
+            target: x86_64-apple-darwin
+            archive_ext: tar.gz
+            archive_cmd: tar -czf
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install PyOxidizer
+        run: |
+          cargo install pyoxidizer
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python 3.10
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        working-directory: deadend_cli
+        run: |
+          uv sync
+
+      - name: Build with PyOxidizer
+        working-directory: deadend_cli/installer
+        env:
+          # Set build mode to release for smaller, faster binaries
+          PYOXIDIZER_BUILD_MODE: release
+        run: |
+          pyoxidizer build --target-triple ${{ matrix.target }} --release
+
+      - name: Determine build directory
+        id: build_dir
+        working-directory: deadend_cli/installer
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" == "linux" ]; then
+            BUILD_DIR="build/x86_64-unknown-linux-gnu/release/install"
+          else
+            BUILD_DIR="build/x86_64-apple-darwin/release/install"
+          fi
+          echo "build_dir=$BUILD_DIR" >> $GITHUB_OUTPUT
+          echo "Build directory: $BUILD_DIR"
+
+      - name: Copy wrapper script
+        working-directory: deadend_cli/installer
+        run: |
+          cp deadend.sh ${{ steps.build_dir.outputs.build_dir }}/deadend.sh
+          chmod +x ${{ steps.build_dir.outputs.build_dir }}/deadend.sh
+
+      - name: Fix permissions
+        working-directory: deadend_cli/installer
+        run: |
+          bash fix_permissions.sh ${{ steps.build_dir.outputs.build_dir }}
+
+      - name: Install Playwright browsers
+        working-directory: deadend_cli/installer
+        run: |
+          chmod +x install_playwright_browsers.sh
+          bash install_playwright_browsers.sh ${{ steps.build_dir.outputs.build_dir }}
+
+      - name: Verify browser installation
+        working-directory: deadend_cli/installer
+        run: |
+          BROWSER_PATH="${{ steps.build_dir.outputs.build_dir }}/lib/playwright/driver/package/.local-browsers"
+          echo "Checking browser installation at: $BROWSER_PATH"
+          ls -la "$BROWSER_PATH" || echo "Browser directory not found"
+          find "$BROWSER_PATH" -type f -name "chrome*" -o -name "chromium*" | head -5 || echo "No browser binaries found"
+
+      - name: Create package directory structure
+        id: package
+        working-directory: deadend_cli/installer
+        run: |
+          PACKAGE_NAME="deadend-${{ matrix.platform }}-${{ matrix.target }}"
+          mkdir -p "$PACKAGE_NAME"
+          cp -r ${{ steps.build_dir.outputs.build_dir }}/* "$PACKAGE_NAME/"
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create archive
+        working-directory: deadend_cli/installer
+        run: |
+          ${{ matrix.archive_cmd }} "${{ steps.package.outputs.name }}.${{ matrix.archive_ext }}" "${{ steps.package.outputs.name }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deadend-${{ matrix.platform }}-${{ matrix.target }}
+          path: deadend_cli/installer/${{ steps.package.outputs.name }}.${{ matrix.archive_ext }}
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create checksums
+        shell: bash
+        run: |
+          cd artifacts
+          for file in */*.tar.gz; do
+            sha256sum "$file" > "${file}.sha256"
+          done
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Deadend CLI ${{ steps.version.outputs.version }}
+            
+            ### Downloads
+            
+            **Linux (x86_64):**
+            - `deadend-linux-x86_64-unknown-linux-gnu.tar.gz`
+            
+            **macOS (x86_64):**
+            - `deadend-macos-x86_64-apple-darwin.tar.gz`
+            
+            ### Installation
+            
+            Download and run the install script:
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash -s -- --version ${{ steps.version.outputs.version }}
+            ```
+            
+            Or manually extract and install:
+            ```bash
+            tar -xzf deadend-<platform>-<arch>.tar.gz
+            cd deadend-<platform>-<arch>
+            sudo cp -r * /usr/local/
+            ```
+          files: |
+            artifacts/**/*
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
