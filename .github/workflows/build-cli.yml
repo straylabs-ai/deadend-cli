@@ -2,8 +2,8 @@ name: Build CLI
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - installer
   workflow_dispatch:
     inputs:
       version:
