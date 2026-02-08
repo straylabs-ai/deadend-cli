@@ -16,6 +16,8 @@ Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic a
 ## Table of Contents
 
 - [What is Deadend CLI?](#what-is-deadend-cli)
+- [Architecture Summary](#architecture-summary)
+- [Benchmark Results](#benchmark-results)
 - [Core Analysis Capabilities](#core-analysis-capabilities)
 - [Custom Pentesting Tools](#-custom-pentesting-tools)
 - [Quick Start](#quick-start)
@@ -26,8 +28,6 @@ Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic a
 - [Usage Examples](#usage-examples)
 - [Commands](#commands)
 - [Model Settings and Configuration](#model-settings-and-configuration)
-- [Architecture Summary](#architecture-summary)
-- [Benchmark Results](#benchmark-results)
 - [Technology Stack](#technology-stack)
 - [Current Status & Roadmap](#current-status--roadmap)
 - [Contributing](#contributing)
@@ -52,6 +52,40 @@ Deadend CLI is an autonomous web application penetration testing agent that uses
 [Read the architecture breakdown in our technical article →](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01)
 
 ---
+
+---
+
+## Architecture Summary
+
+The agent uses a two-phase approach (reconnaissance → exploitation) with a supervisor-subagent hierarchy:
+
+**Supervisor**: Maintains high-level goals, delegates to specialized subagents
+**Subagents**: Focused toolsets (Requester for HTTP, Shell for commands, Python for payloads)
+**Policy**: Confidence scores (0-1.0) determine whether to fail, expand, refine, or validate
+
+**Key innovation:** When standard tools fail, the agent generates custom exploitation scripts and iterates based on observed feedback—solving challenges like blind SQL injection where static toolchains achieve 0%.
+
+[Read full architecture details →](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01)
+
+---
+
+## Benchmark Results
+
+> **Note**: To visualize the benchmark results properly, install an ANSI colors extension (e.g., [ANSI Colors](https://marketplace.visualstudio.com/items?itemName=iliazeus.vscode-ansi) for VS Code) to render the rich output.
+
+Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026):
+
+| Agent | Success Rate | Infrastructure | Blind SQLi |
+|-------|-------------|----------------|------------|
+| XBOW (proprietary) | 85% | Proprietary | ? |
+| Cyber-AutoAgent | 85% (This is the latest Cyber-Autoagent scoring for october 2025) <s>81%</s>| AWS Bedrock | 0% |
+| **Deadend CLI** | **78%** | **Fully local** | **33%** |
+| MAPTA | 76.9% | External APIs | 0% |
+
+**Models tested:** Claude Sonnet 4.5 (~78%), Kimi K2 Thinking (~69%)
+
+Strong performance: XSS (91%), Business Logic (86%), SQL injection (83%), IDOR (80%)
+Perfect scores: GraphQL, SSRF, NoSQL injection, HTTP method tampering (100%)
 
 ## Core Analysis Capabilities
 
@@ -318,39 +352,6 @@ The CLI interface uses a separate `settings.json` file located at `~/.cache/dead
 
 The CLI interface reads from `settings.json` to determine which model to use by default, while `config.json` provides the actual API keys and connection details for those models.
 
----
-
-## Architecture Summary
-
-The agent uses a two-phase approach (reconnaissance → exploitation) with a supervisor-subagent hierarchy:
-
-**Supervisor**: Maintains high-level goals, delegates to specialized subagents
-**Subagents**: Focused toolsets (Requester for HTTP, Shell for commands, Python for payloads)
-**Policy**: Confidence scores (0-1.0) determine whether to fail, expand, refine, or validate
-
-**Key innovation:** When standard tools fail, the agent generates custom exploitation scripts and iterates based on observed feedback—solving challenges like blind SQL injection where static toolchains achieve 0%.
-
-[Read full architecture details →](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01)
-
----
-
-## Benchmark Results
-
-> **Note**: To visualize the benchmark results properly, install an ANSI colors extension (e.g., [ANSI Colors](https://marketplace.visualstudio.com/items?itemName=iliazeus.vscode-ansi) for VS Code) to render the rich output.
-
-Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026):
-
-| Agent | Success Rate | Infrastructure | Blind SQLi |
-|-------|-------------|----------------|------------|
-| XBOW (proprietary) | 85% | Proprietary | ? |
-| Cyber-AutoAgent | 85% (This is the latest Cyber-Autoagent scoring for october 2025) <s>81%</s>| AWS Bedrock | 0% |
-| **Deadend CLI** | **78%** | **Fully local** | **33%** |
-| MAPTA | 76.9% | External APIs | 0% |
-
-**Models tested:** Claude Sonnet 4.5 (~78%), Kimi K2 Thinking (~69%)
-
-Strong performance: XSS (91%), Business Logic (86%), SQL injection (83%), IDOR (80%)
-Perfect scores: GraphQL, SSRF, NoSQL injection, HTTP method tampering (100%)
 
 ---
 
