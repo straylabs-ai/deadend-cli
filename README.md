@@ -8,7 +8,7 @@ Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic a
 *Like the project or want to know more? Feel free to [reach out](#contact)!*
 
 > [!WARNING]
-> **Active Development**: This project is undergoing active development. Current features are functional but the interface and workflows are being improved based on new architecture and features.
+> **Active Development**: This project is undergoing active development. Core features are stable and production-ready, but we're continuously improving the interface, workflows, and adding new capabilities based on user feedback. Check out the [roadmap](#current-status--roadmap) or open a issue for a future issue. 
 
 
 📄 [Read Technical Deep Dive](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01) | 📊 [Benchmark Results (use VScode ANSI colors to view)](https://github.com/xoxruns/deadend-cli/tree/main/benchmarks-results/xbow)
