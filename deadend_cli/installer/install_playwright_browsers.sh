@@ -35,9 +35,9 @@ python3 -m pip install playwright $PIP_FLAGS
 # Set PLAYWRIGHT_BROWSERS_PATH to install directly to target location
 export PLAYWRIGHT_BROWSERS_PATH="$BROWSER_PATH"
 
-# Install chromium_headless_shell (the headless browser Playwright uses)
-echo "Installing chromium_headless_shell to $BROWSER_PATH..."
-python3 -m playwright install chromium_headless_shell
+# Install chromium-headless-shell (the headless browser Playwright uses)
+echo "Installing chromium-headless-shell to $BROWSER_PATH..."
+python3 -m playwright install chromium-headless-shell
 
 # Target version - must be exactly 1208
 TARGET_VERSION="1208"
@@ -50,8 +50,9 @@ if [ -d "$BROWSER_PATH" ]; then
     echo "Browser directory contents:"
     ls -la "$BROWSER_PATH"
     
-    # Check for chromium_headless_shell directory (any version)
-    HEADLESS_SHELL_DIR=$(find "$BROWSER_PATH" -maxdepth 1 -type d -name "chromium_headless_shell-*" | head -n 1)
+    # Check for chromium-headless-shell directory (Playwright creates it with hyphens)
+    # Also check for chromium_headless_shell (with underscores) in case it was renamed
+    HEADLESS_SHELL_DIR=$(find "$BROWSER_PATH" -maxdepth 1 -type d \( -name "chromium-headless-shell-*" -o -name "chromium_headless_shell-*" \) | head -n 1)
     
     # Also check for chromium directory as fallback
     if [ -z "$HEADLESS_SHELL_DIR" ]; then
