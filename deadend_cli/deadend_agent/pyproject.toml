@@ -1,10 +1,10 @@
 [project]
 name = "deadend-agent"
 dynamic = ["version"]
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 readme = "README.md"
 description = "Core Agent for security tooling"
-authors = [{name="Yassine Bargach", email="yassine.bargach@proton.me"}]
+authors = [{name="Yassine Bargach", email="yassine@straylabs.ai"}]
 
 dependencies = [
     "aiofiles>=24.1.0",
@@ -21,11 +21,10 @@ dependencies = [
     "instructor>=1.8.0",
     "jsbeautifier>=1.15.4",
     "litellm>=1.55.0",
-    "logfire>=4.3.3",
     "logging>=0.4.9.6",
     "lxml>=6.0.0",
     "nest-asyncio>=1.6.0",
-    "numpy>=2.3.1",
+    "numpy>=2.0.0,<2.3.0",
     "opentelemetry-api>=1.39.1",
     "opentelemetry-exporter-otlp>=1.39.1",
     "opentelemetry-sdk>=1.39.1",
@@ -51,7 +50,6 @@ dependencies = [
     "tree-sitter-typescript>=0.23.2",
     "typer>=0.15.4",
     "typing-extensions>=4.15.0",
-    "zaproxy>=0.4.0",
 ]
 
 [build-system]

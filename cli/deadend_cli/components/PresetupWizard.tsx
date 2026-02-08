@@ -168,7 +168,7 @@ export function PresetupWizard({ rpcClient, onComplete }: PresetupWizardProps) {
           type_model: "embeddings",
           vec_dim: configToUse.vec_dim || 1536,
         });
-        console.log("Embedding model added successfully:", result);
+        // console.log("Embedding model added successfully:", result);
       }
       
       // Create and save default settings with the entered model as default

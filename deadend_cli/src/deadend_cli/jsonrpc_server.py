@@ -796,4 +796,7 @@ def object_to_string(obj: Any) -> str:
     return str_obj
 
 if __name__ == "__main__":
+    """Entrypoint to the jsonrpc server.
+
+    """
     typer.run(main)

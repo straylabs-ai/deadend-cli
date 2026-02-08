@@ -13,7 +13,7 @@ This binary is compiled from : https://github.com/xoxruns/simple-python-interpre
 and will be intergrated to the whole project in the future.
 """
 import asyncio
-from enum import StrEnum, unique
+from enum import Enum, unique
 from asyncio.subprocess import PIPE, Process
 from pathlib import Path
 from typing import Any
@@ -26,7 +26,7 @@ class PythonInterpreterNotFoundException(FileNotFoundError):
     """Raised when the sandbox binary cannot be found locally."""
 
 @unique
-class CommandsInterpreter(StrEnum):
+class CommandsInterpreter(str, Enum):
     """HTTP endpoints exposed by the sandboxed Python interpreter service."""
     INSTALL_PACKAGES = f"{ENDPOINT_PYTHON_SANDBOX}/installpackages"
     RUN_SCRIPT = f"{ENDPOINT_PYTHON_SANDBOX}/runscript"
