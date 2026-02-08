@@ -88,7 +88,15 @@ jobs:
           BROWSER_PATH="${{ steps.build_dir.outputs.build_dir }}/lib/playwright/driver/package/.local-browsers"
           echo "Checking browser installation at: $BROWSER_PATH"
           ls -la "$BROWSER_PATH" || echo "Browser directory not found"
-          find "$BROWSER_PATH" -type f -name "chrome*" -o -name "chromium*" | head -5 || echo "No browser binaries found"
+          echo ""
+          echo "Looking for chromium_headless_shell directories:"
+          find "$BROWSER_PATH" -maxdepth 1 -type d -name "chromium_headless_shell-*" || echo "No chromium_headless_shell directories found"
+          echo ""
+          echo "Looking for browser executables:"
+          find "$BROWSER_PATH" -type f \( -name "chrome-headless-shell" -o -name "chrome-headless-shell*" -o -name "chrome*" -o -name "chromium*" \) | head -10 || echo "No browser binaries found"
+          echo ""
+          echo "Checking directory structure:"
+          find "$BROWSER_PATH" -type d -name "*chrome*" -o -name "*chromium*" | head -10 || echo "No browser directories found"
 
       - name: Create package directory structure
         id: package

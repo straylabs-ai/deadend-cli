@@ -20,6 +20,15 @@ fi
 # Fix all shell scripts in playwright
 find "$INSTALL_DIR/lib/playwright" -type f \( -name "*.sh" -o -name "playwright*" \) -exec chmod +x {} \; 2>/dev/null
 
+# Fix browser executables in .local-browsers
+BROWSER_PATH="$INSTALL_DIR/lib/playwright/driver/package/.local-browsers"
+if [ -d "$BROWSER_PATH" ]; then
+    echo "Fixing permissions for Playwright browsers..."
+    find "$BROWSER_PATH" -type f \( -name "chrome-headless-shell" -o -name "chrome-headless-shell*" -o -name "chrome*" -o -name "chromium*" \) -exec chmod +x {} \; 2>/dev/null || true
+    # Also fix permissions in subdirectories
+    find "$BROWSER_PATH" -type d -name "*chrome*" -exec find {} -type f -exec chmod +x {} \; \; 2>/dev/null || true
+fi
+
 # Fix any other executables that might need it
 find "$INSTALL_DIR/lib" -type f \( -name "node" -o -name "*.so" \) -exec chmod +x {} \; 2>/dev/null
 
