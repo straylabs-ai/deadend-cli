@@ -1,0 +1,279 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+jobs:
+  build-server:
+    name: Build Server for ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            target: x86_64-unknown-linux-gnu
+            archive_ext: tar.gz
+            archive_cmd: tar -czf
+          - os: macos-latest
+            platform: macos
+            target: aarch64-apple-darwin
+            archive_ext: tar.gz
+            archive_cmd: tar -czf
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install Python 3.10
+        run: uv python install 3.10
+
+      - name: Install dependencies
+        working-directory: deadend_cli
+        run: |
+          uv add pyoxidizer
+          uv sync
+
+      - name: Build with PyOxidizer
+        working-directory: deadend_cli/installer
+        env:
+          PYOXIDIZER_BUILD_MODE: release
+        run: |
+          uv run pyoxidizer build --target-triple ${{ matrix.target }} --release
+
+      - name: Determine build directory
+        id: build_dir
+        working-directory: deadend_cli/installer
+        shell: bash
+        run: |
+          BUILD_DIR="build/${{ matrix.target }}/release/install"
+          echo "build_dir=$BUILD_DIR" >> $GITHUB_OUTPUT
+          echo "Build directory: $BUILD_DIR"
+
+      - name: Copy wrapper script
+        working-directory: deadend_cli/installer
+        run: |
+          cp deadend.sh ${{ steps.build_dir.outputs.build_dir }}/deadend.sh
+          chmod +x ${{ steps.build_dir.outputs.build_dir }}/deadend.sh
+
+      - name: Fix permissions
+        working-directory: deadend_cli/installer
+        run: |
+          bash fix_permissions.sh ${{ steps.build_dir.outputs.build_dir }}
+
+      - name: Install Playwright browsers
+        working-directory: deadend_cli/installer
+        run: |
+          chmod +x install_playwright_browsers.sh
+          bash install_playwright_browsers.sh ${{ steps.build_dir.outputs.build_dir }}
+
+      - name: Verify browser installation
+        working-directory: deadend_cli/installer
+        run: |
+          BROWSER_PATH="${{ steps.build_dir.outputs.build_dir }}/lib/playwright/driver/package/.local-browsers"
+          echo "Checking browser installation at: $BROWSER_PATH"
+          ls -la "$BROWSER_PATH" || echo "Browser directory not found"
+          find "$BROWSER_PATH" -type f -name "chrome*" -o -name "chromium*" | head -5 || echo "No browser binaries found"
+
+      - name: Create package directory structure
+        id: package
+        working-directory: deadend_cli/installer
+        run: |
+          PACKAGE_NAME="deadend-${{ matrix.platform }}-${{ matrix.target }}"
+          mkdir -p "$PACKAGE_NAME"
+          cp -r ${{ steps.build_dir.outputs.build_dir }}/* "$PACKAGE_NAME/"
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create archive
+        working-directory: deadend_cli/installer
+        run: |
+          ${{ matrix.archive_cmd }} "${{ steps.package.outputs.name }}.${{ matrix.archive_ext }}" "${{ steps.package.outputs.name }}"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deadend-server-${{ matrix.platform }}-${{ matrix.target }}
+          path: deadend_cli/installer/${{ steps.package.outputs.name }}.${{ matrix.archive_ext }}
+          retention-days: 30
+
+  build-cli:
+    name: Build CLI for ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            platform: macos
+            arch: aarch64
+            target: aarch64-apple-darwin
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Build CLI binary
+        working-directory: cli/deadend_cli
+        run: |
+          deno compile \
+            --allow-all \
+            --target ${{ matrix.target }} \
+            --output deadend-cli \
+            main.tsx
+
+      - name: Create package directory
+        id: package
+        working-directory: cli/deadend_cli
+        run: |
+          PACKAGE_NAME="deadend-cli-${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "$PACKAGE_NAME"
+          cp deadend-cli "$PACKAGE_NAME/"
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create archive
+        working-directory: cli/deadend_cli
+        run: |
+          tar -czf "${{ steps.package.outputs.name }}.tar.gz" "${{ steps.package.outputs.name }}"
+
+      - name: Create checksum
+        working-directory: cli/deadend_cli
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ steps.package.outputs.name }}.tar.gz" > "${{ steps.package.outputs.name }}.tar.gz.sha256"
+          else
+            shasum -a 256 "${{ steps.package.outputs.name }}.tar.gz" > "${{ steps.package.outputs.name }}.tar.gz.sha256"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deadend-cli-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            cli/deadend_cli/${{ steps.package.outputs.name }}.tar.gz
+            cli/deadend_cli/${{ steps.package.outputs.name }}.tar.gz.sha256
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: [build-server, build-cli]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create checksums for server packages
+        shell: bash
+        run: |
+          cd artifacts
+          for dir in deadend-server-*; do
+            if [ -d "$dir" ]; then
+              for file in "$dir"/*.tar.gz; do
+                if [ -f "$file" ]; then
+                  # Create checksum with just the filename (not the path)
+                  filename=$(basename "$file")
+                  (cd "$dir" && sha256sum "$filename" > "${filename}.sha256")
+                fi
+              done
+            fi
+          done
+          # Also create checksums for CLI packages
+          for dir in deadend-cli-*; do
+            if [ -d "$dir" ]; then
+              for file in "$dir"/*.tar.gz; do
+                if [ -f "$file" ]; then
+                  filename=$(basename "$file")
+                  (cd "$dir" && sha256sum "$filename" > "${filename}.sha256")
+                fi
+              done
+            fi
+          done
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Deadend CLI ${{ steps.version.outputs.version }}
+            
+            ### Server Downloads (RPC Server)
+            
+            **Linux (x86_64):**
+            - `deadend-linux-x86_64-unknown-linux-gnu.tar.gz`
+            
+            **macOS (ARM64):**
+            - `deadend-macos-aarch64-apple-darwin.tar.gz`
+            
+            ### CLI Downloads (Interface)
+            
+            **Linux (x86_64):**
+            - `deadend-cli-linux-x86_64.tar.gz`
+            
+            **macOS (ARM64):**
+            - `deadend-cli-macos-aarch64.tar.gz`
+            
+            ### Installation
+            
+            Download and run the install script:
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ steps.version.outputs.version }}/install.sh | bash -s -- --version ${{ steps.version.outputs.version }}
+            ```
+            
+            Or manually extract and install:
+            ```bash
+            tar -xzf deadend-<platform>-<arch>.tar.gz
+            cd deadend-<platform>-<arch>
+            sudo cp -r * /usr/local/
+            ```
+          files: |
+            artifacts/**/*
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,1 +1,0 @@
-docker stop stop_drop_roll
