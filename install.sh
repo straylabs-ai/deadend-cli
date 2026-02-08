@@ -10,7 +10,7 @@ NC='\033[0m' # No Color
 # Default values
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.cache/server}"
 VERSION="${VERSION:-latest}"
-REPO="${REPO:-straylabs/deadend-cli}"
+REPO="${REPO:-xoxruns/deadend-cli}"
 
 # Detect OS and architecture
 detect_platform() {
@@ -79,7 +79,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --version VERSION     Version to install (default: latest)"
             echo "  --install-dir DIR     Installation directory (default: ~/.cache/server)"
-            echo "  --repo REPO           GitHub repository (default: straylabs/deadend-cli)"
+            echo "  --repo REPO           GitHub repository (default: xoxruns/deadend-cli)"
             echo "  -h, --help            Show this help message"
             exit 0
             ;;
