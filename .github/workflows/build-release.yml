@@ -60,7 +60,7 @@ jobs:
           # Set build mode to release for smaller, faster binaries
           PYOXIDIZER_BUILD_MODE: release
         run: |
-          pyoxidizer build --target-triple ${{ matrix.target }} --release
+          uv run pyoxidizer build --target-triple ${{ matrix.target }} --release
 
       - name: Determine build directory
         id: build_dir
