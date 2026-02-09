@@ -248,7 +248,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
           body: |
-            ## Deadend CLI ${{ steps.version.outputs.version }}
+            ## Deadend CLI ${{ steps.version.outputs.version }} Stable version;
             
             ### Server Downloads (RPC Server)
             
@@ -278,6 +278,8 @@ jobs:
             tar -xzf deadend-<platform>-<arch>.tar.gz
             cd deadend-<platform>-<arch>
             sudo cp -r * /usr/local/
+
+            Hope you enjoy the new release, let me know if this works for macos and linux
             ```
           files: |
             artifacts/**/*

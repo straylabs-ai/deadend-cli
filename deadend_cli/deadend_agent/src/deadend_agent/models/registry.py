@@ -69,13 +69,23 @@ class EmbedderClient:
             #
             # NOTE:
             # - `self.model` should follow the LiteLLM model name convention,
-            #   e.g. "openai:text-embedding-3-small" or "openrouter:qwen/qwen3-embedding-8b".
+            #   e.g. "openai/text-embedding-3-small" or "openrouter/qwen/qwen3-embedding-8b".
             # - API keys / base URLs are expected to be configured via LiteLLM
-            #   environment variables or global configuration.
-            data = await aembedding(
-                model=self.model,
-                input=input_texts,
-            )
+            #   environment variables or passed explicitly below.
+            kwargs: dict = {
+                "model": self.model,
+                "input": input_texts,
+            }
+
+            # For custom endpoints, we need api_key and api_base
+            if self.base_url:
+                kwargs["api_base"] = self.base_url
+
+            # API key handling
+            if self.api_key:
+                kwargs["api_key"] = self.api_key
+
+            data = await aembedding(**kwargs)
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.error("Embedding call via LiteLLM failed: %s", exc)
             raise ValueError(f"Embedding API error: {exc}") from exc
@@ -168,8 +178,10 @@ class ModelRegistry:
                     # Use the first embedding spec we encounter as the embedder client
                     if self.embedder_model is None:
                         # api_key, base_url = self._resolve_embedding_credentials(spec)
+                        # LiteLLM expects model identifiers in the form "provider/model_name"
+                        # e.g. "openai/text-embedding-3-small" or "openrouter/qwen/qwen3-embedding-8b".
                         self.embedder_model = EmbedderClient(
-                            model_name=spec.model_name,
+                            model_name=f"{spec.provider}/{spec.model_name}",
                             api_key=spec.api_key,
                             base_url=spec.base_url,
                         )
