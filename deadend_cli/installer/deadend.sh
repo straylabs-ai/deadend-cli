@@ -14,4 +14,14 @@ if [ -f "${SCRIPT_DIR}/lib/playwright/driver/node" ]; then
     chmod +x "${SCRIPT_DIR}/lib/playwright/driver/node" 2>/dev/null
 fi
 
+# On macOS, strip any invalid signature and re-sign ad-hoc, then clear quarantine
+if [ "$(uname)" = "Darwin" ] && [ -f "${SCRIPT_DIR}/deadend" ]; then
+    # Remove existing (possibly broken) signature; ignore errors if not signed
+    codesign --remove-signature "${SCRIPT_DIR}/deadend" 2>/dev/null || true
+    # Ad-hoc sign (no certificate)
+    codesign -s - --force --deep "${SCRIPT_DIR}/deadend" 2>/dev/null || true
+    # Clear quarantine attributes if any
+    xattr -c "${SCRIPT_DIR}/deadend" 2>/dev/null || true
+fi
+
 exec "${SCRIPT_DIR}/deadend" "$@"
