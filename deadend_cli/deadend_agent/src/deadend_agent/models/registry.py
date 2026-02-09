@@ -12,7 +12,7 @@ objects that are consumed by the CoreAgent and other components.
 
 from typing import Dict
 import aiohttp
-from litellm import aembedding
+from litellm import aembedding, EmbeddingResponse
 from pydantic import BaseModel
 from deadend_agent.config.settings import Config, ModelSpec, EmbeddingSpec, ProvidersList
 from deadend_agent.logging import logger
@@ -72,29 +72,28 @@ class EmbedderClient:
             #   e.g. "openai/text-embedding-3-small" or "openrouter/qwen/qwen3-embedding-8b".
             # - API keys / base URLs are expected to be configured via LiteLLM
             #   environment variables or passed explicitly below.
-            kwargs: dict = {
-                "model": self.model,
-                "input": input_texts,
-            }
-
-            # For custom endpoints, we need api_key and api_base
-            if self.base_url:
-                kwargs["api_base"] = self.base_url
-
-            # API key handling
-            if self.api_key:
-                kwargs["api_key"] = self.api_key
-
-            data = await aembedding(**kwargs)
+            data = await aembedding(
+                model=self.model,
+                input=input_texts,
+                api_base=self.base_url,
+                api_key=self.api_key
+            )
         except Exception as exc:  # pragma: no cover - defensive logging
             logger.error("Embedding call via LiteLLM failed: %s", exc)
             raise ValueError(f"Embedding API error: {exc}") from exc
 
         # Handle different response structures
-        # LiteLLM typically returns an OpenAI-compatible response:
-        # {"data": [{"embedding": [...]}, ...]}
+        # LiteLLM may return:
+        # - A dict: {"data": [{"embedding": [...]}, ...]}
+        # - A list: already a list of embeddings
+        # - An EmbeddingResponse object: has a `.data` attribute
         if isinstance(data, dict) and "data" in data:
             embeddings = data["data"]
+        elif isinstance(data, EmbeddingResponse):
+            embeddings = data.data
+        elif hasattr(data, "data"):
+            # Newer LiteLLM returns an EmbeddingResponse object
+            embeddings = getattr(data, "data")
         elif isinstance(data, list):
             # Response is already a list of embeddings
             embeddings = data
