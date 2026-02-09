@@ -82,13 +82,30 @@ class PythonInterpreter:
         )
 
         # Setting the directory
-        resp = await self._send_instruction_post(
-            command=CommandsInterpreter.SET_DIRECTORY,
-            key="directory",
-            data=self.directory,
-        )
+        # NOTE: the sandbox HTTP server may not be ready immediately after the
+        # process starts, so we add a small retry loop here to avoid transient
+        # "connection refused" errors that surface as tool failures like:
+        # "Error executing tool: CommandsInterpreter.SET_DIRECTORY".
+        last_exc: Exception | None = None
+        for attempt in range(5):
+            try:
+                resp = await self._send_instruction_post(
+                    command=CommandsInterpreter.SET_DIRECTORY,
+                    key="directory",
+                    data=self.directory,
+                )
+                print(resp)
+                return resp
+            except aiohttp.ClientError as exc:  # type: ignore[attr-defined]
+                last_exc = exc
+                # Back off slightly between attempts to give the server time to boot
+                await asyncio.sleep(0.2 * (attempt + 1))
 
-        return resp
+        # If we got here, all attempts failed – raise a clear, high-level error
+        raise RuntimeError(
+            f"Failed to reach Python sandbox at {str(CommandsInterpreter.SET_DIRECTORY)} "
+            f"after 5 attempts. Last error: {last_exc!r}"
+        )
 
     async def load_packages(self, packages: list[str]):
         """Request package installation inside the sandbox.
@@ -132,7 +149,7 @@ class PythonInterpreter:
         """Execute inline Python code in the sandbox (not implemented)."""
         raise NotImplementedError
 
-    async def _send_instruction_post(self, command: str, key: str, data: Any):
+    async def _send_instruction_post(self, command: str | CommandsInterpreter, key: str, data: Any):
         """Send a JSON POST request to the sandbox.
 
         Args:
@@ -143,8 +160,15 @@ class PythonInterpreter:
         Returns:
             Any: Parsed JSON response.
         """
+        # Explicitly convert Enum to string for aiohttp compatibility
+        # Using .value for Enums ensures we get the actual string value
+        # This is necessary for Python 3.10 compatibility (StrEnum is 3.11+)
+        if isinstance(command, Enum):
+            url = command.value
+        else:
+            url = str(command)
         async with aiohttp.ClientSession() as session:
-            async with session.post(url=command, json={key: data}) as resp:
+            async with session.post(url=url, json={key: data}) as resp:
                 return await resp.json()
 
     async def shutdown(self, timeout: float = 5.0):
