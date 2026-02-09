@@ -62,7 +62,7 @@ class ModelSpec(BaseSettings):
 
 class EmbeddingSpec(ModelSpec):
     # Use field names and aliases that match the JSON config keys ("type" and "vec_dim")
-    type: str = Field(alias="type", default="embeddings")
+    type_model: str = Field(alias="type_model", default="embeddings")
     vec_dim: int = Field(alias="vec_dim", default=1536)
 
     def update_not_null(
@@ -76,7 +76,7 @@ class EmbeddingSpec(ModelSpec):
         """Update only non-null fields, keeping compatibility with caller signature."""
         super().update_not_null(model_name, api_key, base_url)
         if type_model is not None:
-            self.type = type_model
+            self.type_model = type_model
         if vec_dim is not None:
             self.vec_dim = vec_dim
 
@@ -140,7 +140,7 @@ class ProvidersList(BaseSettings):
                 model_name=model_name,
                 api_key=api_key,
                 base_url=base_url,
-                type=type_model,
+                type_model=type_model,
                 vec_dim=vec_dim
             )
             if embedding_model not in self.model_providers:

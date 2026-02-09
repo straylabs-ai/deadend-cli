@@ -12,6 +12,7 @@ objects that are consumed by the CoreAgent and other components.
 
 from typing import Dict
 import aiohttp
+from litellm import aembedding
 from pydantic import BaseModel
 from deadend_agent.config.settings import Config, ModelSpec, EmbeddingSpec, ProvidersList
 from deadend_agent.logging import logger
@@ -61,48 +62,47 @@ class EmbedderClient:
             list if no embeddings were generated.
         
         Raises:
-            ValueError: If the API returns a non-200 status code, an error
-                response, or an unexpected response structure.
+            ValueError: If the embedding call fails or returns an unexpected structure.
         """
-        async with aiohttp.ClientSession() as session:
-            response = await session.post(
-                    url=self.base_url,
-                    headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": self.model,
-                        "input": input_texts
-                    }
-                )
+        try:
+            # Delegate embedding generation to LiteLLM's async embedding helper.
+            #
+            # NOTE:
+            # - `self.model` should follow the LiteLLM model name convention,
+            #   e.g. "openai:text-embedding-3-small" or "openrouter:qwen/qwen3-embedding-8b".
+            # - API keys / base URLs are expected to be configured via LiteLLM
+            #   environment variables or global configuration.
+            data = await aembedding(
+                model=self.model,
+                input=input_texts,
+            )
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.error("Embedding call via LiteLLM failed: %s", exc)
+            raise ValueError(f"Embedding API error: {exc}") from exc
 
-            # Check HTTP status code
-            if response.status != 200:
-                error_text = await response.text()
-                raise ValueError(f"Embedding API returned status {response.status}: {error_text}")
-
-            data = await response.json()
-
-            # Handle different response structures
-            # OpenAI format: {"data": [{"embedding": [...]}, ...]}
-            # Some APIs might return the data directly or in a different structure
-            if isinstance(data, dict) and 'data' in data:
-                embeddings = data['data']
-            elif isinstance(data, list):
-                # Response is already a list of embeddings
-                embeddings = data
-            elif isinstance(data, dict) and 'error' in data:
-                # API returned an error
-                error_info = data.get('error', {})
-                error_msg = error_info.get('message', str(error_info)) \
-                    if isinstance(error_info, dict) else str(error_info)
-                raise ValueError(f"Embedding API error: {error_msg}")
-            else:
-                # Try to find embeddings in the response
-                error_msg = f"Unexpected response structure: \
-                    {list(data.keys()) if isinstance(data, dict) else type(data)}"
-                raise ValueError(error_msg)
+        # Handle different response structures
+        # LiteLLM typically returns an OpenAI-compatible response:
+        # {"data": [{"embedding": [...]}, ...]}
+        if isinstance(data, dict) and "data" in data:
+            embeddings = data["data"]
+        elif isinstance(data, list):
+            # Response is already a list of embeddings
+            embeddings = data
+        elif isinstance(data, dict) and "error" in data:
+            error_info = data.get("error", {})
+            error_msg = (
+                error_info.get("message", str(error_info))
+                if isinstance(error_info, dict)
+                else str(error_info)
+            )
+            raise ValueError(f"Embedding API error: {error_msg}")
+        else:
+            # Try to find embeddings in the response
+            error_msg = (
+                f"Unexpected embedding response structure: "
+                f"{list(data.keys()) if isinstance(data, dict) else type(data)}"
+            )
+            raise ValueError(error_msg)
 
         return embeddings if embeddings else []
 
@@ -166,7 +166,7 @@ class ModelRegistry:
             for spec in providers_list.model_providers:
                 if isinstance(spec, EmbeddingSpec):
                     # Use the first embedding spec we encounter as the embedder client
-                    if self.embedder_model is None and spec.base_url is not None:
+                    if self.embedder_model is None:
                         # api_key, base_url = self._resolve_embedding_credentials(spec)
                         self.embedder_model = EmbedderClient(
                             model_name=spec.model_name,
