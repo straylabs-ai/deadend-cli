@@ -1,4 +1,7 @@
 # Deadend CLI
+
+[![Discord - Deadend CLI](https://img.shields.io/badge/Discord-Deadend%20CLI-5865F2?logo=discord&logoColor=white)](https://discord.gg/zwUVa3E7KT)
+
 **Autonomous pentesting agent using feedback-driven iteration**
 Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic architecture.
 
@@ -10,6 +13,9 @@ Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic a
 > [!WARNING]
 > **Active Development**: This project is undergoing active development. Core features are stable and production-ready, but we're continuously improving the interface, workflows, and adding new capabilities based on user feedback. Check out the [roadmap](#current-status--roadmap) or open a issue for a future issue. 
 
+> [!INFO]
+> For discussions, research, and feature ideas, join the community Discord: [Deadend CLI Discord](https://discord.gg/zwUVa3E7KT).
+
 
 📄 [Read Technical Deep Dive](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01) | 📊 [Benchmark Results (use VScode ANSI colors to view)](https://github.com/xoxruns/deadend-cli/tree/main/benchmarks-results/xbow)
 
@@ -19,6 +25,7 @@ Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic a
 - [Architecture Summary](#architecture-summary)
 - [Benchmark Results](#benchmark-results)
 - [Core Analysis Capabilities](#core-analysis-capabilities)
+- [Models tested until now](#models-tested-until-now)
 - [Custom Pentesting Tools](#-custom-pentesting-tools)
 - [Quick Start](#quick-start)
   - [Prerequisites](#prerequisites)
@@ -90,6 +97,32 @@ The framework focuses on **intelligent security analysis** through:
 - **🎯 Source/Sink Detection**: Intelligent identification of entry points and vulnerable functions
 - **🔗 Contextual Tool Integration**: Smart connection to specialized tools for testing complex logic patterns
 - **🧠 AI-Driven Reasoning**: Context-aware analysis that mimics expert security thinking
+
+## Models tested until now
+
+The following models have been tested with Deadend CLI. Compatibility and performance may vary:
+
+**Moonshot AI**
+- **Models**: `Kimi-K2-Thinking`, `Kimi-K2.5`
+- **Status**: Works excellently across all features
+- **Notes**: Reliable performance at every step of the workflow
+
+**Anthropic**
+- **Models**: Claude Sonnet 4.5, Claude 3 Opus, Claude 3 Haiku
+- **Status**: Powerful models with excellent results
+- **Notes**: Properly extracts results and token usage information. Recommended for production use.
+
+**DeepSeek**
+- **Models**: DeepSeek models via various providers
+- **Status**: Functional but with limitations
+- **Notes**: Models work for general reasoning but struggle with shell command execution and HTTP payload generation. May require architecture adjustments or model fine-tuning for optimal performance.
+
+**OpenAI**
+- **Models**: GPT-5.X, Codex variants
+- **Status**: Under investigation
+- **Notes**: Some issues observed with tool execution via LiteLLM. Requires further investigation before definitive compatibility assessment.
+
+> **Tip**: For best results, we recommend using Moonshot AI (Kimi models) or Anthropic (Claude) models, which have been thoroughly tested and show excellent compatibility with all Deadend CLI features.
 
 ## 🔧 Custom Pentesting Tools
 
@@ -443,6 +476,7 @@ Have questions, feedback, or want to collaborate?
 
 - 📧 **Email**: [yassine@straylabs.ai](mailto:yassine@straylabs.ai)
 - 💬 **Discord**: xoxruns
+- 🧪 **Discord Server**: [Join the Deadend community](https://discord.gg/zwUVa3E7KT) — use this space for discussions, research, and feature requests.
 - 💼 **LinkedIn**: [Yassine Bargach](https://www.linkedin.com/in/yass-99637a105/)
 - 🐦 **Twitter**: [@xoxruns](https://x.com/xoxruns)
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import inspect
 import asyncio
-from typing import Callable, Type, Any
+from typing import Callable, Type, Any, cast
 from contextlib import contextmanager
 from rich.console import Console
 from rich.panel import Panel
@@ -35,6 +35,7 @@ from litellm.exceptions import (
     ServiceUnavailableError,
     Timeout as LiteLLMTimeout,
     APIConnectionError as LiteLLMConnectionError,
+    ContentPolicyViolationError,
 )
 from deadend_agent.logging import get_module_logger
 from . import (
@@ -58,7 +59,7 @@ try:
     import litellm
     from litellm import acompletion
     # Suppress litellm debug info
-    litellm.suppress_debug_info = True
+    cast(Any, litellm).suppress_debug_info = True
     LITELLM_AVAILABLE = True
 except ImportError:
     LITELLM_AVAILABLE = False
@@ -659,10 +660,12 @@ class CoreAgent:
 
         try:
             return await _call()
+        except ContentPolicyViolationError as e:
+            self._handle_content_policy_violation(e)
         except RetryError as e:
             # Extract the original exception from RetryError
             original = e.last_attempt.exception() if e.last_attempt else None
-            self._handle_llm_error(original or e)
+            self._handle_llm_error(e)
         except Exception as e:
             self._handle_llm_error(e)
 
@@ -730,6 +733,46 @@ class CoreAgent:
         raise LLMError(
             f"LLM request failed: {error_msg[:300]}",
             original_error=error
+        )
+
+    def _handle_content_policy_violation(self, error: ContentPolicyViolationError) -> None:
+        """Handle Azure/OpenAI content policy violations with detailed logging.
+
+        This surfaces provider-specific content filter information (when available)
+        and then raises a user-facing InvalidRequestError.
+        """
+        details = getattr(error, "provider_specific_fields", None) or {}
+        innererror = details.get("innererror") if isinstance(details, dict) else None
+
+        if innererror:
+            content_filter_result = innererror.get("content_filter_result", {}) or {}
+
+            # Access content filter results for common categories
+            hate_filtered = (content_filter_result.get("hate") or {}).get("filtered")
+            violence_severity = (content_filter_result.get("violence") or {}).get("severity")
+            sexual_filtered = (content_filter_result.get("sexual") or {}).get("filtered")
+            code = innererror.get("code")
+
+            log_msg = (
+                "Content policy violation from provider. "
+                f"code={code}, hate_filtered={hate_filtered}, "
+                f"violence_severity={violence_severity}, sexual_filtered={sexual_filtered}"
+            )
+
+            logger.warning(log_msg)
+            try:
+                console.print(Panel(
+                    log_msg,
+                    title="[bold red]Content Policy Violation[/bold red]",
+                    border_style="red",
+                ))
+            except BlockingIOError:
+                # If stdout/stderr is blocked, we still raise the error below
+                pass
+
+        raise InvalidRequestError(
+            "Request blocked by provider content policy. Please adjust the prompt/content and try again.",
+            original_error=error,
         )
 
     async def _execute_tools(self, tool_calls: list, deps: Any) -> list[dict]:
@@ -1076,7 +1119,10 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
         elif self.api_base and self.model.startswith("openai/"):
             kwargs["api_key"] = "sk-dummy-key-for-local-model"
 
-        response = await acompletion(**kwargs)
+        try:
+            response = await acompletion(**kwargs)
+        except ContentPolicyViolationError as e:
+            self._handle_content_policy_violation(e)
         content = response.choices[0].message.content or ""
 
         result = self._try_parse_json_from_content(content)

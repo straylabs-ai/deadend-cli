@@ -46,7 +46,10 @@ class TemplateToolRenderer:
         self.tool_name = tool_name
 
     def get_description(self, **kwargs):
-        description_template = self.env.get_template(f"{self.tool_name}.description.jinja2")
+        # Tool templates live under the "tools/" directory at the package root.
+        # We always load them with an explicit "tools/" prefix so shared partials
+        # (e.g. "_shared/...") can be included consistently from the package root.
+        description_template = self.env.get_template(f"tools/{self.tool_name}.description.jinja2")
         return description_template.render(**kwargs)
 
 
@@ -72,16 +75,17 @@ def _get_tools_template_loader():
     Returns:
         Environment: Jinja2 environment with appropriate loader
     """
-    # Try to use PackageLoader first (for installed packages)
+    # Try to use PackageLoader first (for installed packages), rooted at the
+    # deadend_prompts package so that tool templates and shared partials
+    # share the same include namespace.
     try:
-        return Environment(loader=PackageLoader("deadend_prompts", "tools"))
+        return Environment(loader=PackageLoader("deadend_prompts", ""))
     except (ImportError, OSError):
-        # Fallback to FileSystemLoader for development
+        # Fallback to FileSystemLoader for development, rooted at the package
+        # directory (sibling of "tools" and "_shared").
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        # Go up one level to the package root, then into tools
         package_root = os.path.dirname(current_dir)
-        tools_dir = os.path.join(package_root, "tools")
-        return Environment(loader=FileSystemLoader(tools_dir))
+        return Environment(loader=FileSystemLoader(package_root))
 
 def render_agent_instructions(agent_name: str, tools: Dict[str, str], **kwargs):
     env = _get_template_loader()

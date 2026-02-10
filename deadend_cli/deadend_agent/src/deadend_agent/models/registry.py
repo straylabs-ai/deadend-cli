@@ -31,9 +31,10 @@ class EmbedderClient:
     """
     model: str
     api_key: str | None
-    base_url: str
+    base_url: str | None
+    vector_dim: int = 1536
 
-    def __init__(self, model_name: str, api_key: str | None, base_url: str) -> None:
+    def __init__(self, model_name: str, api_key: str | None, base_url: str | None, vector_dim: int) -> None:
         """Initialize the EmbedderClient with provider configuration.
         
         Args:
@@ -44,6 +45,7 @@ class EmbedderClient:
         self.model = model_name
         self.api_key = api_key
         self.base_url = base_url
+        self.vector_dim = vector_dim
 
     async def batch_embed(self, input_texts: list[str]) -> list[dict]:
         """Generate embeddings for a batch of input texts.
@@ -183,6 +185,7 @@ class ModelRegistry:
                             model_name=f"{spec.provider}/{spec.model_name}",
                             api_key=spec.api_key,
                             base_url=spec.base_url,
+                            vector_dim=spec.vec_dim
                         )
                 else:
                     # Regular language model spec - store all specs per provider.

@@ -50,6 +50,7 @@ async def webapp_analyzer(
     session_id = getattr(context.deps, "embedding_session_id", None) or context.deps.session_id
     results = await context.deps.rag.similarity_search_code_chunk(
         query_embedding=embedding,
+        vector_dim=context.deps.embedder_client.vector_dim,
         session_id=session_id,
         limit=5
     )

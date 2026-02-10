@@ -959,7 +959,7 @@ requires-dist = [
     { name = "httptools", specifier = ">=0.6.4" },
     { name = "instructor", specifier = ">=1.8.0" },
     { name = "jsbeautifier", specifier = ">=1.15.4" },
-    { name = "litellm", specifier = ">=1.81.9" },
+    { name = "litellm", specifier = ">=1.81.3" },
     { name = "logging", specifier = ">=0.4.9.6" },
     { name = "lxml", specifier = ">=6.0.0" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },

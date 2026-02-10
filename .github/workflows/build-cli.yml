@@ -118,6 +118,11 @@ jobs:
           body: |
             ## Deadend CLI ${{ steps.version.outputs.version }}
             
+            ### What's changed ?
+            - [x] Resolving embedding dimensions issues : Any dimension specified in the `settings.json` will be used in the pgvector database.
+            - [x] Changing the README.md, adding information about what model works and what doesn't for now. Will be updated in the next releases.
+            - [x] Adding changes on templating format.
+
             ### Downloads
             
             **Linux (x86_64):**

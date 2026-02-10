@@ -16,7 +16,7 @@ from typing import List, Optional, Dict, Any, AsyncGenerator
 from contextlib import asynccontextmanager
 # import numpy as np
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy import text, select, delete
+from sqlalchemy import text, select, delete, func
 
 from .models import Base, CodeChunk, KnowledgeBase
 from deadend_agent.logging import get_module_logger
@@ -230,12 +230,15 @@ class RetrievalDatabaseConnector:
             return total_deleted
 
 
-    async def similarity_search_code_chunk(self,
-                               query_embedding: List[float],
-                               session_id: uuid.UUID,
-                               limit: int = 10,
-                               language: Optional[str] = None,
-                               similarity_threshold: Optional[float] = None) -> List[tuple]:
+    async def similarity_search_code_chunk(
+        self,
+        query_embedding: List[float],
+        session_id: uuid.UUID,
+        vector_dim: int,
+        limit: int = 10,
+        language: Optional[str] = None,
+        similarity_threshold: Optional[float] = None
+    ) -> List[tuple]:
         """
         Search for similar code chunks using vector similarity.
         """
@@ -245,7 +248,10 @@ class RetrievalDatabaseConnector:
             query = select(
                 CodeChunk,
                 distance_expr.label('distance')
-            ).where(CodeChunk.session_id == session_id)
+            ).where(
+                CodeChunk.session_id == session_id,
+                func.vector_dims(CodeChunk.embedding) == vector_dim,
+            )
             
             # Apply language filter if specified
             if language:
@@ -400,13 +406,14 @@ class RetrievalDatabaseConnector:
             self,
             query_embeddings: List[List[float]],
             session_id: uuid.UUID,
+            vector_dim: int,
             limit: int = 10
         ) -> List[List[tuple]]:
         """
         Perform multiple similarity searches concurrently.
         """
         tasks = [
-            self.similarity_search_code_chunk(embedding, session_id, limit=limit)
+            self.similarity_search_code_chunk(embedding, session_id, vector_dim, limit=limit)
             for embedding in query_embeddings
         ]
         return await asyncio.gather(*tasks)
@@ -453,12 +460,13 @@ class AsyncCodeSearchService:
     async def hybrid_search(self,
                            query_embedding: List[float],
                            session_id: uuid.UUID,
+                           vector_dim: int,
                            limit: int = 10) -> List[tuple]:
         """
         Combine text search and semantic search for better results.
         """
         # Run both searches concurrently
-        semantic_task = self.repo.similarity_search_code_chunk(query_embedding, session_id, limit=limit)
+        semantic_task = self.repo.similarity_search_code_chunk(query_embedding, session_id, vector_dim, limit=limit)
 
         semantic_results = await asyncio.gather(semantic_task)
 
