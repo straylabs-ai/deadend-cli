@@ -13,7 +13,7 @@ Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic a
 > [!WARNING]
 > **Active Development**: This project is undergoing active development. Core features are stable and production-ready, but we're continuously improving the interface, workflows, and adding new capabilities based on user feedback. Check out the [roadmap](#current-status--roadmap) or open a issue for a future issue. 
 
-> [!INFO]
+> [!NOTE]
 > For discussions, research, and feature ideas, join the community Discord: [Deadend CLI Discord](https://discord.gg/zwUVa3E7KT).
 
 
