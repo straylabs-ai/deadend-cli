@@ -107,7 +107,8 @@ function App({ cliArgs }: AppProps) {
 
         // Initialize all components at once using init_all
         setInitStatus("Initializing all components...");
-        const initResult = await client.initAll();
+        // We can wait longer here for pgvector and the sandbox
+        const initResult = await client.initAll(300000);
 
         // Store component results for display
         setComponentResults(initResult.components);

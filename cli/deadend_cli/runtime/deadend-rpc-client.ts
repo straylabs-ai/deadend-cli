@@ -382,10 +382,11 @@ export class DeadEndRpcClient {
    *
    * @param method - The RPC method name
    * @param params - Optional parameters for the method
+   * @param timeout - Timeout in milliseconds (default: 300000)
    * @returns Promise resolving to the method result
    */
-  async call(method: string, params?: unknown): Promise<unknown> {
-    return this.client.call(method, params);
+  async call(method: string, params?: unknown, timeout = 30000): Promise<unknown> {
+    return this.client.call(method, params, timeout);
   }
 
   /**
@@ -618,6 +619,7 @@ export class DeadEndRpcClient {
    * 6. Shell sandbox (requires Docker)
    * 7. Playwright (standalone)
    *
+   * @param timeout - Optional timeout in milliseconds (default: 300000)
    * @returns Promise resolving to AllInitResult with overall status and per-component details
    *
    * @example
@@ -627,9 +629,15 @@ export class DeadEndRpcClient {
    *   console.error("Failed components:", result.failed_components);
    * }
    * ```
+   *
+   * @example
+   * ```typescript
+   * // Use custom timeout of 10 minutes
+   * const result = await client.initAll(600000);
+   * ```
    */
-  async initAll(): Promise<AllInitResult> {
-    const result = await this.client.call("init_all");
+  async initAll(timeout: number): Promise<AllInitResult> {
+    const result = await this.client.call("init_all", undefined, timeout);
     return result as AllInitResult;
   }
 
