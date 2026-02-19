@@ -47,10 +47,10 @@ def _cfg(key: str, default: str | None = None) -> str | None:
 
 class ModelSpec(BaseSettings):
     """Model settings object"""
-    provider: str = Field(alias='provider_name'),
-    model_name: str = Field(alias='model'),
-    api_key: str | None = Field(alias='api_key'),
-    base_url: str | None = Field(alias='url'),
+    provider: str = Field(alias='provider')
+    model_name: str = Field(alias='model_name')
+    api_key: str | None = Field(alias='api_key')
+    base_url: str | None = Field(alias='base_url')
 
     def update_not_null(self, model_name: str | None, api_key: str | None, base_url: str | None):
         if model_name is not None:
@@ -71,7 +71,7 @@ class EmbeddingSpec(ModelSpec):
         api_key: str | None,
         base_url: str | None,
         type_model: str | None,
-        vec_dim: int | None,
+        vec_dim: int | None
     ):
         """Update only non-null fields, keeping compatibility with caller signature."""
         super().update_not_null(model_name, api_key, base_url)
@@ -97,10 +97,10 @@ class ProvidersList(BaseSettings):
         Verifies before hand if there is a provider that matches the one we want to change
         
         """
-        new_provider = ModelSpec()
+
         for idx, provider_spec in enumerate(self.model_providers):
             if provider_spec == updated_provider:
-                if isinstance(provider, EmbeddingSpec):
+                if isinstance(provider_spec, EmbeddingSpec):
                     provider_spec.update_not_null(
                         model_name=model_name,
                         api_key=api_key,
@@ -113,9 +113,7 @@ class ProvidersList(BaseSettings):
                     provider_spec.update_not_null(
                         model_name=model_name,
                         api_key=api_key,
-                        base_url=base_url,
-                        type_model=type_model,
-                        vec_dim=vec_dim
+                        base_url=base_url
                     )
                     new_provider = provider_spec
                 self.model_providers[idx] = provider_spec
@@ -128,13 +126,13 @@ class ProvidersList(BaseSettings):
         api_key: str | None = None,
         base_url: str | None = None,
         type_model: str | None = None,
-        vec_dim: str | None = None
+        vec_dim: int | None = None
     ):
         """Add a provider to the list of providers. Adds it in a unique way, where there is a check 
         that the provider that's being added is not already in the list.
 
         """
-        if type_model is not None and type_model == "embeddings":
+        if type_model is not None and vec_dim is not None and type_model == "embeddings":
             embedding_model = EmbeddingSpec(
                 provider=provider,
                 model_name=model_name,
@@ -261,7 +259,7 @@ class Config:
             api_key=api_key,
             base_url=base_url,
             type_model=type_model,
-            vec_dim=str(vec_dim) if vec_dim is not None else None
+            vec_dim=vec_dim if vec_dim is not None else None
         )
 
         # Load existing config
