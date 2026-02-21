@@ -50,6 +50,8 @@ dependencies = [
     "typing-extensions>=4.15.0",
     "python-frontmatter>=1.1.0",
     "pyoxidizer>=0.24.0",
+    "openinference-instrumentation-instructor>=0.1.13",
+    "instructor>=1.13.0",
 ]
 
 [project.scripts]

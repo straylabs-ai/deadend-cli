@@ -1024,12 +1024,14 @@ dependencies = [
     { name = "dotenv" },
     { name = "google-genai" },
     { name = "httptools" },
+    { name = "instructor" },
     { name = "jinja2" },
     { name = "jsbeautifier" },
     { name = "logging" },
     { name = "lxml" },
     { name = "nest-asyncio" },
     { name = "numpy" },
+    { name = "openinference-instrumentation-instructor" },
     { name = "pgvector" },
     { name = "playwright" },
     { name = "prompt-toolkit" },
@@ -1086,12 +1088,14 @@ requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "google-genai", specifier = ">=1.18.0" },
     { name = "httptools", specifier = ">=0.6.4" },
+    { name = "instructor", specifier = ">=1.13.0" },
     { name = "jinja2", specifier = ">=3.1.6" },
     { name = "jsbeautifier", specifier = ">=1.15.4" },
     { name = "logging", specifier = ">=0.4.9.6" },
     { name = "lxml", specifier = ">=6.0.0" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },
     { name = "numpy", specifier = ">=2.0.0,<2.3.0" },
+    { name = "openinference-instrumentation-instructor", specifier = ">=0.1.13" },
     { name = "pgvector", specifier = ">=0.4.1" },
     { name = "playwright", specifier = ">=1.56.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.51" },
@@ -2918,6 +2922,48 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/02/2e/58d83848dd1a79cb92ed8e63f6ba901ca282c5f09d04af9423ec26c56fd7/openapi_pydantic-0.5.1.tar.gz", hash = "sha256:ff6835af6bde7a459fb93eb93bb92b8749b754fc6e51b2f1590a19dc3005ee0d", size = 60892, upload-time = "2025-01-08T19:29:27.083Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/12/cf/03675d8bd8ecbf4445504d8071adab19f5f993676795708e36402ab38263/openapi_pydantic-0.5.1-py3-none-any.whl", hash = "sha256:a3a09ef4586f5bd760a8df7f43028b60cafb6d9f61de2acba9574766255ab146", size = 96381, upload-time = "2025-01-08T19:29:25.275Z" },
+]
+
+[[package]]
+name = "openinference-instrumentation"
+version = "0.1.44"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-sdk" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/41/d9/c0d3040c0b5dc2b97ad20c35fb3fc1e3f2006bb4b08741ff325efcf3a96a/openinference_instrumentation-0.1.44.tar.gz", hash = "sha256:141953d2da33d54d428dfba2bfebb27ce0517dc43d52e1449a09db72ec7d318e", size = 23959, upload-time = "2026-02-01T01:45:55.88Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5e/6d/6a19587b26ffa273eb27ba7dd2482013afe3b47c8d9f1f39295216975f9f/openinference_instrumentation-0.1.44-py3-none-any.whl", hash = "sha256:86b2a8931e0f39ecfb739901f8987c654961da03baf3cfa5d5b4f45a96897b2d", size = 30093, upload-time = "2026-02-01T01:45:54.932Z" },
+]
+
+[[package]]
+name = "openinference-instrumentation-instructor"
+version = "0.1.13"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "openinference-instrumentation" },
+    { name = "openinference-semantic-conventions" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-instrumentation" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "typing-extensions" },
+    { name = "wrapt" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1b/77/712237d589c1e09ed4cd5dd219f67657558b68a7dd7c81572a7e15767e0e/openinference_instrumentation_instructor-0.1.13.tar.gz", hash = "sha256:2a2a8053d047381c8de0144aed19e71b6874e355129ae3111e159152c16780b4", size = 10632, upload-time = "2026-02-05T19:06:36.492Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/d5/cb93ea58630ef08a91c4cc86c8c460e5b4388203d311ac90d29007757cd9/openinference_instrumentation_instructor-0.1.13-py3-none-any.whl", hash = "sha256:065d4585e74b852e2a92ce66ab20b91cb50ccd49b7969050d2a4aabfa9b978b6", size = 12114, upload-time = "2026-02-05T19:06:35.17Z" },
+]
+
+[[package]]
+name = "openinference-semantic-conventions"
+version = "0.1.26"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5a/91/f67c1971deaf5b75dea84731393bca2042ff4a46acae9a727dfe267dd568/openinference_semantic_conventions-0.1.26.tar.gz", hash = "sha256:34dae06b40743fb7b846a36fd402810a554b2ec4ee96b9dd8b820663aee4a1f1", size = 12782, upload-time = "2026-02-01T01:09:46.095Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6b/ca/bb4b9cbd96f72600abec5280cf8ed67bcd849ed19b8bec919aec97adb61c/openinference_semantic_conventions-0.1.26-py3-none-any.whl", hash = "sha256:35b4f487d18ac7d016125c428c0d950dd290e18dafb99787880a9b2e05745f42", size = 10401, upload-time = "2026-02-01T01:09:44.781Z" },
 ]
 
 [[package]]
