@@ -213,7 +213,7 @@ class CoreAgent:
         """
         self.tools.append(func)
         try:
-            console.print(f"[bold dim][Tool Added][/bold dim] {func.__name__}")
+            console.print(f"[bold dim][Tool Added][/bold dim] {getattr(func, '__name__', repr(func))}")
         except BlockingIOError:
             pass
         return func
@@ -295,7 +295,7 @@ class CoreAgent:
 
         # Debug: Log registered tools
         if self.tools:
-            tool_names = [f.__name__ for f in self.tools]
+            tool_names = [getattr(f, '__name__', repr(f)) for f in self.tools]
             try:
                 console.print(f"[bold dim][Tools Registered][/bold dim] {', '.join(tool_names)}")
             except BlockingIOError:
