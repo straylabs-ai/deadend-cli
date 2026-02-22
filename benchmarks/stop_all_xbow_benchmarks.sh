@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks/benchmarks"
+XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks-xbow/benchmarks"
 
 if [[ ! -d "$XBEN_ROOT" ]]; then
     echo "Error: XBEN benchmarks directory not found: $XBEN_ROOT" >&2
