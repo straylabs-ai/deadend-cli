@@ -1,16 +1,28 @@
-# This is a workspace root configuration file
-# It doesn't define a buildable package, just manages the workspace
+# Workspace root: run `uv sync` from this directory (repo root).
+# Single workspace; do not add [tool.uv.workspace] inside deadend_cli (no nested workspaces).
+
+[project]
+name = "deadend-workspace-root"
+dynamic = ["version"]
+requires-python = ">=3.10"
+dependencies = ["deadend_cli"]
+
+[tool.uv.sources]
+deadend_cli = { workspace = true }
 
 [tool.uv.workspace]
 members = [
-    "deadend_cli/",
-    "deadend_cli/cli/",
-    "deadend_cli/deadend_agent/", 
-    "deadend_cli/deadend_prompts/",
-    "deadend_cli/eval/",
+    "deadend_cli",
+    "deadend_cli/deadend_agent",
+    "deadend_cli/deadend_prompts",
+    "deadend_cli/deadend_eval",
 ]
 
-# Note: Publishing is configured to only publish the main package
-# Individual packages are bundled into the main deadend_cli package
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
 
 

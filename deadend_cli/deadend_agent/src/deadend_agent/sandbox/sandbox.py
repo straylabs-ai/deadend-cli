@@ -100,7 +100,7 @@ class Sandbox(BaseModel):
     """
     container_id : str | None = None
     docker_image: str = ""
-    fs_volume: str = ""
+    fs_volume: str | None = ""
     status: SandboxStatus = SandboxStatus.CREATED
     last_command: str | None = None
     created_at: datetime = Field(default_factory=datetime.now)
@@ -170,13 +170,14 @@ class Sandbox(BaseModel):
                     "host.docker.internal": "host-gateway"  # Maps to the host machine
                 }
                 print("Adding host.docker.internal alias for host access")
-                
+
+            volumes = {}
+            if self.fs_volume is not None:
+                volumes[self.fs_volume] = {"bind": "/challenge", "mode": "ro"}
+
             container = self._docker_client.containers.run(
                 image=image,
-                volumes={
-                    self.fs_volume: {'bind':'/challenge', 'mode':'ro'}
-                }, 
-                # runtime='runsc',
+                volumes=volumes,
                 network=network_name,
                 extra_hosts=extra_hosts,
                 tty=True,
@@ -435,7 +436,7 @@ class Sandbox(BaseModel):
                 print("Docker/system error in worker: %s", exc)
                 exception_container["exception"] = exc
             except Exception as exc:
-                print("Unexpected error in execute_worker: %s", exc, exc_info=True)
+                print("Unexpected error in execute_worker: %s", exc)
                 exception_container["exception"] = exc
 
         thread = threading.Thread(target=execute_worker)

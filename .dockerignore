@@ -1,0 +1,23 @@
+# Dependencies and build artifacts
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+htmlcov
+*.egg-info
+.eggs
+dist
+build
+
+.gitignore
+.cursor
+.idea
+*.swp
+*~
+
+# Optional: exclude tests/docs if not needed at runtime
+# tests
+# docs
+# *.md

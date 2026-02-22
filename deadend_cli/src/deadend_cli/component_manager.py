@@ -5,6 +5,7 @@
 """Component manager for initializing and managing daemon components."""
 from __future__ import annotations
 import asyncio
+import os
 import subprocess
 import time
 from datetime import datetime
@@ -832,11 +833,16 @@ class ComponentManager:
             )
         return self.rag_connector
 
-    def create_task_sandbox(self, network_name: str = "host"):
+    def create_task_sandbox(self, network_name: str | None = None):
         """Create a new sandbox for a task.
 
+        When the server runs inside a Docker container, mount the host Docker socket
+        so the daemon can create sandbox containers (e.g. -v /var/run/docker.sock:/var/run/docker.sock).
+        The sandbox network can be set via DOCKER_SANDBOX_NETWORK (default: "host").
+
         Args:
-            network_name: Docker network to use for the sandbox
+            network_name: Docker network for the sandbox. Defaults to env
+                DOCKER_SANDBOX_NETWORK or "host".
 
         Returns:
             Sandbox instance
@@ -848,6 +854,8 @@ class ComponentManager:
             raise RuntimeError(
                 "Sandbox manager not initialized. Call init_shell_sandbox() first."
             )
+        if network_name is None:
+            network_name = os.environ.get("DOCKER_SANDBOX_NETWORK", "host")
         sandbox_id = self.sandbox_manager.create_sandbox(
             "xoxruns/sandboxed_kali", network_name=network_name
         )

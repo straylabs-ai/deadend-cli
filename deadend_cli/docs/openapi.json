@@ -1,0 +1,1384 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Deadend API",
+    "description": "API for launching agents and tasks.",
+    "version": "0.1.1.post6.dev0+c771082"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health All",
+        "description": "Check health of all components.",
+        "operationId": "health_all_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllHealthResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/docker": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Docker",
+        "description": "Check Docker daemon health.",
+        "operationId": "health_docker_health_docker_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/pgvector": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Pgvector",
+        "description": "Check pgvector database health.",
+        "operationId": "health_pgvector_health_pgvector_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/python-sandbox": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Python Sandbox",
+        "description": "Check Python sandbox health.",
+        "operationId": "health_python_sandbox_health_python_sandbox_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/shell-sandbox": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Shell Sandbox",
+        "description": "Check shell sandbox health.",
+        "operationId": "health_shell_sandbox_health_shell_sandbox_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/playwright": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health Playwright",
+        "description": "Check Playwright browser health.",
+        "operationId": "health_playwright_health_playwright_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/init": {
+      "post": {
+        "tags": [
+          "init"
+        ],
+        "summary": "Init All",
+        "description": "Initialize all components in the correct order.",
+        "operationId": "init_all_init_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllInitResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/init/docker": {
+      "post": {
+        "tags": [
+          "init"
+        ],
+        "summary": "Init Docker",
+        "description": "Initialize Docker client.",
+        "operationId": "init_docker_init_docker_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/init/pgvector": {
+      "post": {
+        "tags": [
+          "init"
+        ],
+        "summary": "Init Pgvector",
+        "description": "Initialize pgvector database.",
+        "operationId": "init_pgvector_init_pgvector_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/init/config": {
+      "post": {
+        "tags": [
+          "init"
+        ],
+        "summary": "Init Config",
+        "description": "Initialize configuration.",
+        "operationId": "init_config_init_config_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/init/model-registry": {
+      "post": {
+        "tags": [
+          "init"
+        ],
+        "summary": "Init Model Registry",
+        "description": "Initialize model registry.",
+        "operationId": "init_model_registry_init_model_registry_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/init/python-sandbox": {
+      "post": {
+        "tags": [
+          "init"
+        ],
+        "summary": "Init Python Sandbox",
+        "description": "Initialize Python sandbox.",
+        "operationId": "init_python_sandbox_init_python_sandbox_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/init/shell-sandbox": {
+      "post": {
+        "tags": [
+          "init"
+        ],
+        "summary": "Init Shell Sandbox",
+        "description": "Initialize shell sandbox.",
+        "operationId": "init_shell_sandbox_init_shell_sandbox_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/init/playwright": {
+      "post": {
+        "tags": [
+          "init"
+        ],
+        "summary": "Init Playwright",
+        "description": "Initialize Playwright browser.",
+        "operationId": "init_playwright_init_playwright_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InitResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/stream": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Subscribe Events",
+        "description": "Subscribe to agent/tool events (Server-Sent Events).",
+        "operationId": "subscribe_events_events_stream_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/interrupt": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Interrupt",
+        "description": "Interrupt a running session.",
+        "operationId": "interrupt_events_interrupt_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InterruptRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterruptResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/approve": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Approve",
+        "description": "Respond to an approval request (approve or reject).",
+        "operationId": "approve_events_approve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/approval-mode/enable": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Enable Approval",
+        "description": "Enable approval mode: all tool calls require user approval.",
+        "operationId": "enable_approval_events_approval_mode_enable_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/approval-mode/disable": {
+      "post": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Disable Approval",
+        "description": "Disable approval mode: tools execute without approval.",
+        "operationId": "disable_approval_events_approval_mode_disable_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events/approval-mode": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "Get Approval Mode",
+        "description": "Get current approval mode status.",
+        "operationId": "get_approval_mode_events_approval_mode_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalModeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/llm/models": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get All Models",
+        "description": "List all available and configured models from config.",
+        "operationId": "get_all_models_llm_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Add Model",
+        "description": "Add a new model provider to the configuration.",
+        "operationId": "add_model_llm_models_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddModelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/llm/provider": {
+      "get": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Get Llm Provider",
+        "description": "Get the current LLM provider and model name.",
+        "operationId": "get_llm_provider_llm_provider_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LlmProviderResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "llm"
+        ],
+        "summary": "Set Llm Provider",
+        "description": "Set the current LLM provider.",
+        "operationId": "set_llm_provider_llm_provider_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Instantiate Agent",
+        "description": "Create and prepare an agent for a target. Returns agent_id for use in embed and run.",
+        "operationId": "instantiate_agent_agents_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstantiateAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstantiateAgentResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents/embed": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Embed Target",
+        "description": "Embed a target for an agent (streaming). Requires agent_id from instantiate_agent.",
+        "operationId": "embed_target_agents_embed_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbedTargetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents/run/recursive": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Run Agent Recursive",
+        "description": "Run agent in recursive mode: recon then exploit (streaming).",
+        "operationId": "run_agent_recursive_agents_run_recursive_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents/run/supervisor": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "Run Agent Supervisor",
+        "description": "Run agent in supervisor mode (streaming).",
+        "operationId": "run_agent_supervisor_agents_run_supervisor_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ping": {
+      "get": {
+        "summary": "Ping",
+        "description": "Health ping.",
+        "operationId": "ping_ping_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/shutdown": {
+      "post": {
+        "summary": "Shutdown",
+        "description": "Request graceful shutdown of all components. Caller may then exit the process.",
+        "operationId": "shutdown_shutdown_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddModelRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Model name"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key",
+            "description": "API key if required"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url",
+            "description": "Base URL for API if custom"
+          },
+          "type_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Model",
+            "description": "e.g. 'embeddings' for embedding models"
+          },
+          "vec_dim": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vec Dim",
+            "description": "Vector dimension for embedding models"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "model_name"
+        ],
+        "title": "AddModelRequest",
+        "description": "Add a new model provider."
+      },
+      "AddModelResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "ok"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model_name": {
+            "type": "string",
+            "title": "Model Name"
+          },
+          "type_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider",
+          "model_name"
+        ],
+        "title": "AddModelResponse",
+        "description": "Response after adding a model."
+      },
+      "AllHealthResult": {
+        "properties": {
+          "overall_healthy": {
+            "type": "boolean",
+            "title": "Overall Healthy"
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/HealthResult"
+            },
+            "type": "array",
+            "title": "Components"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "overall_healthy",
+          "components"
+        ],
+        "title": "AllHealthResult",
+        "description": "Combined health check result."
+      },
+      "AllInitResult": {
+        "properties": {
+          "overall_success": {
+            "type": "boolean",
+            "title": "Overall Success"
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/InitResult"
+            },
+            "type": "array",
+            "title": "Components"
+          },
+          "failed_components": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failed Components"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "overall_success",
+          "components"
+        ],
+        "title": "AllInitResult",
+        "description": "Combined initialization result for all components."
+      },
+      "ApprovalModeResponse": {
+        "properties": {
+          "approval_mode": {
+            "type": "boolean",
+            "title": "Approval Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "approval_mode"
+        ],
+        "title": "ApprovalModeResponse",
+        "description": "Current approval mode status."
+      },
+      "ApprovalRequest": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id",
+            "description": "Approval request ID"
+          },
+          "approved": {
+            "type": "boolean",
+            "title": "Approved",
+            "description": "Whether the action is approved",
+            "default": false
+          },
+          "modified_args": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Args",
+            "description": "Optional modified tool arguments"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id"
+        ],
+        "title": "ApprovalRequest",
+        "description": "Request to respond to an approval (approve or reject)."
+      },
+      "ApprovalResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "request_id"
+        ],
+        "title": "ApprovalResponse",
+        "description": "Response after responding to an approval."
+      },
+      "ComponentStatus": {
+        "type": "string",
+        "enum": [
+          "not_initialized",
+          "initializing",
+          "ready",
+          "unhealthy",
+          "stopped",
+          "error"
+        ],
+        "title": "ComponentStatus",
+        "description": "Component lifecycle states."
+      },
+      "EmbedTargetRequest": {
+        "properties": {
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target",
+            "description": "Target; can reuse agent's target if same"
+          },
+          "agent_id": {
+            "type": "string",
+            "title": "Agent Id",
+            "description": "Agent ID from instantiate_agent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_id"
+        ],
+        "title": "EmbedTargetRequest",
+        "description": "Request to embed a target for an agent."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResult": {
+        "properties": {
+          "component": {
+            "type": "string",
+            "title": "Component"
+          },
+          "healthy": {
+            "type": "boolean",
+            "title": "Healthy"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ComponentStatus"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "component",
+          "healthy",
+          "status",
+          "message"
+        ],
+        "title": "HealthResult",
+        "description": "Result of a health check."
+      },
+      "InitResult": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "component": {
+            "type": "string",
+            "title": "Component"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ComponentStatus"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "component",
+          "status",
+          "message"
+        ],
+        "title": "InitResult",
+        "description": "Result of an initialization operation."
+      },
+      "InstantiateAgentRequest": {
+        "properties": {
+          "target": {
+            "type": "string",
+            "title": "Target",
+            "description": "Target (e.g. URL or identifier)"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider",
+            "description": "LLM provider; uses default if omitted"
+          },
+          "model_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Name",
+            "description": "Model name; uses default if omitted"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target"
+        ],
+        "title": "InstantiateAgentRequest",
+        "description": "Request to create and prepare an agent."
+      },
+      "InstantiateAgentResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "agent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id",
+            "description": "UUID of the created agent"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Error reason when status is 'failed'"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "InstantiateAgentResponse",
+        "description": "Response with agent ID after instantiation."
+      },
+      "InterruptRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Session ID to interrupt"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Reason for interruption",
+            "default": "User request interruption"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "InterruptRequest",
+        "description": "Request to interrupt a session."
+      },
+      "InterruptResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "interrupted"
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "InterruptResponse",
+        "description": "Response after interrupting a session."
+      },
+      "LlmProviderResponse": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "title": "LlmProviderResponse",
+        "description": "Current LLM provider and model."
+      },
+      "RunAgentRequest": {
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "title": "Agent Id",
+            "description": "Agent ID"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "Task or prompt for the agent"
+          }
+        },
+        "type": "object",
+        "required": [
+          "agent_id",
+          "prompt"
+        ],
+        "title": "RunAgentRequest",
+        "description": "Request to run an agent (recursive or supervisor)."
+      },
+      "SetProviderRequest": {
+        "properties": {
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "Provider name (e.g. openai, anthropic)"
+          }
+        },
+        "type": "object",
+        "required": [
+          "provider"
+        ],
+        "title": "SetProviderRequest",
+        "description": "Set current LLM provider."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

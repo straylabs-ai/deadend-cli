@@ -57,11 +57,15 @@ dependencies = [
     "arize-phoenix-evals>=2.10.0",
     "openinference-instrumentation>=0.1.44",
     "openinference-instrumentation-litellm>=0.1.29",
+    "fastapi>=0.129.2",
+    "uvicorn>=0.37.0",
 ]
 
 [project.scripts]
 deadend = "deadend_cli:main"
 deadend-jsonrpc-server = "deadend_cli.jsonrpc_server:main"
+deadend-http-server = "deadend_cli.http_server:run"
+deadend-openapi = "deadend_cli.http.openapi_spec:main"
 
 [dependency-groups]
 dev = [
@@ -145,15 +149,9 @@ extraPaths = [
     "deadend_agent/src/deadend_agent"
 ]
 
-[tool.uv.workspace]
-members = [
-    "deadend_agent",
-    "deadend_prompts",
-    "deadend_eval"
-]
-
+# Workspace is defined at repo root only (uv does not support nested workspaces).
+# These sources resolve deps from the root workspace members.
 [tool.uv.sources]
 deadend-agent = { workspace = true }
 deadend-prompts = { workspace = true }
 deadend-eval = { workspace = true }
-
