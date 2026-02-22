@@ -31,6 +31,7 @@ def _log(msg: str) -> None:
 
 try:
     from opentelemetry import trace
+    from opentelemetry.trace import SpanKind
     from opentelemetry.sdk.trace import TracerProvider, ReadableSpan
     from opentelemetry.sdk.trace.export import (
         BatchSpanProcessor,
@@ -43,6 +44,13 @@ try:
     OTEL_AVAILABLE = True
 except ImportError:
     OTEL_AVAILABLE = False
+    from enum import IntEnum
+    class SpanKind(IntEnum):
+        INTERNAL = 1
+        SERVER = 2
+        CLIENT = 3
+        PRODUCER = 4
+        CONSUMER = 5
     # Fallback no-op implementation
     class NoOpSpan:
         def set_attribute(self, key, value): pass
@@ -200,7 +208,11 @@ class MultiSpanExporter(SpanExporter):
 def setup_telemetry() -> trace.Tracer | NoOpTracer:
     """Configure multi-backend OpenTelemetry.
 
-    Reads configuration from environment variables:
+    When DEADEND_OTEL_USE_GLOBAL=1 (e.g. when deadend-cli uses Phoenix), uses the
+    already-registered global tracer provider instead of creating a new one, so
+    all spans go to Phoenix.
+
+    Otherwise reads configuration from environment variables:
     - OTEL_CONSOLE_ENABLED: Enable console export (default: "true")
     - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (e.g., http://localhost:4317)
     - OTEL_FILE_EXPORT_PATH: File export path (e.g., ~/.cache/deadend/traces/)
@@ -212,6 +224,15 @@ def setup_telemetry() -> trace.Tracer | NoOpTracer:
     if not OTEL_AVAILABLE:
         _log("OpenTelemetry not available, using no-op tracer")
         return NoOpTracer()
+
+    # Use global provider (e.g. Phoenix) when deadend-cli registered it first
+    if os.getenv("DEADEND_OTEL_USE_GLOBAL", "").strip() == "1":
+        try:
+            tracer = trace.get_tracer(__name__)
+            _log("OpenTelemetry: Using global tracer provider (e.g. Phoenix)")
+            return tracer
+        except Exception as e:
+            _log(f"OpenTelemetry: Failed to get global tracer: {e}")
 
     exporters = []
 

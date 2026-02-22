@@ -18,11 +18,11 @@ import json
 import inspect
 import asyncio
 from typing import Callable, Type, Any, cast
-from contextlib import contextmanager
 from rich.console import Console
 from rich.panel import Panel
 from pydantic import BaseModel, Field
 from pydantic_ai import RunUsage
+from opentelemetry import trace
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -48,8 +48,22 @@ from . import (
     ModelNotFoundError,
     InvalidRequestError,
 )
-from .telemetry import tracer
 from deadend_agent.hooks import get_event_hooks
+
+# OpenInference span attributes for tool tracing (generic pattern usable by any agent)
+try:
+    from openinference.semconv.trace import SpanAttributes as _SpanAttrs
+    _TOOL_ATTR_KIND = _SpanAttrs.OPENINFERENCE_SPAN_KIND
+    _TOOL_ATTR_NAME = _SpanAttrs.TOOL_NAME
+    _TOOL_ATTR_PARAMS = _SpanAttrs.TOOL_PARAMETERS
+    _TOOL_ATTR_INPUT = _SpanAttrs.INPUT_VALUE
+    _TOOL_ATTR_OUTPUT = _SpanAttrs.OUTPUT_VALUE
+except ImportError:
+    _TOOL_ATTR_KIND = "openinference.span.kind"
+    _TOOL_ATTR_NAME = "tool.name"
+    _TOOL_ATTR_PARAMS = "tool.parameters"
+    _TOOL_ATTR_INPUT = "input.value"
+    _TOOL_ATTR_OUTPUT = "output.value"
 
 logger = get_module_logger(__name__)
 # Rich console for colored output - uses stderr to avoid breaking RPC communication
@@ -155,6 +169,8 @@ class CoreAgent:
         self.output_schema = output_schema
         self.api_key = api_key
         self.api_base = api_base
+        self.tracer = trace.get_tracer(name)
+        
 
         # Rate limiting - simple AsyncLimiter
         if AIOLIMITER_AVAILABLE:
@@ -232,6 +248,34 @@ class CoreAgent:
         Raises:
             UsageLimitExceeded: If usage limits are exceeded
         """
+        input_val = prompt[:16384] + "..." if len(prompt) > 16384 else prompt
+        chain_attrs = {
+            _TOOL_ATTR_KIND: "AGENT",
+            _TOOL_ATTR_INPUT: input_val,
+        }
+        with self.tracer.start_as_current_span(self.name, attributes=chain_attrs) as parent_span:
+            try:
+                return await self._run_impl(
+                    prompt=prompt,
+                    deps=deps,
+                    message_history=message_history,
+                    usage_limits=usage_limits,
+                    parent_span=parent_span,
+                )
+            except Exception as e:
+                parent_span.set_attribute(_TOOL_ATTR_OUTPUT, str(e))
+                parent_span.set_status(trace.Status(trace.StatusCode.ERROR))
+                raise
+
+    async def _run_impl(
+        self,
+        prompt: str,
+        deps: Any,
+        message_history: list | None,
+        usage_limits: dict | None,
+        parent_span: Any,
+    ) -> AgentResult:
+        """Implementation of run(); all logic runs under parent_span."""
         # Check limits
         if usage_limits:
             if self.request_count >= usage_limits.get("requests", float('inf')):
@@ -257,165 +301,149 @@ class CoreAgent:
             except BlockingIOError:
                 pass
 
-        # Agent loop with telemetry
-        with self._trace_span("agent_run") as span:
-            span.set_attribute("agent.model", self.model)
-            span.set_attribute("agent.prompt_length", len(prompt))
+        # Agent loop (Phoenix captures traces via Instructor auto-instrumentation)
+        iteration = 0
+        max_iterations = 50  # Safety limit
 
-            iteration = 0
-            max_iterations = 50  # Safety limit
+        while iteration < max_iterations:
+            iteration += 1
+            # Log LLM request
+            try:
+                console.print(
+                    f"\n[bold cyan][LLM Request][/bold cyan] \\[{self.name}] Iteration {iteration}, "
+                    f"{len(messages)} messages"
+                )
+                # Show the last message being sent (user prompt or tool results)
+                if messages:
+                    last_msg = messages[-1]
+                    role = last_msg.get("role", "unknown")
+                    if role == "user":
+                        content = last_msg.get("content", "")
+                        # Truncate if too long
+                        if len(content) > 16000:
+                            content = content[:16000] + "\n... [truncated]"
+                        console.print(Panel(
+                            content,
+                            title="[bold blue]LLM Input - User[/bold blue]",
+                            border_style="blue"
+                        ))
+                    elif role == "tool":
+                        tool_name = last_msg.get("name", "unknown")
+                        content = last_msg.get("content", "")
+                        # Truncate if too long
+                        if len(content) > 16000:
+                            content = content[:16000] + "\n... [truncated]"
+                        console.print(Panel(
+                            content,
+                            title=f"[bold magenta]LLM Input - Tool Result ({tool_name})[/bold magenta]",
+                            border_style="magenta"
+                        ))
+            except BlockingIOError:
+                pass
 
-            while iteration < max_iterations:
-                iteration += 1
-                # Log LLM request
+            # Rate limit check
+            if self.rate_limiter:
+                async with self.rate_limiter:
+                    response = await self._call_llm_with_retry(messages, tool_schemas)
+            else:
+                response = await self._call_llm_with_retry(messages, tool_schemas)
+
+            self.request_count += 1
+
+            # Record usage
+            if hasattr(response, 'usage') and response.usage:
+                usage = response.usage
+                prompt_tok = getattr(usage, 'prompt_tokens', 0)
+                completion_tok = getattr(usage, 'completion_tokens', 0)
+                total_tok = getattr(usage, 'total_tokens', 0) or (prompt_tok + completion_tok)
+
+                self.prompt_tokens += prompt_tok
+                self.completion_tokens += completion_tok
+                self.total_tokens += total_tok
+
+            # Add assistant message to history
+            choice = response.choices[0]
+            content = choice.message.content or ""
+            assistant_message = {
+                "role": "assistant",
+                "content": content,
+            }
+
+            # Log assistant response (if any content)
+            if content:
                 try:
-                    console.print(
-                        f"\n[bold cyan][LLM Request][/bold cyan] \\[{self.name}] Iteration {iteration}, "
-                        f"{len(messages)} messages"
-                    )
-                    # Show the last message being sent (user prompt or tool results)
-                    if messages:
-                        last_msg = messages[-1]
-                        role = last_msg.get("role", "unknown")
-                        if role == "user":
-                            content = last_msg.get("content", "")
-                            # Truncate if too long
-                            if len(content) > 16000:
-                                content = content[:16000] + "\n... [truncated]"
-                            console.print(Panel(
-                                content,
-                                title="[bold blue]LLM Input - User[/bold blue]",
-                                border_style="blue"
-                            ))
-                        elif role == "tool":
-                            tool_name = last_msg.get("name", "unknown")
-                            content = last_msg.get("content", "")
-                            # Truncate if too long
-                            if len(content) > 16000:
-                                content = content[:16000] + "\n... [truncated]"
-                            console.print(Panel(
-                                content,
-                                title=f"[bold magenta]LLM Input - Tool Result ({tool_name})[/bold magenta]",
-                                border_style="magenta"
-                            ))
+                    display_content = content
+                    if len(content) > 16000:
+                        display_content = content[:16000] + "\n... [truncated]"
+                    console.print(Panel(
+                        display_content,
+                        title="[bold green]LLM Response[/bold green]",
+                        border_style="green"
+                    ))
                 except BlockingIOError:
                     pass
 
-                # Emit event for CLI
-                # hooks.emit_log_message(
-                #     session_id=session_id,
-                #     message=f"LLM Request: iteration {iteration}, {len(messages)} messages",
-                #     level="info",
-                #     source="llm",
-                #     agent_name=self.name,
-                # )
+                # Emit agent thought event for CLI
+                hooks.emit_agent_thought(
+                    session_id=session_id,
+                    agent_name=self.name,
+                    thought=self._truncate_for_event(content, 3000),
+                    summary=self._truncate_for_event(content, 500),
+                    relevance=0.5,
+                )
 
-                # Rate limit check
-                if self.rate_limiter:
-                    async with self.rate_limiter:
-                        response = await self._call_llm_with_retry(messages, tool_schemas)
-                else:
-                    response = await self._call_llm_with_retry(messages, tool_schemas)
-
-                self.request_count += 1
-
-                # Record usage
-                if hasattr(response, 'usage') and response.usage:
-                    usage = response.usage
-                    prompt_tok = getattr(usage, 'prompt_tokens', 0)
-                    completion_tok = getattr(usage, 'completion_tokens', 0)
-                    total_tok = getattr(usage, 'total_tokens', 0) or (prompt_tok + completion_tok)
-
-                    self.prompt_tokens += prompt_tok
-                    self.completion_tokens += completion_tok
-                    self.total_tokens += total_tok
-
-                # Add assistant message to history
-                choice = response.choices[0]
-                content = choice.message.content or ""
-                assistant_message = {
-                    "role": "assistant",
-                    "content": content,
-                }
-
-                # Log assistant response (if any content)
-                if content:
-                    try:
-                        display_content = content
-                        if len(content) > 16000:
-                            display_content = content[:16000] + "\n... [truncated]"
-                        console.print(Panel(
-                            display_content,
-                            title="[bold green]LLM Response[/bold green]",
-                            border_style="green"
-                        ))
-                    except BlockingIOError:
-                        pass
-
-                    # Emit agent thought event for CLI
-                    hooks.emit_agent_thought(
-                        session_id=session_id,
-                        agent_name=self.name,
-                        thought=self._truncate_for_event(content, 3000),
-                        summary=self._truncate_for_event(content, 500),
-                        relevance=0.5,
+            # Add tool calls if present
+            if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+                tool_names = [tc.function.name for tc in choice.message.tool_calls]
+                try:
+                    console.print(
+                        f"[bold yellow][LLM Tool Calls][/bold yellow] {', '.join(tool_names)}"
                     )
-
-                # Add tool calls if present
-                if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
-                    tool_names = [tc.function.name for tc in choice.message.tool_calls]
-                    try:
-                        console.print(
-                            f"[bold yellow][LLM Tool Calls][/bold yellow] {', '.join(tool_names)}"
-                        )
-                    except BlockingIOError:
-                        pass
-                    assistant_message["tool_calls"] = [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            }
+                except BlockingIOError:
+                    pass
+                assistant_message["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {
+                            "name": tc.function.name,
+                            "arguments": tc.function.arguments,
                         }
-                        for tc in choice.message.tool_calls
-                    ]
+                    }
+                    for tc in choice.message.tool_calls
+                ]
 
-                messages.append(assistant_message)
+            messages.append(assistant_message)
 
-                # Check if done
-                if choice.finish_reason == "stop":
-                    try:
-                        console.print(
-                            f"[bold white on dark_green][LLM] Finished[/bold white on dark_green] "
-                            f"(iteration {iteration})"
-                        )
-                    except BlockingIOError:
-                        pass
-
-                    # Emit completion event for CLI
-                    hooks.emit_log_message(
-                        session_id=session_id,
-                        message=f"LLM completed after {iteration} iterations",
-                        level="info",
-                        source="llm",
-                        agent_name=self.name,
+            # Check if done
+            if choice.finish_reason == "stop":
+                try:
+                    console.print(
+                        f"[bold white on dark_green][LLM] Finished[/bold white on dark_green] "
+                        f"(iteration {iteration})"
                     )
-                    break
+                except BlockingIOError:
+                    pass
 
-                # Execute tool calls if present
-                if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
-                    tool_results = await self._execute_tools(choice.message.tool_calls, deps)
-                    messages.extend(tool_results)
-                    self.tool_call_count += len(tool_results)
+                # Emit completion event for CLI
+                hooks.emit_log_message(
+                    session_id=session_id,
+                    message=f"LLM completed after {iteration} iterations",
+                    level="info",
+                    source="llm",
+                    agent_name=self.name,
+                )
+                break
 
-                    # Check tool limit
-                    if usage_limits and self.tool_call_count >= usage_limits.get("tools", float('inf')):
-                        raise UsageLimitExceeded(f"Tool call limit reached: {usage_limits['tools']}")
+            # Execute tool calls if present
+            if hasattr(choice.message, 'tool_calls') and choice.message.tool_calls:
+                tool_results = await self._execute_tools(choice.message.tool_calls, deps)
+                messages.extend(tool_results)
+                self.tool_call_count += len(tool_results)
 
-            span.set_attribute("agent.iterations", iteration)
-            span.set_attribute("agent.total_tokens", self.total_tokens)
+                # Check tool limit
+                if usage_limits and self.tool_call_count >= usage_limits.get("tools", float('inf')):
+                    raise UsageLimitExceeded(f"Tool call limit reached: {usage_limits['tools']}")
 
         # Extract structured output
         if self.output_schema and self.instructor_client:
@@ -437,6 +465,17 @@ class CoreAgent:
             )
         except BlockingIOError:
             pass
+
+        # Set CHAIN span output and status (same pattern as tool-call-example)
+        if isinstance(output, BaseModel):
+            out_val = output.model_dump_json()
+        elif isinstance(output, str):
+            out_val = output
+        else:
+            out_val = str(output)
+        out_attr = out_val[:4096] + "..." if len(out_val) > 4096 else out_val
+        parent_span.set_attribute(_TOOL_ATTR_OUTPUT, out_attr)
+        parent_span.set_status(trace.Status(trace.StatusCode.OK))
 
         return AgentResult(
             output=output,
@@ -778,146 +817,123 @@ class CoreAgent:
     async def _execute_tools(self, tool_calls: list, deps: Any) -> list[dict]:
         """Execute tool calls with dependency injection.
 
-        Args:
-            tool_calls: List of tool call objects from LLM
-            deps: Dependencies to inject (dict or object, optional)
-
-        Returns:
-            List of tool result message dicts
+        Each tool run is traced with OpenInference TOOL span attributes
+        (tool.name, tool.parameters, input.value, output.value, status) so any
+        agent using CoreAgent gets consistent observability.
         """
         results = []
 
         for tc in tool_calls:
-            func = self._find_tool(tc.function.name)
+            function_name = tc.function.name
+            function_args_str = tc.function.arguments
+            span_attrs = {
+                _TOOL_ATTR_KIND: "TOOL",
+                _TOOL_ATTR_NAME: function_name,
+                _TOOL_ATTR_PARAMS: function_args_str,
+                _TOOL_ATTR_INPUT: function_args_str,
+            }
 
-            if func is None:
-                # Tool not found, return error
-                results.append({
-                    "tool_call_id": tc.id,
-                    "role": "tool",
-                    "name": tc.function.name,
-                    "content": f"Error: Tool '{tc.function.name}' not found"
-                })
-                continue
+            with self.tracer.start_as_current_span(
+                function_name,
+                attributes=span_attrs,
+            ) as tool_span:
+                func = self._find_tool(function_name)
 
-            try:
-                # Parse arguments
-                args = json.loads(tc.function.arguments)
+                if func is None:
+                    tool_span.set_attribute(_TOOL_ATTR_OUTPUT, f"Error: Tool '{function_name}' not found")
+                    tool_span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    results.append({
+                        "tool_call_id": tc.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": f"Error: Tool '{function_name}' not found"
+                    })
+                    continue
+
+                try:
+                    args = json.loads(function_args_str)
+                except Exception as e:
+                    err_msg = f"Invalid JSON arguments: {e}"
+                    tool_span.set_attribute(_TOOL_ATTR_OUTPUT, err_msg)
+                    tool_span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    try:
+                        console.print(Panel(str(e), title=f"[bold red][Tool Error] {function_name}[/bold red]", border_style="red"))
+                    except BlockingIOError:
+                        pass
+                    results.append({
+                        "tool_call_id": tc.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": f"Error executing tool: {err_msg}"
+                    })
+                    continue
 
                 # Log tool call (truncate if too long)
-                display_args = tc.function.arguments
-                if len(display_args) > 8000:
-                    display_args = display_args[:8000] + "\n... [truncated]"
+                display_args = function_args_str if len(function_args_str) <= 8000 else function_args_str[:8000] + "\n... [truncated]"
                 try:
                     console.print(Panel(
                         display_args,
-                        title=f"[bold orange3][Tool Call] {tc.function.name}[/bold orange3]",
+                        title=f"[bold orange3][Tool Call] {function_name}[/bold orange3]",
                         border_style="orange3"
                     ))
                 except BlockingIOError:
                     pass
 
-                # NOTE: Tool call events are handled by @with_tool_events decorator
-                # on tools that use it, so we don't emit them here to avoid duplicates
-
-                # Get function signature to check for special parameters
                 sig = inspect.signature(func)
                 params = sig.parameters
 
-                # Inject deps if function expects it (CoreAgent style)
                 if "deps" in params:
                     args["deps"] = deps
-
-                # Inject ctx or context if function expects it
-                # This provides compatibility with @agent.tool decorated functions
-                # Support both "ctx" and "context" parameter names
                 if "ctx" in params:
-                    # Create a RunContext-compatible wrapper
-                    # deps should be a dataclass/object with the actual dependencies
-                    ctx = RunContextCompat(
-                        deps=deps,
-                        usage=RunUsage(requests=self.request_count)
-                    )
-                    args["ctx"] = ctx
+                    args["ctx"] = RunContextCompat(deps=deps, usage=RunUsage(requests=self.request_count))
                 elif "context" in params:
-                    # Support "context" parameter name as well (used by some tools)
-                    ctx = RunContextCompat(
-                        deps=deps,
-                        usage=RunUsage(requests=self.request_count)
-                    )
-                    args["context"] = ctx
+                    args["context"] = RunContextCompat(deps=deps, usage=RunUsage(requests=self.request_count))
 
-                # Execute tool with telemetry
-                # Handle both sync and async functions
-                # Note: Exception handling is INSIDE the trace span to prevent
-                # OpenTelemetry from logging/re-raising exceptions
-                with self._trace_span(f"tool:{tc.function.name}"):
-                    try:
-                        if asyncio.iscoroutinefunction(func):
-                            result = await func(**args)
-                        else:
-                            # Sync function - call directly without await
-                            result = func(**args)
-                            # If it returns an awaitable anyway, await it
-                            if asyncio.iscoroutine(result):
-                                result = await result
-
-                        # Serialize result for LLM
-                        serialized = self._serialize_tool_result(result)
-
-                        # Log tool result (truncated to ~4000 tokens / 16000 chars)
-                        display_result = serialized
-                        if len(serialized) > 16000:
-                            display_result = serialized[:16000] + "\n... [truncated]"
-                        try:
-                            console.print(Panel(
-                                display_result,
-                                title=f"[bold purple][Tool Result] {tc.function.name}[/bold purple]",
-                                border_style="purple"
-                            ))
-                        except BlockingIOError:
-                            pass  # Ignore if stdout buffer is full
-
-                        results.append({
-                            "tool_call_id": tc.id,
-                            "role": "tool",
-                            "name": tc.function.name,
-                            "content": serialized
-                        })
-
-                    except Exception as e:
-                        # Log and return error to LLM
-                        try:
-                            console.print(Panel(
-                                str(e),
-                                title=f"[bold red][Tool Error] {tc.function.name}[/bold red]",
-                                border_style="red"
-                            ))
-                        except BlockingIOError:
-                            pass
-                        results.append({
-                            "tool_call_id": tc.id,
-                            "role": "tool",
-                            "name": tc.function.name,
-                            "content": f"Error executing tool: {str(e)}"
-                        })
-
-            except Exception as e:
-                # Fallback for any other errors (e.g., JSON parsing)
                 try:
-                    console.print(Panel(
-                        str(e),
-                        title=f"[bold red][Tool Error] {tc.function.name}[/bold red]",
-                        border_style="red"
-                    ))
-                except BlockingIOError:
-                    pass
-                results.append({
-                    "tool_call_id": tc.id,
-                    "role": "tool",
-                    "name": tc.function.name,
-                    "content": f"Error executing tool: {str(e)}"
-                })
+                    if asyncio.iscoroutinefunction(func):
+                        result = await func(**args)
+                    else:
+                        result = func(**args)
+                        if asyncio.iscoroutine(result):
+                            result = await result
+
+                    serialized = self._serialize_tool_result(result)
+
+                    display_result = serialized[:16000] + "\n... [truncated]" if len(serialized) > 16000 else serialized
+                    try:
+                        console.print(Panel(
+                            display_result,
+                            title=f"[bold purple][Tool Result] {function_name}[/bold purple]",
+                            border_style="purple"
+                        ))
+                    except BlockingIOError:
+                        pass
+
+                    out_attr = serialized[:4096] + "..." if len(serialized) > 4096 else serialized
+                    tool_span.set_attribute(_TOOL_ATTR_OUTPUT, out_attr)
+                    tool_span.set_status(trace.Status(trace.StatusCode.OK))
+
+                    results.append({
+                        "tool_call_id": tc.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": serialized
+                    })
+
+                except Exception as e:
+                    err_msg = str(e)
+                    tool_span.set_attribute(_TOOL_ATTR_OUTPUT, err_msg)
+                    tool_span.set_status(trace.Status(trace.StatusCode.ERROR))
+                    try:
+                        console.print(Panel(err_msg, title=f"[bold red][Tool Error] {function_name}[/bold red]", border_style="red"))
+                    except BlockingIOError:
+                        pass
+                    results.append({
+                        "tool_call_id": tc.id,
+                        "role": "tool",
+                        "name": function_name,
+                        "content": f"Error executing tool: {err_msg}"
+                    })
 
         return results
 
@@ -1206,26 +1222,6 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
             result = result[:max_chars] + "..."
 
         return result
-
-    @contextmanager
-    def _trace_span(self, name: str):
-        """Create OpenTelemetry span context manager.
-
-        Args:
-            name: Span name
-
-        Yields:
-            Span object
-        """
-        try:
-            with tracer.start_as_current_span(name) as span:
-                yield span
-        except Exception:
-            # If telemetry fails, continue without it
-            class NoOpSpan:
-                def set_attribute(self, _key, _value): pass
-
-            yield NoOpSpan()
 
     def _get_session_id(self, deps: Any) -> str:
         """Extract session_id from deps.
