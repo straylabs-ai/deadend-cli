@@ -47,12 +47,19 @@ def _cfg(key: str, default: str | None = None) -> str | None:
 
 class ModelSpec(BaseSettings):
     """Model settings object"""
-    provider: str = Field(alias='provider_name'),
-    model_name: str = Field(alias='model'),
-    api_key: str | None = Field(alias='api_key'),
-    base_url: str | None = Field(alias='url'),
+    provider: str = Field(alias='provider')
+    model_name: str = Field(alias='model_name')
+    api_key: str | None = Field(alias='api_key')
+    base_url: str | None = Field(alias='base_url')
 
-    def update_not_null(self, model_name: str | None, api_key: str | None, base_url: str | None):
+    def update_not_null(
+        self,
+        model_name: str | None,
+        api_key: str | None,
+        base_url: str | None,
+        *args,
+        **kwargs
+    ):
         if model_name is not None:
             self.model_name = model_name
         if api_key is not None:
@@ -70,11 +77,13 @@ class EmbeddingSpec(ModelSpec):
         model_name: str | None,
         api_key: str | None,
         base_url: str | None,
-        type_model: str | None,
-        vec_dim: int | None,
+        *args: Any,
+        type_model: str | None = None,
+        vec_dim: int | None = None,
+        **kwargs: Any,
     ):
         """Update only non-null fields, keeping compatibility with caller signature."""
-        super().update_not_null(model_name, api_key, base_url)
+        super(EmbeddingSpec, self).update_not_null(model_name, api_key, base_url, *args, **kwargs)
         if type_model is not None:
             self.type_model = type_model
         if vec_dim is not None:
@@ -97,7 +106,6 @@ class ProvidersList(BaseSettings):
         Verifies before hand if there is a provider that matches the one we want to change
         
         """
-        new_provider = ModelSpec()
         for idx, provider_spec in enumerate(self.model_providers):
             if provider_spec == updated_provider:
                 if isinstance(provider, EmbeddingSpec):
@@ -128,13 +136,13 @@ class ProvidersList(BaseSettings):
         api_key: str | None = None,
         base_url: str | None = None,
         type_model: str | None = None,
-        vec_dim: str | None = None
+        vec_dim: int | None = None
     ):
         """Add a provider to the list of providers. Adds it in a unique way, where there is a check 
         that the provider that's being added is not already in the list.
 
         """
-        if type_model is not None and type_model == "embeddings":
+        if type_model is not None and vec_dim is not None and type_model == "embeddings":
             embedding_model = EmbeddingSpec(
                 provider=provider,
                 model_name=model_name,
@@ -261,7 +269,7 @@ class Config:
             api_key=api_key,
             base_url=base_url,
             type_model=type_model,
-            vec_dim=str(vec_dim) if vec_dim is not None else None
+            vec_dim=vec_dim if vec_dim is not None else None
         )
 
         # Load existing config
@@ -294,6 +302,7 @@ class Config:
         updated_provider: ModelSpec | EmbeddingSpec,
         provider: str,
         model_name: str,
+        base_url: str | None,
         api_key: str | None,
         type_model: str | None,
         vec_dim: int | None
@@ -301,7 +310,13 @@ class Config:
         """
         """
         new_provider = cls.providers.update_provider(
-            updated_provider, provider, model_name, api_key, type_model, vec_dim
+            updated_provider,
+            provider,
+            model_name,
+            api_key,
+            base_url=base_url,
+            type_model=type_model,
+            vec_dim=vec_dim
         )
         config_file = load_config_json()
         providers_section = config_file.get("provider", {})

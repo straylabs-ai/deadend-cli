@@ -2,36 +2,12 @@
 # Licensed under the GNU Affero General Public License v3
 # See LICENSE file for full license information.
 
-"""Main entry point for the security research CLI application.
+"""Convenience entry for running the CLI as a module (python -m deadend_cli.main).
 
-This module serves as the primary entry point for the deadend-cli application,
-providing the main function that initializes and runs the CLI interface
-for security research and web application testing.
+The real entry point is deadend_cli.main in the package __init__; this module
+just delegates so there is a single place for startup and Phoenix registration.
 """
 
-import asyncio
-import shutil
-from importlib.resources import files
-from pathlib import Path
-from deadend_cli.cli import app
-
-def main():
-    """Entry point for the deadend CLI application."""
-
-    # copy reusable creds to cache
-    try:
-        source_creds = files("deadend_cli").joinpath("data", "memory", "reusable_credentials.json")
-        path_creds = Path(str(source_creds))
-    except (ImportError, FileNotFoundError):
-        print("not found.")
-        path_creds = Path(__file__) / "data" / "memory" / "reusable_credentials.json"
-    cache_dir = Path.home() / ".cache" / "deadend" / "memory"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    destination_file = cache_dir / "reusable_credentials.json"
-    if path_creds.exists():
-        shutil.copy2(path_creds, destination_file)
-
-    asyncio.run(app())
-
 if __name__ == "__main__":
+    from deadend_cli import main
     main()

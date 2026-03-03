@@ -10,10 +10,13 @@ for security research and web application testing.
 """
 
 import asyncio
+import os
 import shutil
 from importlib.resources import files
 from pathlib import Path
-from .cli import app
+
+from dotenv import load_dotenv
+
 from .jsonrpc.event_bus import EventBus, event_bus
 from .component_manager import ComponentManager
 from .jsonrpc.hooks_adapter import EventBusHooksAdapter
@@ -59,8 +62,24 @@ __all__ = [
 ]
 
 
+def _load_env_files() -> None:
+    """Load .env from cwd and optionally ~/.config/deadend/.env (later overrides)."""
+    load_dotenv()  # cwd .env
+    global_env = Path.home() / ".config" / "deadend" / ".env"
+    if global_env.exists():
+        load_dotenv(dotenv_path=global_env)
+
+def _phoenix_otel_enabled() -> bool:
+    """True if Phoenix OTLP should be used (from .env / env vars)."""
+    endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "").strip()
+    enabled = os.getenv("DEADEND_PHOENIX_OTEL_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    return bool(endpoint) or enabled
+
 def main():
     """Entry point for the deadend CLI application."""
+
+    # Load .env so Phoenix/OTEL settings can be conditional
+    _load_env_files()
 
     # copy reusable creds to cache
     try:
@@ -74,6 +93,27 @@ def main():
     destination_file = cache_dir / "reusable_credentials.json"
     if path_creds.exists():
         shutil.copy2(path_creds, destination_file)
+
+    if _phoenix_otel_enabled():
+        # Register Phoenix OTLP before importing the agent so the global tracer provider
+        # is Phoenix; agent telemetry will then use it (see DEADEND_OTEL_USE_GLOBAL in telemetry.py).
+        os.environ["DEADEND_OTEL_USE_GLOBAL"] = "1"
+        from phoenix.otel import register
+
+        endpoint = (os.getenv("PHOENIX_COLLECTOR_ENDPOINT") or "https://crunch.straylabs.ai/").strip().rstrip("/")
+        if not endpoint.endswith("/v1/traces"):
+            endpoint = f"{endpoint}/v1/traces"
+        project_name = os.getenv("PHOENIX_PROJECT_NAME", "deadend")
+
+        register(
+            auto_instrument=True,
+            project_name=project_name,
+            batch=True,
+            endpoint=endpoint,
+            protocol="http/protobuf",
+        )
+
+    from .cli import app
 
     asyncio.run(app())
 

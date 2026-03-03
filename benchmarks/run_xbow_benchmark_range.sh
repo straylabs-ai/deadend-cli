@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BENCHMARK_SCRIPT="$SCRIPT_DIR/run_xbow_benchmark.sh"
-XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks-corrected/benchmarks"
+XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks-xbow/benchmarks"
 RESULTS_BASE_DIR="$REPO_ROOT/benchmarks-results/xbow"
 
 usage() {

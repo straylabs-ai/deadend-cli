@@ -5,6 +5,10 @@
 """ JsonRPC server interface """
 from typing import Any, Dict, AsyncGenerator
 import json
+from pathlib import Path
+from importlib.resources import files
+import shutil
+import os
 from dataclasses import asdict, is_dataclass
 from pydantic import TypeAdapter
 import typer
@@ -24,6 +28,11 @@ from deadend_cli.jsonrpc.event_bus import EventBus
 from deadend_cli.jsonrpc.hooks_adapter import EventBusHooksAdapter
 
 
+def _phoenix_otel_enabled() -> bool:
+    """True if Phoenix OTLP should be used (from .env / env vars)."""
+    endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "").strip()
+    enabled = os.getenv("DEADEND_PHOENIX_OTEL_ENABLED", "").strip().lower() in ("1", "true", "yes")
+    return bool(endpoint) or enabled
 def main(
     debug: bool=False,
     log_file: str | None = None,
@@ -66,6 +75,38 @@ def main(
         debug=debug,
         log_file=log_file
     )
+    # reusable creds 
+    # copy reusable creds to cache
+    try:
+        source_creds = files("deadend_cli").joinpath("data", "memory", "reusable_credentials.json")
+        path_creds = Path(str(source_creds))
+    except (ImportError, FileNotFoundError):
+        print("not found.")
+        path_creds = Path(__file__) / "data" / "memory" / "reusable_credentials.json"
+    cache_dir = Path.home() / ".cache" / "deadend" / "memory"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    destination_file = cache_dir / "reusable_credentials.json"
+    if path_creds.exists():
+        shutil.copy2(path_creds, destination_file)
+    # setting up tracing
+    if _phoenix_otel_enabled():
+        # Register Phoenix OTLP before importing the agent so the global tracer provider
+        # is Phoenix; agent telemetry will then use it (see DEADEND_OTEL_USE_GLOBAL in telemetry.py).
+        os.environ["DEADEND_OTEL_USE_GLOBAL"] = "1"
+        from phoenix.otel import register
+
+        endpoint = (os.getenv("PHOENIX_COLLECTOR_ENDPOINT") or "https://crunch.straylabs.ai/").strip().rstrip("/")
+        if not endpoint.endswith("/v1/traces"):
+            endpoint = f"{endpoint}/v1/traces"
+        project_name = os.getenv("PHOENIX_PROJECT_NAME", "deadend")
+
+        register(
+            auto_instrument=True,
+            project_name=project_name,
+            batch=True,
+            endpoint=endpoint,
+            protocol="http/protobuf",
+        )
 
     server.add_dependency("component_manager", component_manager)
     server.add_dependency("event_bus", event_bus)
@@ -668,6 +709,7 @@ def main(
             threat_model_text = ""
 
             async for item in deadend_agent.threat_model_stream(task=prompt):
+
                 threat_model_text += object_to_string(item)
                 yield {
                     "phase": "recon",
@@ -683,6 +725,7 @@ def main(
                 task=prompt,
                 threat_model=threat_model_text
             ):
+
                 yield {
                     "phase": "exploit",
                     "data": TypeAdapter(dict).dump_json(item),

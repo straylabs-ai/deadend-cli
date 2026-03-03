@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks/benchmarks"
+XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks-xbow/benchmarks"
 METADATA_FILENAME="eval_metadata_file.json"
 
 usage() {

@@ -50,6 +50,13 @@ dependencies = [
     "typing-extensions>=4.15.0",
     "python-frontmatter>=1.1.0",
     "pyoxidizer>=0.24.0",
+    "openinference-instrumentation-instructor>=0.1.13",
+    "instructor>=1.13.0",
+    "arize-phoenix-client>=1.29.0",
+    "arize-phoenix-otel>=0.14.0",
+    "arize-phoenix-evals>=2.10.0",
+    "openinference-instrumentation>=0.1.44",
+    "openinference-instrumentation-litellm>=0.1.29",
 ]
 
 [project.scripts]

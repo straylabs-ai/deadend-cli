@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks/benchmarks"
+XBEN_ROOT="$SCRIPT_DIR/xbow/validation-benchmarks-xbow/benchmarks"
 
 START_NUM=1
 END_NUM=104
