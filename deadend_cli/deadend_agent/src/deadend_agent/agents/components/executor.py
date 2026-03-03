@@ -384,6 +384,8 @@ class AgentExecutor:
             @supervisor.agent.tool
             async def call_requester_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the requester agent to perform HTTP request testing."""
+                print(f"input tool looking for the error : {prompt}")
+
                 if ctx.deps.requester_agent is None or ctx.deps.requester_deps is None:
                     return "Requester agent dependencies not configured."
                 result = await ctx.deps.requester_agent.run(
@@ -408,6 +410,7 @@ class AgentExecutor:
             @supervisor.agent.tool
             async def call_shell_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the shell agent to execute shell commands."""
+                print(f"input tool looking for the error : {prompt}")
                 if ctx.deps.shell_agent is None or ctx.deps.shell_deps is None:
                     return "Shell agent dependencies not configured."
                 result = await ctx.deps.shell_agent.run(
@@ -431,7 +434,8 @@ class AgentExecutor:
             
             @supervisor.agent.tool
             async def call_webapp_analyzer_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
-                
+                print(f"input tool looking for the error : {prompt}")
+
                 print(ctx.deps.requester_deps)
                 result = await ctx.deps.webapp_analyzer_agent.run(
                     prompt,
@@ -447,6 +451,8 @@ class AgentExecutor:
             @supervisor.agent.tool
             async def call_python_interpreter_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the python interpreter agent to execute Python scripts."""
+                print(f"input tool looking for the error : {prompt}")
+
                 result = await ctx.deps.python_interpreter_agent.run(
                     prompt,
                     deps=ctx.deps.session_id,

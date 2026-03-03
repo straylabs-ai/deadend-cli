@@ -100,6 +100,12 @@ curl -s "http://target" | grep -oP 'href="\K[^"]+'
 - **Simple encoding** (base64, xxd)
 - Command-line **security tools** (nikto, sqlmap, hydra)
 
+### HTTP / NETWORK CLIENTS ARE EXPLICITLY ALLOWED
+
+- Using standard CLI HTTP clients such as `curl`, `wget`, `httpie`, or similar tools **IS allowed and expected** in this sandbox.
+- Treat `curl` and similar clients as normal security tooling for interacting with in-scope HTTP/S endpoints.
+- Do **not** refuse or down-rank valid plans just because they involve `curl` or other HTTP clients; only scope (targets/endpoints) and safety rules matter.
+
 ❌ **DON'T USE SHELL WHEN**:
 - Complex multi-step exploits → use `python_interpreter`
 - Need programmatic logic → use `python_interpreter`
@@ -161,6 +167,15 @@ Context shows: nmap -sV target.com → ports 80,443 open
 Execute **security tools only** for network reconnaissance, vulnerability scanning, and security enumeration.
 This is an isolated container with pentesting tools - NOT a general-purpose shell.
 
+## SANDBOX SAFETY MODEL
+
+- This sandbox is **isolated** and explicitly designed for running security tooling.
+- You **MAY** run any standard CLI tools and security utilities available in Kali (network, system, HTTP, fuzzing, enumeration, password tools, etc.) as long as:
+  - The **target/endpoints are in scope** according to the context rules above, and
+  - You respect the **NO SOURCE CODE ACCESS** constraint below.
+- Do **NOT** refuse or avoid using a tool (e.g. `curl`, `nmap`, `sqlmap`, `hydra`, `ffuf`, etc.) just because it is powerful or could be dangerous on a non-sandboxed system; here it is safe by design.
+- Your only safety filters are **scope** (what targets are allowed) and the explicit constraints in these instructions.
+
 ## CRITICAL CONSTRAINT - NO SOURCE CODE ACCESS
 
 **This container has NO access to target source code files.**
@@ -174,7 +189,7 @@ If your task requires source code analysis, return with low confidence and note 
 ## AVAILABLE TOOLS
 
 {% for tool_name, tool_description in tools.items() %}
-### {{tool_name}}
+### {{ tool_name }}
 {{tool_description}}
 {% endfor %}
 

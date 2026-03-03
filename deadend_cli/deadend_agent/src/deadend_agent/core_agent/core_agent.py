@@ -11,7 +11,6 @@
 - Tracks usage with simple counters
 - Integrates OpenTelemetry for observability
 """
-
 from __future__ import annotations
 
 import json
@@ -144,13 +143,13 @@ class CoreAgent:
         output_schema: Type[BaseModel] | None = None,
         api_key: str | None = None,
         api_base: str | None = None,
-        rate_limit_rpm: int = 60,
+        rate_limit_rpm: int = 200,
         name: str = "agent",
     ):
         """Initialize CoreAgent.
 
         Args:
-            model: Model identifier (e.g., "gpt-4o", "claude-3-5-sonnet")
+            model: Model identifier
             instructions: System instructions/prompt for the agent
             tools: List of callable tool functions (default: None)
             output_schema: Pydantic model for structured output (default: None)
@@ -187,6 +186,9 @@ class CoreAgent:
         self.completion_tokens = 0
 
         # Instructor client for structured output
+        # We always *attempt* to use Instructor when available and an output_schema
+        # is provided, but will gracefully fall back to manual JSON extraction
+        # if the Instructor call fails for any reason.
         if INSTRUCTOR_AVAILABLE and output_schema:
             self.instructor_client = instructor.from_litellm(acompletion)
         else:
@@ -668,7 +670,7 @@ class CoreAgent:
             )
 
         @retry(
-            stop=stop_after_attempt(5),
+            stop=stop_after_attempt(0),
             wait=wait_exponential(multiplier=2, min=2, max=60),
             retry=retry_if_exception_type(retryable_exceptions),
             reraise=True,
@@ -1009,7 +1011,9 @@ class CoreAgent:
                     "model": self.model,
                     "messages": messages,
                     "response_model": self.output_schema,
+                    "format": "json",
                 }
+
 
                 if self.api_base:
                     kwargs["api_base"] = self.api_base
@@ -1026,17 +1030,17 @@ class CoreAgent:
                     pass
                 return response
             except Exception as instructor_error:
-                # Check if it's a grammar/schema not supported error
-                error_str = str(instructor_error)
-                if "Invalid grammar" in error_str or "response_format" in error_str.lower():
-                    try:
-                        console.print("[bold yellow][Instructor Failed][/bold yellow] Model doesn't support structured output, trying manual JSON extraction...")
-                    except BlockingIOError:
-                        pass
-                    # Fall through to manual extraction
-                else:
-                    # Re-raise other errors to trigger fallback
-                    raise instructor_error
+                # Any failure in Instructor structured output should fall back to
+                # manual JSON extraction so that providers with partial support
+                # don't break the agent.
+                try:
+                    console.print(
+                        "[bold yellow][Instructor Failed][/bold yellow] "
+                        f"{str(instructor_error)[:200]} - falling back to manual JSON extraction..."
+                    )
+                except BlockingIOError:
+                    pass
+                # Fall through to manual extraction below
 
         # Manual JSON extraction fallback
         # Ask the LLM to output JSON and parse it ourselves
