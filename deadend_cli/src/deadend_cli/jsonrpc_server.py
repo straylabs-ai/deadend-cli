@@ -5,6 +5,9 @@
 """ JsonRPC server interface """
 from typing import Any, Dict, AsyncGenerator
 import json
+from pathlib import Path
+from importlib.resources import files
+import shutil
 import os
 from dataclasses import asdict, is_dataclass
 from pydantic import TypeAdapter
@@ -72,7 +75,19 @@ def main(
         debug=debug,
         log_file=log_file
     )
-
+    # reusable creds 
+    # copy reusable creds to cache
+    try:
+        source_creds = files("deadend_cli").joinpath("data", "memory", "reusable_credentials.json")
+        path_creds = Path(str(source_creds))
+    except (ImportError, FileNotFoundError):
+        print("not found.")
+        path_creds = Path(__file__) / "data" / "memory" / "reusable_credentials.json"
+    cache_dir = Path.home() / ".cache" / "deadend" / "memory"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    destination_file = cache_dir / "reusable_credentials.json"
+    if path_creds.exists():
+        shutil.copy2(path_creds, destination_file)
     # setting up tracing
     if _phoenix_otel_enabled():
         # Register Phoenix OTLP before importing the agent so the global tracer provider
