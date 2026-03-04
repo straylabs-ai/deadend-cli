@@ -2,6 +2,7 @@ import { Box, Text } from "ink";
 import TextInput from "ink-text-input";
 import { useMemo } from "react";
 import { COMMANDS } from "../types/command.ts";
+import { colors } from "./colors.ts";
 import type { ExecutionMode } from "./chat.tsx";
 
 export interface InputAreaProps {
@@ -32,15 +33,9 @@ export function InputArea({
 }: InputAreaProps) {
   // Filter commands based on input
   const filteredCommands = useMemo(() => {
-    if (!value.startsWith("/")) {
-      return [];
-    }
-
+    if (!value.startsWith("/")) return [];
     const commandPart = value.slice(1).trim().toLowerCase();
-    if (commandPart === "") {
-      return COMMANDS;
-    }
-
+    if (commandPart === "") return COMMANDS;
     return COMMANDS.filter((cmd) => {
       const nameMatch = cmd.name.toLowerCase().startsWith(commandPart);
       const aliasMatch = cmd.aliases?.some((alias) =>
@@ -50,12 +45,17 @@ export function InputArea({
     });
   }, [value]);
 
+  const modeColor =
+    executionMode === "yolo" ? colors.input.modeYolo : colors.input.modeSupervisor;
+
   return (
     <Box flexDirection="column">
-      {/* Text input */}
-      <Box borderStyle="round" borderColor="grey">
+      {/* Input row */}
+      <Box borderStyle="round" borderColor={colors.input.border}>
         <Box flexDirection="row">
-          <Text color="grey">{"> "}</Text>
+          <Text color={colors.input.prompt} bold>
+            {"\u276F "}
+          </Text>
           <TextInput
             value={value}
             onChange={onChange}
@@ -65,32 +65,32 @@ export function InputArea({
         </Box>
       </Box>
 
-      {/* Mode and LLM indicator */}
-      <Box flexDirection="row" justifyContent="space-between" marginTop={0}>
+      {/* Status bar */}
+      <Box flexDirection="row" justifyContent="space-between">
         <Box flexDirection="row">
-          <Text color="gray" dimColor>
-            Running mode:{" "}
-          </Text>
-          <Text color={executionMode === "yolo" ? "red" : "yellow"} bold>
+          {/* Mode badge */}
+          <Text color={modeColor} bold>
             {executionMode.toUpperCase()}
           </Text>
-          <Text color="gray" dimColor>
-            {" "}
-            (shift+tab to switch)
-          </Text>
+          <Text dimColor> (shift+tab)</Text>
+
+          {/* Running / interrupt hint */}
           {isLoading && (
-            <Text color="#2845d6" dimColor>
-              {" "}
-              | Running...
+            <Text color={colors.accent} dimColor>
+              {"  \u25CF Running "}
+            </Text>
+          )}
+          {isLoading && (
+            <Text dimColor italic>
+              (ctrl+c to interrupt)
             </Text>
           )}
         </Box>
+
+        {/* LLM info */}
         {currentLlm && (
           <Box flexDirection="row">
-            <Text color="gray" dimColor>
-              LLM:{" "}
-            </Text>
-            <Text italic>
+            <Text dimColor>
               {currentLlm.provider}
               {currentLlm.model ? `: ${currentLlm.model}` : ""}
             </Text>
@@ -100,28 +100,23 @@ export function InputArea({
 
       {/* Command suggestions */}
       {value.startsWith("/") && filteredCommands.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text color="gray" dimColor>
-            Available commands:
-          </Text>
+        <Box
+          flexDirection="column"
+          marginTop={1}
+          borderStyle="round"
+          borderColor={colors.input.border}
+          paddingX={1}
+        >
           {filteredCommands.map((cmd) => {
-            const isSpecialCommand = ["run", "target", "llm", "report"].includes(
+            const isSpecial = ["run", "target", "llm", "report"].includes(
               cmd.name
             );
-            const specialColor = "#FFA500";
             return (
-              <Box key={cmd.name} flexDirection="column" marginTop={0}>
-                <Box flexDirection="row">
-                  <Text color={isSpecialCommand ? specialColor : "cyan"} bold>
-                    /{cmd.name.padEnd(10)}
-                  </Text>
-                  <Text italic> - {cmd.description}</Text>
-                </Box>
-                {cmd.usage && (
-                  <Text color="gray" dimColor>
-                    {"           "}Usage: {cmd.usage}
-                  </Text>
-                )}
+              <Box key={cmd.name} flexDirection="row">
+                <Text color={isSpecial ? colors.accent : "cyan"} bold>
+                  /{cmd.name.padEnd(12)}
+                </Text>
+                <Text dimColor>{cmd.description}</Text>
               </Box>
             );
           })}

@@ -80,6 +80,7 @@ def main(
     try:
         source_creds = files("deadend_cli").joinpath("data", "memory", "reusable_credentials.json")
         path_creds = Path(str(source_creds))
+
     except (ImportError, FileNotFoundError):
         print("not found.")
         path_creds = Path(__file__) / "data" / "memory" / "reusable_credentials.json"

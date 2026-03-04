@@ -9,7 +9,7 @@ import TerminalRenderer from "marked-terminal";
  * Renders markdown content using marked and marked-terminal for
  * terminal-friendly formatting. Falls back to plain text if parsing fails.
  */
-export function MarkdownRenderer({ children }: { children: string }) {
+export function MarkdownRenderer({ children, dimColor = false }: { children: string; dimColor?: boolean }) {
   const rendered = useMemo(() => {
     // First, trim the input to remove any leading/trailing whitespace
     const trimmedInput = children.trim();
@@ -46,5 +46,5 @@ export function MarkdownRenderer({ children }: { children: string }) {
     }
   }, [children]);
 
-  return <Text>{rendered}</Text>;
+  return <Text dimColor={dimColor}>{rendered}</Text>;
 }
