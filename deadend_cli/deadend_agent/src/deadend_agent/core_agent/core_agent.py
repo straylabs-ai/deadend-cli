@@ -64,6 +64,9 @@ except ImportError:
     _TOOL_ATTR_INPUT = "input.value"
     _TOOL_ATTR_OUTPUT = "output.value"
 
+# Custom attribute for LLM thinking/reasoning content (not part of OpenInference yet)
+_ATTR_LLM_THINKING = "llm.thinking_content"
+
 logger = get_module_logger(__name__)
 # Rich console for colored output - uses stderr to avoid breaking RPC communication
 console = Console(force_terminal=True, stderr=True)
@@ -366,10 +369,51 @@ class CoreAgent:
             # Add assistant message to history
             choice = response.choices[0]
             content = choice.message.content or ""
+
+            # Extract thinking/reasoning content from extended-thinking models
+            # LiteLLM surfaces this as `reasoning_content` on the message object
+            # (works for Anthropic Claude, DeepSeek, and other thinking models).
+            thinking_content = getattr(choice.message, "reasoning_content", None) or ""
+
             assistant_message = {
                 "role": "assistant",
                 "content": content,
             }
+
+            # Preserve thinking content in message history so _extract_thoughts
+            # can pick it up later.
+            if thinking_content:
+                assistant_message["thinking_content"] = thinking_content
+
+            # Create a child span for this LLM iteration
+            with self.tracer.start_as_current_span(
+                f"{self.name}.llm_call",
+                attributes={
+                    _TOOL_ATTR_KIND: "LLM",
+                    "llm.iteration": iteration,
+                },
+            ) as llm_span:
+                if content:
+                    out_attr = content[:4096] + "..." if len(content) > 4096 else content
+                    llm_span.set_attribute(_TOOL_ATTR_OUTPUT, out_attr)
+                if thinking_content:
+                    think_attr = thinking_content[:4096] + "..." if len(thinking_content) > 4096 else thinking_content
+                    llm_span.set_attribute(_ATTR_LLM_THINKING, think_attr)
+                llm_span.set_status(trace.Status(trace.StatusCode.OK))
+
+            # Log thinking content (if any)
+            if thinking_content:
+                try:
+                    display_thinking = thinking_content
+                    if len(thinking_content) > 16000:
+                        display_thinking = thinking_content[:16000] + "\n... [truncated]"
+                    console.print(Panel(
+                        display_thinking,
+                        title="[bold dim cyan]LLM Thinking[/bold dim cyan]",
+                        border_style="dim cyan"
+                    ))
+                except BlockingIOError:
+                    pass
 
             # Log assistant response (if any content)
             if content:
@@ -385,11 +429,14 @@ class CoreAgent:
                 except BlockingIOError:
                     pass
 
-                # Emit agent thought event for CLI
+                # Emit agent thought event for CLI (include thinking if present)
+                thought_text = content
+                if thinking_content:
+                    thought_text = f"[Thinking]\n{thinking_content}\n\n[Response]\n{content}"
                 hooks.emit_agent_thought(
                     session_id=session_id,
                     agent_name=self.name,
-                    thought=self._truncate_for_event(content, 3000),
+                    thought=self._truncate_for_event(thought_text, 3000),
                     summary=self._truncate_for_event(content, 500),
                     relevance=0.5,
                 )
@@ -477,6 +524,10 @@ class CoreAgent:
             out_val = str(output)
         out_attr = out_val[:4096] + "..." if len(out_val) > 4096 else out_val
         parent_span.set_attribute(_TOOL_ATTR_OUTPUT, out_attr)
+        # Attach aggregated thinking content to the parent span
+        if thoughts:
+            think_attr = thoughts[:4096] + "..." if len(thoughts) > 4096 else thoughts
+            parent_span.set_attribute(_ATTR_LLM_THINKING, think_attr)
         parent_span.set_status(trace.Status(trace.StatusCode.OK))
 
         return AgentResult(
@@ -1011,8 +1062,12 @@ class CoreAgent:
                     "model": self.model,
                     "messages": messages,
                     "response_model": self.output_schema,
-                    "format": "json",
                 }
+
+                # Ollama requires the 'format' parameter for structured output;
+                # other providers (OpenAI, Anthropic, etc.) don't recognise it.
+                if self.model.startswith("ollama") or self.model.startswith("ollama_chat"):
+                    kwargs["format"] = "json"
 
 
                 if self.api_base:
@@ -1204,6 +1259,9 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
     def _extract_thoughts(self, messages: list[dict]) -> str:
         """Extract agent thoughts/reasoning from message history.
 
+        Includes both regular content and thinking/reasoning content from
+        extended-thinking models (stored in the ``thinking_content`` key).
+
         Args:
             messages: Full message history
 
@@ -1214,12 +1272,20 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
         max_chars = 1500
 
         for msg in messages:
-            if msg.get("role") == "assistant" and msg.get("content"):
+            if msg.get("role") != "assistant":
+                continue
+
+            # Prefer thinking_content (extended-thinking models) over plain content
+            thinking = msg.get("thinking_content")
+            if thinking and isinstance(thinking, str):
+                thoughts.append(thinking)
+            elif msg.get("content"):
                 content = msg["content"]
-                if content and isinstance(content, str):
+                if isinstance(content, str):
                     thoughts.append(content)
-                    if sum(len(t) for t in thoughts) > max_chars:
-                        break
+
+            if sum(len(t) for t in thoughts) > max_chars:
+                break
 
         result = "\n".join(thoughts)
         if len(result) > max_chars:
