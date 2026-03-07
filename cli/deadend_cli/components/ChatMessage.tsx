@@ -287,7 +287,7 @@ function AgentThoughtMessage({ message }: { message: Message }) {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Row indicator={<Text dimColor>{"✻"}</Text>}>
-        <Text dimColor bold>{" Thinking…"}</Text>
+        <Text dimColor bold>{" Thoughts…"}</Text>
       </Row>
       <ResultRow>
         <Box>
