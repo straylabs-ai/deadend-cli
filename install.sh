@@ -8,9 +8,10 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Default values
-INSTALL_DIR="${INSTALL_DIR:-$HOME/.cache/server}"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.cache/deadend/server}"
 VERSION="${VERSION:-latest}"
 REPO="${REPO:-xoxruns/deadend-cli}"
+CLEAN_INSTALL=true
 
 # Detect OS and architecture
 detect_platform() {
@@ -73,13 +74,23 @@ while [[ $# -gt 0 ]]; do
             REPO="$2"
             shift 2
             ;;
+        --clean)
+            CLEAN_INSTALL=true
+            shift
+            ;;
+        --no-clean)
+            CLEAN_INSTALL=false
+            shift
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  --version VERSION     Version to install (default: latest)"
-            echo "  --install-dir DIR     Installation directory (default: ~/.cache/server)"
+            echo "  --install-dir DIR     Installation directory (default: ~/.cache/deadend/server)"
             echo "  --repo REPO           GitHub repository (default: xoxruns/deadend-cli)"
+            echo "  --clean               Remove existing install and CLI binary before installing (default)"
+            echo "  --no-clean            Do not remove existing install; upgrade in place"
             echo "  -h, --help            Show this help message"
             exit 0
             ;;
@@ -107,9 +118,24 @@ get_latest_version() {
 install() {
     echo -e "${GREEN}Installing Deadend CLI ${VERSION} for ${PLATFORM}...${NC}"
     
-    # Create temporary directory
-    TEMP_DIR=$(mktemp -d)
+    # Use a predictable temp directory so we can print it and clean leftovers from killed runs.
+    # On macOS TMPDIR is often set; fall back to /tmp.
+    TEMP_DIR="${TMPDIR:-/tmp}/deadend-install"
+    rm -rf "$TEMP_DIR"
+    mkdir -p "$TEMP_DIR"
     trap "rm -rf $TEMP_DIR" EXIT
+    echo -e "${YELLOW}Using temporary directory: ${TEMP_DIR}${NC}"
+    
+    # Optional: skip cleaning (default is to clean for a fresh install)
+    if [ "$CLEAN_INSTALL" = true ]; then
+        echo -e "${YELLOW}Cleaning existing install...${NC}"
+        rm -rf "$INSTALL_DIR"
+        rm -f "$HOME/.local/bin/deadend"
+        if [ -d "$HOME/.cache" ]; then
+            rm -rf "${HOME}/.cache/deadend-install" 2>/dev/null || true
+        fi
+        echo -e "${GREEN}Cleanup done.${NC}"
+    fi
     
     # Determine CLI package name
     if [ "$PLATFORM" == "linux" ]; then
@@ -177,11 +203,24 @@ install() {
         2) echo -e "${YELLOW}Warning: CLI package checksum file not found, skipping verification${NC}" ;;
     esac
     
-    # Extract packages
+    # Extract packages (remove any partial extracts from a previous run first)
     echo -e "${YELLOW}Extracting packages...${NC}"
     cd "$TEMP_DIR"
-    tar -xzf "${PACKAGE_NAME}.tar.gz"
-    tar -xzf "${CLI_PACKAGE_NAME}.tar.gz"
+    rm -rf "${PACKAGE_NAME}" "${CLI_PACKAGE_NAME}"
+    if ! tar -xzf "${PACKAGE_NAME}.tar.gz"; then
+        echo -e "${RED}Error: Failed to extract server package.${NC}"
+        echo -e "Temporary directory (you can remove it manually): ${TEMP_DIR}"
+        echo -e "On macOS, 'Killed: 9' often means out-of-memory or security/sandbox limits."
+        echo -e "Free memory and run the installer again if needed."
+        exit 1
+    fi
+    if ! tar -xzf "${CLI_PACKAGE_NAME}.tar.gz"; then
+        echo -e "${RED}Error: Failed to extract CLI package.${NC}"
+        echo -e "Temporary directory (you can remove it manually): ${TEMP_DIR}"
+        echo -e "On macOS, 'Killed: 9' often means out-of-memory or security/sandbox limits."
+        echo -e "Free memory and run the installer again if needed."
+        exit 1
+    fi
     
     # Install server package
     echo -e "${YELLOW}Installing server to ${INSTALL_DIR}...${NC}"

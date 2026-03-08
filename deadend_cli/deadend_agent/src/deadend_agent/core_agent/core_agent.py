@@ -281,6 +281,10 @@ class CoreAgent:
         parent_span: Any,
     ) -> AgentResult:
         """Implementation of run(); all logic runs under parent_span."""
+        # Store context so _handle_llm_error can emit to CLI with session/task
+        self._last_session_id = self._get_session_id(deps)
+        self._last_task = prompt
+
         # Check limits
         if usage_limits:
             if self.request_count >= usage_limits.get("requests", float('inf')):
@@ -755,14 +759,17 @@ class CoreAgent:
         except ContentPolicyViolationError as e:
             self._handle_content_policy_violation(e)
         except RetryError as e:
-            # Extract the original exception from RetryError
+            # Extract the original exception from RetryError so we surface the real LLM error
             original = e.last_attempt.exception() if e.last_attempt else None
-            self._handle_llm_error(e)
+            exc_to_handle = original if isinstance(original, Exception) else e
+            self._handle_llm_error(exc_to_handle)
         except Exception as e:
             self._handle_llm_error(e)
 
     def _handle_llm_error(self, error: Exception) -> None:
         """Convert LLM errors to user-friendly exceptions.
+
+        Emits the error to the event bus so the CLI can display it (e.g. litellm.APIConnectionError, 429 body).
 
         Args:
             error: The original exception
@@ -773,57 +780,69 @@ class CoreAgent:
         error_str = str(error).lower()
         error_msg = str(error)
 
-        # Log the error
-        logger.error("LLM error: %s", error_msg[:500])
+        # Log the full error (no truncation) so logs show e.g. 429 body, connection details
+        logger.error("LLM error: %s", error_msg)
+
+        # Emit to CLI so user sees the error (e.g. rate limit, connection, auth)
+        try:
+            hooks = get_event_hooks()
+            session_id = getattr(self, "_last_session_id", "unknown")
+            task = getattr(self, "_last_task", "")
+            hooks.emit_agent_error(
+                session_id=session_id,
+                agent_name=self.name,
+                task=task,
+                error_type=type(error).__name__,
+                error_message=error_msg,
+            )
+        except Exception:  # do not let hook failures mask the LLM error
+            pass
 
         # Check for quota exceeded (billing issue - don't retry)
         if "insufficient_quota" in error_str or "exceeded your current quota" in error_str:
             raise QuotaExceededError(
-                "API quota exceeded. Please check your plan and billing details at "
-                "https://platform.openai.com/account/billing",
+                "API quota exceeded. " + error_msg,
                 original_error=error
             )
 
-        # Check for rate limit (temporary - already retried)
+        # Check for rate limit (temporary - already retried); include full provider message (e.g. 429 body)
         if "rate_limit" in error_str or "rate limit" in error_str or "429" in error_str:
             raise CoreRateLimitError(
-                "Rate limit exceeded after multiple retries. "
-                "Consider reducing request frequency or upgrading your plan.",
+                "Rate limit exceeded. " + error_msg,
                 original_error=error
             )
 
         # Check for authentication errors
         if "auth" in error_str or "api_key" in error_str or "401" in error_str or "invalid_api_key" in error_str:
             raise AuthenticationError(
-                "API authentication failed. Please check your API key configuration.",
+                "API authentication failed. " + error_msg,
                 original_error=error
             )
 
         # Check for model not found
         if "model" in error_str and ("not found" in error_str or "does not exist" in error_str or "404" in error_str):
             raise ModelNotFoundError(
-                f"Model '{self.model}' not found. Please verify the model name is correct.",
+                f"Model '{self.model}' not found. " + error_msg,
                 original_error=error
             )
 
         # Check for connection errors
         if "connection" in error_str or "connect" in error_str or "timeout" in error_str or "unreachable" in error_str:
             raise CoreConnectionError(
-                "Failed to connect to the API after multiple retries. "
-                "Please check your internet connection and API endpoint.",
+                "Failed to connect to the API. " + error_msg,
                 original_error=error
             )
 
         # Check for bad request
         if "bad request" in error_str or "invalid" in error_str or "400" in error_str:
             raise InvalidRequestError(
-                f"Invalid request to the API: {error_msg[:200]}",
+                "Invalid request to the API: " + error_msg,
                 original_error=error
             )
 
-        # Generic LLM error
+        # Generic LLM error (include full message so user sees provider detail)
         raise LLMError(
-            f"LLM request failed: {error_msg[:300]}",
+            "LLM request failed: " + error_msg,
             original_error=error
         )
 

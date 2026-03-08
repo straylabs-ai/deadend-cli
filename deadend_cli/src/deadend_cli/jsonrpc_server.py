@@ -14,6 +14,7 @@ from pydantic import TypeAdapter
 import typer
 import uuid
 from deadend_agent import DeadEndAgent, Sandbox, config_setup, set_event_hooks
+from deadend_agent.agents.factory import FallbackAgentResult
 from deadend_agent.utils.network import deterministic_session_id
 from deadend_agent.tools.tool_wrappers import (
     set_approval_provider,
@@ -750,7 +751,7 @@ def main(
                 threat_model_text += object_to_string(item)
                 yield {
                     "phase": "recon",
-                    "data": TypeAdapter(dict).dump_json(item),
+                    "data": TypeAdapter(dict).dump_json(stream_item_to_dict(item)),
                 }
 
             yield {
@@ -765,9 +766,10 @@ def main(
 
                 yield {
                     "phase": "exploit",
-                    "data": TypeAdapter(dict).dump_json(item),
+                    "data": TypeAdapter(dict).dump_json(stream_item_to_dict(item)),
                 }
         except Exception as exc:
+            # Log full traceback; message already includes full detail (e.g. 429 body) from core_agent
             logger.exception("Error in run_agent_recursive: %s", exc)
             yield {
                 "phase": "error",
@@ -828,7 +830,7 @@ def main(
                 supervising_text += object_to_string(item)
                 yield {
                     "phase": "recon",
-                    "data": TypeAdapter(dict).dump_json(item),
+                    "data": TypeAdapter(dict).dump_json(stream_item_to_dict(item)),
                 }
 
         except Exception as exc:
@@ -860,12 +862,35 @@ def to_serializable(obj: Any) -> Any:
         return {k: to_serializable(v) for k, v in obj.items()}
     elif isinstance(obj, (list, tuple)):
         return [to_serializable(v) for v in obj]
+    elif isinstance(obj, FallbackAgentResult):
+        return {
+            "error": obj.error,
+            "output": to_serializable(obj.output),
+            "_fallback": True,
+        }
     elif hasattr(obj, "model_dump"):
         return obj.model_dump()
     elif is_dataclass(obj):
         return asdict(obj)
     else:
         return repr(obj)
+
+
+def stream_item_to_dict(item: Any) -> Dict[str, Any]:
+    """Convert a streamed item (e.g. from threat_model_stream / start_supervisor) to a JSON-serializable dict.
+
+    Handles FallbackAgentResult so the RPC response never tries to serialize that type directly.
+    """
+    if isinstance(item, dict):
+        return item
+    if isinstance(item, FallbackAgentResult):
+        return {
+            "error": item.error,
+            "output": to_serializable(item.output),
+            "_fallback": True,
+        }
+    out = to_serializable(item)
+    return out if isinstance(out, dict) else {"data": out}
 
 def object_to_string(obj: Any) -> str:
     """Convert an object to a string representation for text concatenation."""

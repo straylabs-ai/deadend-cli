@@ -76,8 +76,8 @@ function App({ cliArgs }: AppProps) {
           });
         } else {
           // Production mode: use deadend.sh from installed package
-          const rpcBinary = Deno.env.get("DEADEND_RPC_BINARY") ?? 
-                           `${homeDir}/.cache/server/deadend.sh`;
+          const rpcBinary = Deno.env.get("DEADEND_RPC_BINARY") ??
+                           `${homeDir}/.cache/deadend/server/deadend.sh`;
           
           // Check if deadend.sh exists
           try {
@@ -223,7 +223,7 @@ function App({ cliArgs }: AppProps) {
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
       <Banner />
       <Text dimColor>
-        deadend CLI v0.1.0 {"\u00B7"} Type /help for commands
+        deadend CLI v0.1.3 {"\u00B7"} Type /help for commands
       </Text>
       {(cliArgs.mode || cliArgs.target || cliArgs.prompt) && (
         <Box marginTop={1} flexDirection="row">

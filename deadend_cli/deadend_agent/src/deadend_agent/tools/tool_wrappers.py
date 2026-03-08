@@ -14,6 +14,7 @@ user approval before execution.
 
 from __future__ import annotations
 
+import json
 import functools
 import time
 import uuid
@@ -110,6 +111,28 @@ def _truncate_str(value: Any, max_length: int = 500) -> str:
     return s
 
 
+def _serialize_result_for_event(result: Any) -> str:
+    """Serialize tool result for event payload (same idea as core_agent._serialize_tool_result).
+
+    Produces JSON for dict/list/Pydantic models so the CLI gets the same shape as the LLM.
+    """
+    if result is None:
+        return ""
+    if hasattr(result, "model_dump_json"):
+        return result.model_dump_json()
+    if isinstance(result, dict):
+        try:
+            return json.dumps(result, default=str)
+        except (TypeError, ValueError):
+            return str(result)
+    if isinstance(result, (list, tuple)):
+        try:
+            return json.dumps(result, default=str)
+        except (TypeError, ValueError):
+            return str(result)
+    return str(result)
+
+
 class ToolApprovalDenied(Exception):
     """Raised when a tool requires approval but the user denies it."""
 
@@ -150,7 +173,7 @@ def with_tool_events(
             ...
     """
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
-        name = tool_name or func.__name__
+        name = tool_name or getattr(func, '__name__')
 
         @functools.wraps(func)
         def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
@@ -181,13 +204,14 @@ def with_tool_events(
                 result = func(*args, **kwargs)
                 duration_ms = (time.perf_counter() - start_time) * 1000
 
-                # Emit success end event
+                # Emit success end event (serialize like core_agent for consistent CLI display)
+                result_str = _serialize_result_for_event(result)
                 hooks.emit_tool_call_end(
                     session_id=session_id,
                     agent_name=agent_name,
                     tool_name=name,
                     success=True,
-                    result=_truncate_str(result, 1000),
+                    result=_truncate_str(result_str, 1000),
                     tool_call_id=tool_call_id,
                     duration_ms=duration_ms,
                 )
@@ -258,16 +282,17 @@ def with_tool_events(
 
             start_time = time.perf_counter()
             try:
-                result = await func(*args, **effective_kwargs)
+                result = await func(*args, **effective_kwargs)  # type: ignore[misc]
                 duration_ms = (time.perf_counter() - start_time) * 1000
 
-                # Emit success end event
+                # Emit success end event (serialize result for display like core_agent)
+                result_str = _serialize_result_for_event(result)
                 hooks.emit_tool_call_end(
                     session_id=session_id,
                     agent_name=agent_name,
                     tool_name=name,
                     success=True,
-                    result=_truncate_str(result, 1000),
+                    result=_truncate_str(result_str, 1000),
                     tool_call_id=tool_call_id,
                     duration_ms=duration_ms,
                 )

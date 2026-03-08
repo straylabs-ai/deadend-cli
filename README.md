@@ -151,13 +151,13 @@ curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh
 # Or install a specific version
 curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh | bash -s -- --version v1.0.0
 
-# Custom installation directory (default: ~/.cache/server)
+# Custom installation directory (default: ~/.cache/deadend/server)
 curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh | bash -s -- --install-dir /path/to/install
 ```
 
 The installer will:
 - Download pre-built binaries for your platform
-- Install the RPC server to `~/.cache/server` (or custom directory)
+- Install the RPC server to `~/.cache/deadend/server` (or custom directory)
 - Install the CLI binary to `~/.local/bin` (or `/usr/local/bin` on macOS)
 - Set up Playwright browsers automatically
 
