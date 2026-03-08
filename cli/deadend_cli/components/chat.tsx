@@ -181,6 +181,7 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
    * Handle keyboard shortcuts.
    * Shift+Tab: Toggle between YOLO and Supervisor modes
    * Ctrl+C: Cancel running task
+   * Esc: Interrupt agent (interrupt_agent RPC) and show message when done
    */
   useInput(
     (inputChar, key) => {
@@ -191,6 +192,25 @@ export function Chat({ rpcClient, onExit, cliArgs, componentResults = [], banner
       // Ctrl+C to cancel running task
       if (key.ctrl && inputChar === "c" && taskState.isRunning) {
         cancel();
+      }
+      // Esc to interrupt agent (interrupt_agent RPC)
+      if (key.escape && taskState.isRunning && taskState.agentId) {
+        const client = rpcClient as DeadEndRpcClient;
+        const agentId = taskState.agentId;
+        (async () => {
+          try {
+            const result = await client.interruptAgent(agentId);
+            if (result.status === "interrupted") {
+              addMessage(createMessage("system", "Agent interrupted. You can run a different task now.", "info"));
+            } else if (result.status === "failed" && result.reason) {
+              addMessage(createMessage("system", `Interrupt failed: ${result.reason}`, "error"));
+            }
+          } catch (e) {
+            addMessage(createMessage("system", `Interrupt failed: ${e instanceof Error ? e.message : String(e)}`, "error"));
+          } finally {
+            await cancel({ skipRpc: true });
+          }
+        })();
       }
     },
     { isActive: true }

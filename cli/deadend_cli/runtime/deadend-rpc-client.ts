@@ -709,6 +709,25 @@ export class DeadEndRpcClient {
   }
 
   /**
+   * Interrupts a running agent by ID.
+   *
+   * Calls the interrupt_agent RPC (streaming); consumes the first chunk
+   * and returns the status. Use when the agent is running to stop the workflow.
+   *
+   * @param agentId - The agent ID to interrupt
+   * @returns Promise resolving to { status: "interrupted", agent_id } or error payload
+   */
+  async interruptAgent(agentId: string): Promise<{ status: string; agent_id?: string; reason?: string }> {
+    const { generator } = this.client.stream<{ status: string; agent_id?: string; reason?: string; phase?: string; data?: unknown }>("interrupt_agent", {
+      agent_id: agentId,
+    });
+    for await (const chunk of generator) {
+      return chunk as { status: string; agent_id?: string; reason?: string };
+    }
+    return { status: "unknown" };
+  }
+
+  /**
    * Responds to a tool approval request.
    *
    * When approval mode is enabled, dangerous tool calls require

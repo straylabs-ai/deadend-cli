@@ -583,6 +583,39 @@ def main(
             "agent_id": str(agent_id)
         }
 
+    @server.add_method("interrupt_agent")
+    async def interrupt_agent(
+        _request_id: Any,
+        params: Dict[str, Any],
+        event_bus: EventBus,
+        component_manager: ComponentManager,
+        deadend_agent_refs: Dict[str, DeadEndAgent]
+    ):
+        agent_id = params.get("agent_id")
+        if not agent_id:
+            yield {
+                "status": "failed",
+                "reason": "Must supply an agent_id"
+            }
+            return
+        agent = deadend_agent_refs.get(agent_id)
+        if agent is None:
+            yield {
+                "phase": "error",
+                "data": {
+                    "message": f"Agent with id {agent_id} not found",
+                    "error_type": "ValueError",
+                },
+            }
+            return
+        agent.interrupt_workflow()
+
+        yield {
+            "status": "interrupted",
+            "agent_id": agent_id
+        }
+        return
+
     @server.add_method("embed_target")
     async def embed_target(
         _request_id: Any,
@@ -702,6 +735,9 @@ def main(
                 }
                 return
 
+            # Reset workflow state
+            deadend_agent.reset_workflow_state()
+
             # Now start the recon phase
             yield {
                 "phase": "recon",
@@ -786,7 +822,8 @@ def main(
                 "data": {"message": "looking and testing..."},
             }
             supervising_text = ""
-
+            # Reset workflow state
+            deadend_agent.reset_workflow_state()
             async for item in deadend_agent.start_supervisor(task=prompt):
                 supervising_text += object_to_string(item)
                 yield {

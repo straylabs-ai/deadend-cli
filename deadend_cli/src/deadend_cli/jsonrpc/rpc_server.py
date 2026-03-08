@@ -122,11 +122,19 @@ class RPCServer:
         # Shutdown flag
         self._shutdown_requested = False
 
+        # User Interrupt flag
+        self._user_interrupt = False
+
         # Method handler keeps track of the RPC methods used
         self._method_handlers: Dict[str, Callable[..., Any]] = {}
 
         # Shutdown callbacks for graceful cleanup
         self._shutdown_callbacks: list[Callable[[], Any]] = []
+
+        # Interrupt callbacks
+        # TODO: Not specified yet, but the idea is to be able to know at which point 
+        # we've interrupted.
+        self._interrupt_callbacks: list[Callable[[], Any]] = []
 
         # Track active streaming requests for cancellation
         self._active_streams: Dict[Any, Any] = {}
@@ -216,6 +224,9 @@ class RPCServer:
     def _signal_handler(self) -> None:
         """Handle shutdown signals."""
         self._shutdown_requested = True
+
+    def _user_interrrupt_handler(self) -> None:
+        self._user_interrupt = True
 
     async def _serve_loop(self) -> None:
         """Main async serve loop with non-blocking stdin reading."""

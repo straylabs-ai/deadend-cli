@@ -45,8 +45,8 @@ export interface UseTaskRunnerReturn {
   setTarget: (options: SetTargetOptions) => Promise<void>;
   /** Run a task with prompt (requires target to be set first) */
   runTask: (options: RunTaskOptions) => Promise<void>;
-  /** Cancel the running task */
-  cancel: () => Promise<void>;
+  /** Cancel the running task (optionally skip RPC interrupt when already sent, e.g. via Esc) */
+  cancel: (options?: { skipRpc?: boolean }) => Promise<void>;
 }
 
 /**
@@ -132,7 +132,7 @@ export function useTaskRunner(
   // Cancel Handler
   // ============================================================================
 
-  const cancel = useCallback(async () => {
+  const cancel = useCallback(async (options?: { skipRpc?: boolean }) => {
     cancelledRef.current = true;
 
     // Stop event subscription
@@ -141,8 +141,8 @@ export function useTaskRunner(
       eventSubscriptionRef.current = null;
     }
 
-    // Notify server to interrupt
-    if (rpcClient && taskState.isRunning) {
+    // Notify server to interrupt (unless caller already sent interrupt_agent, e.g. Esc)
+    if (!options?.skipRpc && rpcClient && taskState.isRunning) {
       try {
         await rpcClient.interrupt("current", "User cancelled");
       } catch {

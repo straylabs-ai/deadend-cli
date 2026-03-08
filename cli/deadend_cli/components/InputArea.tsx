@@ -82,7 +82,7 @@ export function InputArea({
           )}
           {isLoading && (
             <Text dimColor italic>
-              (ctrl+c to interrupt)
+              (Esc to interrupt)
             </Text>
           )}
         </Box>
