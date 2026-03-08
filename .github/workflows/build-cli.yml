@@ -119,9 +119,9 @@ jobs:
             ## Deadend CLI ${{ steps.version.outputs.version }}
             
             ### What's changed ?
-            - [x] Resolving embedding dimensions issues : Any dimension specified in the `settings.json` will be used in the pgvector database.
-            - [x] Changing the README.md, adding information about what model works and what doesn't for now. Will be updated in the next releases.
-            - [x] Adding changes on templating format.
+            - [x] Adding LLM error handling in the CLI.
+            - [x] Adding interruption feature to stop the agent at any time.
+            - [x] Handling and verify Ollama cloud models.
 
             ### Downloads
             

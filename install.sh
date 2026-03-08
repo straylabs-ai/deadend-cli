@@ -127,6 +127,8 @@ install() {
     echo -e "${YELLOW}Using temporary directory: ${TEMP_DIR}${NC}"
     
     # Optional: skip cleaning (default is to clean for a fresh install)
+    # We only remove INSTALL_DIR (~/.cache/deadend/server) and the CLI binary.
+    # config.json and settings.json live in ~/.cache/deadend/ and are preserved.
     if [ "$CLEAN_INSTALL" = true ]; then
         echo -e "${YELLOW}Cleaning existing install...${NC}"
         rm -rf "$INSTALL_DIR"
@@ -134,7 +136,8 @@ install() {
         if [ -d "$HOME/.cache" ]; then
             rm -rf "${HOME}/.cache/deadend-install" 2>/dev/null || true
         fi
-        echo -e "${GREEN}Cleanup done.${NC}"
+        # Preserve user config (do not remove ~/.cache/deadend/config.json or settings.json)
+        echo -e "${GREEN}Cleanup done (config.json and settings.json in ~/.cache/deadend/ were kept).${NC}"
     fi
     
     # Determine CLI package name
