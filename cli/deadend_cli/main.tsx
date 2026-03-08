@@ -5,6 +5,8 @@ import { Banner } from "./components/Banner.tsx";
 import { Chat } from "./components/chat.tsx";
 import { PresetupWizard } from "./components/PresetupWizard.tsx";
 import { DirectStatusLine } from "./components/DirectStatusLine.tsx";
+import { BlinkDot } from "./components/BlinkDot.tsx";
+import { colors } from "./components/colors.ts";
 import { DeadEndRpcClient } from "./runtime/deadend-rpc-client.ts";
 import { configExists } from "./runtime/config.ts";
 import { configManager } from "./config/manager.ts";
@@ -74,8 +76,8 @@ function App({ cliArgs }: AppProps) {
           });
         } else {
           // Production mode: use deadend.sh from installed package
-          const rpcBinary = Deno.env.get("DEADEND_RPC_BINARY") ?? 
-                           `${homeDir}/.cache/server/deadend.sh`;
+          const rpcBinary = Deno.env.get("DEADEND_RPC_BINARY") ??
+                           `${homeDir}/.cache/deadend/server/deadend.sh`;
           
           // Check if deadend.sh exists
           try {
@@ -220,23 +222,23 @@ function App({ cliArgs }: AppProps) {
   const staticBanner = useMemo(() => (
     <Box flexDirection="column" marginTop={1} marginBottom={1}>
       <Banner />
-      <Text color="gray">
-        deadend CLI v0.1.0 • Type /help for commands
+      <Text dimColor>
+        deadend CLI v0.1.3 {"\u00B7"} Type /help for commands
       </Text>
-      <Box marginTop={1}>
-        {cliArgs.mode && (
-          <Text color="orange">[{cliArgs.mode}] </Text>
-        )}
-        {cliArgs.target && (
-          <Text color="red">{cliArgs.target} </Text>
-        )}
-        {cliArgs.prompt && (
-          <Text color="#ff9191">→ {cliArgs.prompt}</Text>
-        )}
-      </Box>
-
-      {/* Separator */}
-      <Text color="white" dimColor>{"─".repeat(60)}</Text>
+      {(cliArgs.mode || cliArgs.target || cliArgs.prompt) && (
+        <Box marginTop={1} flexDirection="row">
+          {cliArgs.mode && (
+            <Text color={colors.accent}>[{cliArgs.mode}] </Text>
+          )}
+          {cliArgs.target && (
+            <Text color={colors.status.error}>{cliArgs.target} </Text>
+          )}
+          {cliArgs.prompt && (
+            <Text color={colors.text.secondary}>{"\u2192"} {cliArgs.prompt}</Text>
+          )}
+        </Box>
+      )}
+      <Text dimColor>{"\u2500".repeat(60)}</Text>
     </Box>
   ), [cliArgs.mode, cliArgs.target, cliArgs.codebase, cliArgs.prompt]);
 
@@ -251,8 +253,7 @@ function App({ cliArgs }: AppProps) {
         <Box marginBottom={1}>
           <Banner />
         </Box>
-        <Box flexDirection="column" borderColor="grey">
-          {/* Use DirectStatusLine for flicker-free animated loading */}
+        <Box flexDirection="column">
           <DirectStatusLine
             text={initStatus}
             color="grey"
@@ -261,21 +262,26 @@ function App({ cliArgs }: AppProps) {
           />
           {componentResults.length > 0 && (
             <Box flexDirection="column" marginTop={1}>
-              <Text color="white" bold>Component Status:</Text>
               {componentResults.map((result) => (
-                <Box key={result.component}>
-                  <Text color={result.success ? "green" : "red"}>
-                    {result.success ? "✓" : "✗"} {result.component}
-                  </Text>
-                  <Text color="gray" dimColor> - {result.message}</Text>
+                <Box key={result.component} flexDirection="row">
+                  <Box width={2} flexShrink={0}>
+                    <BlinkDot
+                      color={result.success ? colors.status.success : colors.status.error}
+                    />
+                  </Box>
+                  <Text> {result.component}</Text>
+                  <Text dimColor> {result.message}</Text>
                 </Box>
               ))}
             </Box>
           )}
           {rpcError && (
-            <Box marginTop={1}>
-              <Text color="red" bold>
-                Error: Failed to initialize RPC client: {rpcError}
+            <Box marginTop={1} flexDirection="row">
+              <Box width={2} flexShrink={0}>
+                <Text color={colors.status.error}>{"\u2717"}</Text>
+              </Box>
+              <Text color={colors.status.error}>
+                {" "}Failed to initialize: {rpcError}
               </Text>
             </Box>
           )}

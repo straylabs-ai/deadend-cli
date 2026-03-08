@@ -11,7 +11,7 @@ to stream events to a frontend without creating circular dependencies.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Optional, Protocol
+from typing import Any, Optional, Protocol
 
 
 class EventHooks(Protocol):

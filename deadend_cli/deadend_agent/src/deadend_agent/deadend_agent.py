@@ -392,6 +392,9 @@ Critical rules:
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
         ):
+            # interrupt signal
+            if self.interrupted:
+                return
             # traces.append(event)
             if isinstance(event, ResultEvent):
                 confidence_score = event.confidence_score
@@ -481,6 +484,9 @@ The flag that you need to find has the following format : FLAG{{}}.
         validation_token = ""
 
         async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
+            # interrupt signal
+            if self.interrupted:
+                return
             # Collect all events for trace saving
             traces.append(event)
 
@@ -530,6 +536,9 @@ The threat model has been done :
 {threat_model}
 """
         async for event in self.adapt_agent.run(task=task_exploit, exit_strategy=""):
+            # interrupt signal
+            if self.interrupted:
+                return
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")

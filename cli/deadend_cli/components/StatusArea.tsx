@@ -1,6 +1,8 @@
 import { Box, Text } from "ink";
 import type { InitResult } from "../types/rpc.ts";
 import { DirectStatusLine } from "./DirectStatusLine.tsx";
+import { BlinkDot } from "./BlinkDot.tsx";
+import { colors } from "./colors.ts";
 
 export type TaskPhase = "init" | "recon" | "exploit" | "supervising" | "done" | "error";
 
@@ -35,12 +37,12 @@ const phaseLabels: Record<TaskPhase, string> = {
 };
 
 const phaseColors: Record<TaskPhase, string> = {
-  init: "grey",
-  recon: "#1a2ca3",
-  exploit: "red",
-  supervising: "#f2e3bb",
-  done: "green",
-  error: "red",
+  init: colors.phase.init,
+  recon: colors.phase.recon,
+  exploit: colors.phase.exploit,
+  supervising: colors.phase.supervising,
+  done: colors.phase.done,
+  error: colors.phase.error,
 };
 
 export function StatusArea({
@@ -54,9 +56,8 @@ export function StatusArea({
   const hasStaticContent = showComponents || notifications.length > 0;
   const hasAnimatedContent = isRunning && taskPhase;
 
-  // Build status text for the direct status line
   const statusText = taskPhase
-    ? `${phaseLabels[taskPhase]}${taskTarget ? ` (${taskTarget})` : ""}`
+    ? `${phaseLabels[taskPhase]}${taskTarget ? ` \u2014 ${taskTarget}` : ""}`
     : "";
   const statusColor = taskPhase ? phaseColors[taskPhase] : "magenta";
 
@@ -66,26 +67,24 @@ export function StatusArea({
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      {/* Component status (shown during init or when expanded) */}
+      {/* Component health grid */}
       {showComponents && componentResults.length > 0 && (
         <Box flexDirection="column" marginBottom={1}>
           {componentResults.map((result) => (
-            <Box key={result.component}>
-              <Text color={result.success ? "green" : "red"}>
-                {result.success ? "✓" : "✗"}
-              </Text>
-              <Text color="white"> {result.component}</Text>
-              <Text color="gray" dimColor>
-                {" "}
-                - {result.message}
-              </Text>
+            <Box key={result.component} flexDirection="row">
+              <Box width={2} flexShrink={0}>
+                <BlinkDot
+                  color={result.success ? colors.status.success : colors.status.error}
+                />
+              </Box>
+              <Text> {result.component}</Text>
+              <Text dimColor> {result.message}</Text>
             </Box>
           ))}
         </Box>
       )}
 
-      {/* Current task status - uses absolute positioning to last terminal line */}
-      {/* This renders to the last terminal line, completely bypassing Ink's render cycle */}
+      {/* Animated phase indicator */}
       <DirectStatusLine
         text={statusText}
         color={statusColor}
@@ -95,22 +94,23 @@ export function StatusArea({
       />
 
       {/* Notifications */}
-      {notifications.map((notification) => {
-        const colors: Record<string, string> = {
-          info: "blue",
-          warning: "yellow",
-          error: "red",
+      {notifications.map((n) => {
+        const nColors: Record<string, string> = {
+          info: colors.status.info,
+          warning: colors.status.warning,
+          error: colors.status.error,
         };
         const icons: Record<string, string> = {
-          info: "ℹ",
-          warning: "⚠",
-          error: "✗",
+          info: "\u25CF",  // ●
+          warning: "\u26A0", // ⚠
+          error: "\u2717",  // ✗
         };
         return (
-          <Box key={notification.id}>
-            <Text color={colors[notification.type]}>
-              {icons[notification.type]} {notification.message}
-            </Text>
+          <Box key={n.id} flexDirection="row">
+            <Box width={2} flexShrink={0}>
+              <Text color={nColors[n.type]}>{icons[n.type]}</Text>
+            </Box>
+            <Text color={nColors[n.type]}> {n.message}</Text>
           </Box>
         );
       })}

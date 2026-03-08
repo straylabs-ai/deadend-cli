@@ -1,28 +1,30 @@
 import { Text, Box } from "ink";
+import { colors } from "./colors.ts";
 
 export function Banner() {
   return (
-    <Box
-      paddingX={2}
-      paddingY={1}
-    >
+    <Box paddingX={2} paddingY={1}>
       <Box flexDirection="column" alignItems="center">
         <Text>{""}</Text>
-        <Text color="white" bold>
-██████╗ ███████╗ █████╗ ██████╗ ███████╗███╗   ██╗██████╗
-</Text><Text color="white" bold>
-██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝████╗  ██║██╔══██╗
-</Text><Text color="white" bold>
-██║  ██║█████╗  ███████║██║  ██║█████╗  ██╔██╗ ██║██║  ██║
-</Text><Text color="white" bold>
-██║  ██║██╔══╝  ██╔══██║██║  ██║██╔══╝  ██║╚██╗██║██║  ██║
-</Text><Text color="white" bold>
-██████╔╝███████╗██║  ██║██████╔╝███████╗██║ ╚████║██████╔╝
-</Text><Text color="white" bold>
-╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═══╝╚═════╝ 
+        <Text color={colors.accent} bold>
+{`██████╗ ███████╗ █████╗ ██████╗ ███████╗███╗   ██╗██████╗`}
+        </Text>
+        <Text color={colors.accent} bold>
+{`██╔══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝████╗  ██║██╔══██╗`}
+        </Text>
+        <Text color={colors.accent} bold>
+{`██║  ██║█████╗  ███████║██║  ██║█████╗  ██╔██╗ ██║██║  ██║`}
+        </Text>
+        <Text color={colors.accent} bold>
+{`██║  ██║██╔══╝  ██╔══██║██║  ██║██╔══╝  ██║╚██╗██║██║  ██║`}
+        </Text>
+        <Text color={colors.accent} bold>
+{`██████╔╝███████╗██║  ██║██████╔╝███████╗██║ ╚████║██████╔╝`}
+        </Text>
+        <Text color={colors.accent} bold>
+{`╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═══╝╚═════╝`}
         </Text>
       </Box>
     </Box>
   );
 }
-

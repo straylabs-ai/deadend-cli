@@ -9,7 +9,7 @@ import TerminalRenderer from "marked-terminal";
  * Renders markdown content using marked and marked-terminal for
  * terminal-friendly formatting. Falls back to plain text if parsing fails.
  */
-export function MarkdownRenderer({ children }: { children: string }) {
+export function MarkdownRenderer({ children, dimColor = false }: { children: string; dimColor?: boolean }) {
   const rendered = useMemo(() => {
     // First, trim the input to remove any leading/trailing whitespace
     const trimmedInput = children.trim();
@@ -24,13 +24,13 @@ export function MarkdownRenderer({ children }: { children: string }) {
       marked.setOptions({
         renderer: renderer,
       });
-      // Parse and render markdown
-      const result = marked.parse(trimmedInput);
+      // Parse and render markdown (sync: we don't use async extensions)
+      const result = marked.parse(trimmedInput) as string;
       // Remove horizontal rule lines (lines with only dashes, underscores, or asterisks)
       // This removes separator lines like "---" or "___" that marked-terminal creates
       const withoutHorizontalRules = result
         .split('\n')
-        .filter(line => {
+        .filter((line: string) => {
           const trimmed = line.trim();
           // Filter out lines that are only dashes, underscores, asterisks, or spaces
           return !/^[-_*=\s]+$/.test(trimmed);
@@ -46,5 +46,5 @@ export function MarkdownRenderer({ children }: { children: string }) {
     }
   }, [children]);
 
-  return <Text>{rendered}</Text>;
+  return <Text dimColor={dimColor}>{rendered}</Text>;
 }

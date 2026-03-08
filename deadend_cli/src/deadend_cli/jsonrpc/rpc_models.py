@@ -106,6 +106,7 @@ class EventType(str, Enum):
 
     # Interruption
     WORKFLOW_INTERRUPTED = "workflow_interrupted"
+    AGENT_INTERRUPTED = "agent_interrupted"
 
     # Task decomposition
     TASK_CREATED = "task_created"

@@ -1,7 +1,23 @@
+/**
+ * @file ChatMessage.tsx
+ * @description Chat message rendering with a consistent two-column layout.
+ *
+ * Layout pattern (inspired by Letta Code):
+ *
+ *   [2-char indicator] [content]
+ *   [5-char prefix   ] [nested result]
+ *
+ * Indicator column uses BlinkDot for tool states, unicode symbols
+ * for other message types, and keeps a consistent left gutter so
+ * the entire transcript feels aligned.
+ */
+
 import { Box, Text } from "ink";
 import { memo } from "react";
 import type { Message } from "../types/message.ts";
 import { MarkdownRenderer } from "./MarkdownRenderer.tsx";
+import { BlinkDot } from "./BlinkDot.tsx";
+import { colors } from "./colors.ts";
 import type {
   ToolCallStartData,
   ToolCallEndData,
@@ -11,14 +27,12 @@ import type {
   LogMessageData,
 } from "../types/rpc.ts";
 
-// Helper to truncate long strings
-function truncate(str: string, maxLen: number): string {
-  if (str.length <= maxLen) return str;
-  return str.slice(0, maxLen - 3) + "...";
-}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-// Helper to wrap long text into multiple lines
-function wrapText(str: string, maxLineLen: number, maxLines: number = 10): string {
+/** Wrap long text into multiple lines */
+function wrapText(str: string, maxLineLen: number, maxLines = 10): string {
   const lines: string[] = [];
   let remaining = str;
 
@@ -27,8 +41,7 @@ function wrapText(str: string, maxLineLen: number, maxLines: number = 10): strin
       lines.push(remaining);
       break;
     }
-    // Try to break at a space
-    let breakPoint = remaining.lastIndexOf(' ', maxLineLen);
+    let breakPoint = remaining.lastIndexOf(" ", maxLineLen);
     if (breakPoint <= 0) breakPoint = maxLineLen;
     lines.push(remaining.slice(0, breakPoint));
     remaining = remaining.slice(breakPoint).trimStart();
@@ -37,186 +50,205 @@ function wrapText(str: string, maxLineLen: number, maxLines: number = 10): strin
   if (remaining.length > 0 && lines.length >= maxLines) {
     lines[lines.length - 1] += "...";
   }
-
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
-// Format timestamp as HH:MM:SS
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-US", {
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+/** Truncate a string */
+function truncate(str: string, maxLen: number): string {
+  if (str.length <= maxLen) return str;
+  return str.slice(0, maxLen - 3) + "...";
 }
 
-export interface ChatMessageProps {
-  message: Message;
+// ---------------------------------------------------------------------------
+// Shared layout primitives
+// ---------------------------------------------------------------------------
+
+/** Two-column row: 2-char indicator + content */
+function Row({
+  indicator,
+  children,
+}: {
+  indicator: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Box flexDirection="row">
+      <Box width={2} flexShrink={0}>
+        {indicator}
+      </Box>
+      <Box flexGrow={1} flexDirection="column">
+        {children}
+      </Box>
+    </Box>
+  );
 }
 
-// Memoize ChatMessage to prevent re-rendering unchanged messages
-// This reduces flickering and helps preserve terminal scroll position
-function ChatMessageComponent({ message }: ChatMessageProps) {
-  const time = formatTime(message.timestamp);
+/** Nested result line with "  \u23BF  " (⎿) prefix */
+function ResultRow({ children }: { children: React.ReactNode }) {
+  return (
+    <Box flexDirection="row">
+      <Box width={5} flexShrink={0}>
+        <Text dimColor>{"  \u23BF  "}</Text>
+      </Box>
+      <Box flexGrow={1}>{children}</Box>
+    </Box>
+  );
+}
 
-  // User messages
+// ---------------------------------------------------------------------------
+// Message renderer
+// ---------------------------------------------------------------------------
+
+function ChatMessageComponent({ message }: { message: Message }) {
+  // --- User messages (highlighted text) ---
   if (message.role === "user") {
     return (
       <Box marginBottom={1}>
-        <Text color="gray" dimColor>
-          [{time}]{" "}
-        </Text>
-        <Text color="#2845d6" bold>
-          {">"} {message.content}
-        </Text>
+        <Text backgroundColor="#2d2d2d" bold>{"\u276F"}</Text>
+        <Text backgroundColor="#2d2d2d"> {message.content} </Text>
       </Box>
     );
   }
 
-  // Event-based messages
+  // --- Event-based messages ---
   switch (message.type) {
     case "event_tool_call":
-      return <ToolCallMessage message={message} time={time} />;
+      return <ToolCallMessage message={message} />;
 
     case "event_agent_thought":
-      return <AgentThoughtMessage message={message} time={time} />;
+      return <AgentThoughtMessage message={message} />;
 
     case "event_agent_start":
       return (
         <Box marginBottom={1}>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
-          </Text>
-          <Text color="yellow">{"🤖 "}{message.content}</Text>
+          <Row indicator={<BlinkDot color={colors.message.agentStart} animate />}>
+            <Text color={colors.message.agentStart} bold>
+              {" "}{message.content}
+            </Text>
+          </Row>
         </Box>
       );
 
     case "event_agent_end":
-      return <AgentEndMessage message={message} time={time} />;
+      return <AgentEndMessage message={message} />;
 
     case "event_agent_error":
-      return <AgentErrorMessage message={message} time={time} />;
+      return <AgentErrorMessage message={message} />;
 
     case "event_agent_routed":
       return (
         <Box marginBottom={1}>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
-          </Text>
-          <Text color="yellow">{"🔀 "}{message.content}</Text>
+          <Row indicator={<Text color={colors.message.routing}>{"\u25CB"}</Text>}>
+            <Text color={colors.message.routing}>
+              {" "}{message.content}
+            </Text>
+          </Row>
         </Box>
       );
 
     case "event_log":
-      return <LogMessage message={message} time={time} />;
+      return <LogMessage message={message} />;
 
     case "error":
       return (
         <Box marginBottom={1} flexDirection="column">
-          <Box>
-            <Text color="gray" dimColor>
-              [{time}]{" "}
-            </Text>
-            <Text color="red">{"✗ "}</Text>
-          </Box>
-          <Box marginLeft={4}>
+          <Row indicator={<Text color={colors.status.error}>{"\u26A0"}</Text>}>
+            <Text color={colors.status.error}> </Text>
+          </Row>
+          <ResultRow>
             <MarkdownRenderer>{message.content}</MarkdownRenderer>
-          </Box>
+          </ResultRow>
         </Box>
       );
 
     case "info":
       return (
-        <Box marginBottom={1} flexDirection="column">
-          <Box>
-            <Text color="gray" dimColor>
-              [{time}]{" "}
-            </Text>
-          </Box>
-          <Box marginLeft={8}>
-            <MarkdownRenderer>{message.content}</MarkdownRenderer>
-          </Box>
+        <Box marginBottom={1}>
+          <Row indicator={<Text color={colors.status.info}>{"\u25CF"}</Text>}>
+            <Box marginLeft={1}>
+              <MarkdownRenderer>{message.content}</MarkdownRenderer>
+            </Box>
+          </Row>
         </Box>
       );
 
     case "command":
       return (
         <Box marginBottom={1}>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
-          </Text>
-          <Text color="cyan">{message.content}</Text>
+          <Row indicator={<Text color={colors.message.command}>{"\u276F"}</Text>}>
+            <Text color={colors.message.command}> {message.content}</Text>
+          </Row>
         </Box>
       );
 
     // Default text messages (assistant, system)
     default: {
-      const prefix = message.role === "assistant" ? "AI: " : "";
-      const color = message.role === "assistant" ? "red" : "yellow";
+      const isAssistant = message.role === "assistant";
       return (
         <Box marginBottom={1} flexDirection="column">
-          <Box>
-            <Text color="gray" dimColor>
-              [{time}]{" "}
-            </Text>
-            <Text color={color} bold={message.role === "assistant"}>
-              {prefix}
-            </Text>
-          </Box>
-          <Box marginLeft={prefix ? 8 : 0}>
+          <Row
+            indicator={
+              <Text color={isAssistant ? colors.message.assistant : colors.text.secondary}>
+                {"\u25CF"}
+              </Text>
+            }
+          >
+            {isAssistant && (
+              <Text color={colors.accent} bold> AI</Text>
+            )}
+          </Row>
+          <ResultRow>
             <MarkdownRenderer>{message.content}</MarkdownRenderer>
-          </Box>
+          </ResultRow>
         </Box>
       );
     }
   }
 }
 
-// Tool call message (combines start/end display)
-function ToolCallMessage({ message, time }: { message: Message; time: string }) {
+// ---------------------------------------------------------------------------
+// Tool call
+// ---------------------------------------------------------------------------
+
+function ToolCallMessage({ message }: { message: Message }) {
   const event = message.eventData;
+
   if (!event) {
     return (
       <Box marginBottom={1}>
-        <Text color="gray" dimColor>
-          [{time}]{" "}
-        </Text>
-        <Text color="cyan">{"⚡ "}{message.content}</Text>
+        <Row indicator={<BlinkDot color={colors.dot.running} animate />}>
+          <Text color="cyan" bold> {message.content}</Text>
+        </Row>
       </Box>
     );
   }
 
+  // --- tool_call_start ---
   if (event.type === "tool_call_start") {
     const data = event.data as unknown as ToolCallStartData;
-    // Show args (up to 12 lines of 100 chars)
     const argsDisplay = data.args ? wrapText(data.args, 100, 12) : "";
+
     return (
       <Box flexDirection="column" marginBottom={1}>
-        <Box>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
-          </Text>
-          <Text color="cyan" bold>
-            {"⚡ "}{data.tool_name}
-          </Text>
-        </Box>
+        <Row indicator={<BlinkDot color={colors.dot.running} animate />}>
+          <Text bold> {data.tool_name}</Text>
+        </Row>
         {argsDisplay && (
-          <Box marginLeft={10}>
-            <Text color="gray">{argsDisplay}</Text>
-          </Box>
+          <ResultRow>
+            <Text color={colors.text.secondary}>{argsDisplay}</Text>
+          </ResultRow>
         )}
       </Box>
     );
   }
 
+  // --- tool_call_end ---
   if (event.type === "tool_call_end") {
     const data = event.data as unknown as ToolCallEndData;
-    const statusColor = data.success ? "green" : "red";
-    const statusIcon = data.success ? "✓" : "✗";
+    const dotColor = data.success ? colors.dot.completed : colors.dot.error;
+    const statusIcon = data.success ? "\u2713" : "\u2717"; // ✓ / ✗
     const duration = data.duration_ms ? ` (${data.duration_ms.toFixed(0)}ms)` : "";
 
-    // Show result (up to 15 lines of 100 chars)
     let resultText = data.error || "";
     if (!resultText && data.result) {
       resultText = wrapText(data.result, 100, 15);
@@ -224,18 +256,18 @@ function ToolCallMessage({ message, time }: { message: Message; time: string }) 
 
     return (
       <Box flexDirection="column" marginBottom={1}>
-        <Box>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
+        <Row indicator={<BlinkDot color={dotColor} />}>
+          <Text bold color={dotColor}>
+            {" "}{statusIcon} {data.tool_name}
           </Text>
-          <Text color={statusColor}>
-            {statusIcon} {data.tool_name}{duration}
-          </Text>
-        </Box>
+          <Text dimColor>{duration}</Text>
+        </Row>
         {resultText && (
-          <Box marginLeft={10}>
-            <Text color={data.error ? "red" : "gray"}>{resultText}</Text>
-          </Box>
+          <ResultRow>
+            <Text color={data.error ? colors.status.error : colors.text.secondary}>
+              {resultText}
+            </Text>
+          </ResultRow>
         )}
       </Box>
     );
@@ -244,127 +276,120 @@ function ToolCallMessage({ message, time }: { message: Message; time: string }) 
   return null;
 }
 
-  // Agent thought message - shows LLM response content
-function AgentThoughtMessage({ message, time }: { message: Message; time: string }) {
+// ---------------------------------------------------------------------------
+// Agent thought (dimmed, with ✻ marker)
+// ---------------------------------------------------------------------------
+
+function AgentThoughtMessage({ message }: { message: Message }) {
   const data = message.eventData?.data as unknown as AgentThoughtData | undefined;
-  // Prefer the full thought over summary for better visibility
   const displayText = data?.thought || data?.summary || message.content;
 
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Box>
-        <Text color="gray" dimColor>
-          [{time}]{"  "}<MarkdownRenderer>{displayText}</MarkdownRenderer>
-        </Text>
-        
-      </Box>
+      <Row indicator={<Text dimColor>{"✻"}</Text>}>
+        <Text dimColor bold>{" Thoughts…"}</Text>
+      </Row>
+      <ResultRow>
+        <Box>
+          <MarkdownRenderer dimColor>{displayText}</MarkdownRenderer>
+        </Box>
+      </ResultRow>
     </Box>
   );
 }
 
-// Agent end message (with confidence)
-function AgentEndMessage({ message, time }: { message: Message; time: string }) {
+// ---------------------------------------------------------------------------
+// Agent end (clean card, no heavy rules)
+// ---------------------------------------------------------------------------
+
+function AgentEndMessage({ message }: { message: Message }) {
   const data = message.eventData?.data as unknown as AgentEndData | undefined;
   const confidence = data?.confidence_score
     ? Math.round(data.confidence_score * 100)
     : null;
-  const isHighConfidence = confidence !== null && confidence >= 80;
+  const isHigh = confidence !== null && confidence >= 80;
+  const dotColor = isHigh ? colors.status.success : colors.status.warning;
 
   return (
     <Box flexDirection="column" marginY={1}>
-      <Text color="yellow">{"─".repeat(50)}</Text>
-      <Box paddingX={1} flexDirection="column">
-        <Box>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
-          </Text>
-          <Text color={isHighConfidence ? "green" : "yellow"} bold>
-            Agent: {message.eventData?.agent_name || "agent"}
-          </Text>
-        </Box>
-        {confidence !== null && (
-          <Box marginLeft={10}>
-            <Text color={isHighConfidence ? "green" : "yellow"}>
-              Confidence: {confidence}%
-            </Text>
-          </Box>
-        )}
-        {data?.notes && (
-          <Box marginLeft={10}>
-            <Text color="white">{wrapText(data.notes, 80, 5)}</Text>
-          </Box>
-        )}
-      </Box>
-      <Text color="yellow">{"─".repeat(50)}</Text>
+      <Row indicator={<BlinkDot color={dotColor} />}>
+        <Text color={dotColor} bold>
+          {" "}{message.eventData?.agent_name || "agent"}
+          {confidence !== null && (
+            <Text color={dotColor}> {"\u2014"} {confidence}%</Text>
+          )}
+        </Text>
+      </Row>
+      {data?.notes && (
+        <ResultRow>
+          <Text>{wrapText(data.notes, 80, 5)}</Text>
+        </ResultRow>
+      )}
     </Box>
   );
 }
 
-// Agent error message
-function AgentErrorMessage({ message, time }: { message: Message; time: string }) {
+// ---------------------------------------------------------------------------
+// Agent error
+// ---------------------------------------------------------------------------
+
+function AgentErrorMessage({ message }: { message: Message }) {
   const data = message.eventData?.data as unknown as AgentErrorData | undefined;
 
   return (
     <Box flexDirection="column" marginY={1}>
-      <Text color="red">{"─".repeat(50)}</Text>
-      <Box paddingX={1} flexDirection="column">
-        <Box>
-          <Text color="gray" dimColor>
-            [{time}]{" "}
-          </Text>
-          <Text color="red" bold>
-            {"✗ Error: "}{data?.error_type || "Unknown"}
-          </Text>
-        </Box>
-        <Box marginLeft={10}>
-          <Text color="red">{wrapText(data?.error_message || message.content, 80, 5)}</Text>
-        </Box>
-      </Box>
-      <Text color="red">{"─".repeat(50)}</Text>
+      <Row indicator={<Text color={colors.status.error}>{"\u2717"}</Text>}>
+        <Text color={colors.status.error} bold>
+          {" "}{data?.error_type || "Error"}
+        </Text>
+      </Row>
+      <ResultRow>
+        <Text color={colors.status.error}>
+          {wrapText(data?.error_message || message.content, 80, 5)}
+        </Text>
+      </ResultRow>
     </Box>
   );
 }
 
+// ---------------------------------------------------------------------------
 // Log message
-function LogMessage({ message, time }: { message: Message; time: string }) {
+// ---------------------------------------------------------------------------
+
+function LogMessage({ message }: { message: Message }) {
   const data = message.eventData?.data as unknown as LogMessageData | undefined;
   const level = data?.level || "info";
 
-  const levelColors: Record<string, string> = {
-    debug: "gray",
-    info: "white",
-    warning: "yellow",
-    error: "red",
-  };
-  const color = levelColors[level] || "white";
+  const levelColor =
+    (colors.log as Record<string, string>)[level] || colors.log.info;
+  const isDimmed = level === "debug";
 
   return (
     <Box marginBottom={0}>
-      <Text color="gray" dimColor>
-        [{time}]{" "}
-      </Text>
-      <Text color={color} dimColor={level === "debug"}>
-        {"⋯ "}{truncate(data?.message || message.content, 70)}
-      </Text>
+      <Row
+        indicator={
+          <Text color={levelColor} dimColor={isDimmed}>
+            {"\u22EF"}
+          </Text>
+        }
+      >
+        <Text color={levelColor} dimColor={isDimmed}>
+          {" "}{truncate(data?.message || message.content, 90)}
+        </Text>
+      </Row>
     </Box>
   );
 }
 
-// Export memoized version - only re-renders if message actually changed
-// Since messages are immutable (new objects when added), comparing by ID is sufficient
-// This prevents re-rendering unchanged messages, reducing flickering
-export const ChatMessage = memo(ChatMessageComponent, (prevProps, nextProps) => {
-  // Skip re-render if it's the same message (same ID and same object reference)
-  // Messages are immutable, so same ID = same message = no re-render needed
-  if (prevProps.message.id !== nextProps.message.id) {
-    return false; // Different message, re-render
-  }
-  
-  // Same ID - check if content or eventData changed (messages can be updated in rare cases)
-  const contentChanged = prevProps.message.content !== nextProps.message.content;
-  const timestampChanged = prevProps.message.timestamp.getTime() !== nextProps.message.timestamp.getTime();
-  const eventDataChanged = prevProps.message.eventData !== nextProps.message.eventData;
-  
-  // Re-render only if something actually changed
+// ---------------------------------------------------------------------------
+// Memoized export
+// ---------------------------------------------------------------------------
+
+export const ChatMessage = memo(ChatMessageComponent, (prev, next) => {
+  if (prev.message.id !== next.message.id) return false;
+  const contentChanged = prev.message.content !== next.message.content;
+  const timestampChanged =
+    prev.message.timestamp.getTime() !== next.message.timestamp.getTime();
+  const eventDataChanged = prev.message.eventData !== next.message.eventData;
   return !(contentChanged || timestampChanged || eventDataChanged);
 });

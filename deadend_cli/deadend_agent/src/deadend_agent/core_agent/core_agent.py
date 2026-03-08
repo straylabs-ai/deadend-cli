@@ -64,6 +64,9 @@ except ImportError:
     _TOOL_ATTR_INPUT = "input.value"
     _TOOL_ATTR_OUTPUT = "output.value"
 
+# Custom attribute for LLM thinking/reasoning content (not part of OpenInference yet)
+_ATTR_LLM_THINKING = "llm.thinking_content"
+
 logger = get_module_logger(__name__)
 # Rich console for colored output - uses stderr to avoid breaking RPC communication
 console = Console(force_terminal=True, stderr=True)
@@ -278,6 +281,10 @@ class CoreAgent:
         parent_span: Any,
     ) -> AgentResult:
         """Implementation of run(); all logic runs under parent_span."""
+        # Store context so _handle_llm_error can emit to CLI with session/task
+        self._last_session_id = self._get_session_id(deps)
+        self._last_task = prompt
+
         # Check limits
         if usage_limits:
             if self.request_count >= usage_limits.get("requests", float('inf')):
@@ -366,10 +373,51 @@ class CoreAgent:
             # Add assistant message to history
             choice = response.choices[0]
             content = choice.message.content or ""
+
+            # Extract thinking/reasoning content from extended-thinking models
+            # LiteLLM surfaces this as `reasoning_content` on the message object
+            # (works for Anthropic Claude, DeepSeek, and other thinking models).
+            thinking_content = getattr(choice.message, "reasoning_content", None) or ""
+
             assistant_message = {
                 "role": "assistant",
                 "content": content,
             }
+
+            # Preserve thinking content in message history so _extract_thoughts
+            # can pick it up later.
+            if thinking_content:
+                assistant_message["thinking_content"] = thinking_content
+
+            # Create a child span for this LLM iteration
+            with self.tracer.start_as_current_span(
+                f"{self.name}.llm_call",
+                attributes={
+                    _TOOL_ATTR_KIND: "LLM",
+                    "llm.iteration": iteration,
+                },
+            ) as llm_span:
+                if content:
+                    out_attr = content[:4096] + "..." if len(content) > 4096 else content
+                    llm_span.set_attribute(_TOOL_ATTR_OUTPUT, out_attr)
+                if thinking_content:
+                    think_attr = thinking_content[:4096] + "..." if len(thinking_content) > 4096 else thinking_content
+                    llm_span.set_attribute(_ATTR_LLM_THINKING, think_attr)
+                llm_span.set_status(trace.Status(trace.StatusCode.OK))
+
+            # Log thinking content (if any)
+            if thinking_content:
+                try:
+                    display_thinking = thinking_content
+                    if len(thinking_content) > 16000:
+                        display_thinking = thinking_content[:16000] + "\n... [truncated]"
+                    console.print(Panel(
+                        display_thinking,
+                        title="[bold dim cyan]LLM Thinking[/bold dim cyan]",
+                        border_style="dim cyan"
+                    ))
+                except BlockingIOError:
+                    pass
 
             # Log assistant response (if any content)
             if content:
@@ -385,11 +433,14 @@ class CoreAgent:
                 except BlockingIOError:
                     pass
 
-                # Emit agent thought event for CLI
+                # Emit agent thought event for CLI (include thinking if present)
+                thought_text = content
+                if thinking_content:
+                    thought_text = f"[Thinking]\n{thinking_content}\n\n[Response]\n{content}"
                 hooks.emit_agent_thought(
                     session_id=session_id,
                     agent_name=self.name,
-                    thought=self._truncate_for_event(content, 3000),
+                    thought=self._truncate_for_event(thought_text, 3000),
                     summary=self._truncate_for_event(content, 500),
                     relevance=0.5,
                 )
@@ -477,6 +528,10 @@ class CoreAgent:
             out_val = str(output)
         out_attr = out_val[:4096] + "..." if len(out_val) > 4096 else out_val
         parent_span.set_attribute(_TOOL_ATTR_OUTPUT, out_attr)
+        # Attach aggregated thinking content to the parent span
+        if thoughts:
+            think_attr = thoughts[:4096] + "..." if len(thoughts) > 4096 else thoughts
+            parent_span.set_attribute(_ATTR_LLM_THINKING, think_attr)
         parent_span.set_status(trace.Status(trace.StatusCode.OK))
 
         return AgentResult(
@@ -704,14 +759,17 @@ class CoreAgent:
         except ContentPolicyViolationError as e:
             self._handle_content_policy_violation(e)
         except RetryError as e:
-            # Extract the original exception from RetryError
+            # Extract the original exception from RetryError so we surface the real LLM error
             original = e.last_attempt.exception() if e.last_attempt else None
-            self._handle_llm_error(e)
+            exc_to_handle = original if isinstance(original, Exception) else e
+            self._handle_llm_error(exc_to_handle)
         except Exception as e:
             self._handle_llm_error(e)
 
     def _handle_llm_error(self, error: Exception) -> None:
         """Convert LLM errors to user-friendly exceptions.
+
+        Emits the error to the event bus so the CLI can display it (e.g. litellm.APIConnectionError, 429 body).
 
         Args:
             error: The original exception
@@ -722,57 +780,69 @@ class CoreAgent:
         error_str = str(error).lower()
         error_msg = str(error)
 
-        # Log the error
-        logger.error("LLM error: %s", error_msg[:500])
+        # Log the full error (no truncation) so logs show e.g. 429 body, connection details
+        logger.error("LLM error: %s", error_msg)
+
+        # Emit to CLI so user sees the error (e.g. rate limit, connection, auth)
+        try:
+            hooks = get_event_hooks()
+            session_id = getattr(self, "_last_session_id", "unknown")
+            task = getattr(self, "_last_task", "")
+            hooks.emit_agent_error(
+                session_id=session_id,
+                agent_name=self.name,
+                task=task,
+                error_type=type(error).__name__,
+                error_message=error_msg,
+            )
+        except Exception:  # do not let hook failures mask the LLM error
+            pass
 
         # Check for quota exceeded (billing issue - don't retry)
         if "insufficient_quota" in error_str or "exceeded your current quota" in error_str:
             raise QuotaExceededError(
-                "API quota exceeded. Please check your plan and billing details at "
-                "https://platform.openai.com/account/billing",
+                "API quota exceeded. " + error_msg,
                 original_error=error
             )
 
-        # Check for rate limit (temporary - already retried)
+        # Check for rate limit (temporary - already retried); include full provider message (e.g. 429 body)
         if "rate_limit" in error_str or "rate limit" in error_str or "429" in error_str:
             raise CoreRateLimitError(
-                "Rate limit exceeded after multiple retries. "
-                "Consider reducing request frequency or upgrading your plan.",
+                "Rate limit exceeded. " + error_msg,
                 original_error=error
             )
 
         # Check for authentication errors
         if "auth" in error_str or "api_key" in error_str or "401" in error_str or "invalid_api_key" in error_str:
             raise AuthenticationError(
-                "API authentication failed. Please check your API key configuration.",
+                "API authentication failed. " + error_msg,
                 original_error=error
             )
 
         # Check for model not found
         if "model" in error_str and ("not found" in error_str or "does not exist" in error_str or "404" in error_str):
             raise ModelNotFoundError(
-                f"Model '{self.model}' not found. Please verify the model name is correct.",
+                f"Model '{self.model}' not found. " + error_msg,
                 original_error=error
             )
 
         # Check for connection errors
         if "connection" in error_str or "connect" in error_str or "timeout" in error_str or "unreachable" in error_str:
             raise CoreConnectionError(
-                "Failed to connect to the API after multiple retries. "
-                "Please check your internet connection and API endpoint.",
+                "Failed to connect to the API. " + error_msg,
                 original_error=error
             )
 
         # Check for bad request
         if "bad request" in error_str or "invalid" in error_str or "400" in error_str:
             raise InvalidRequestError(
-                f"Invalid request to the API: {error_msg[:200]}",
+                "Invalid request to the API: " + error_msg,
                 original_error=error
             )
 
-        # Generic LLM error
+        # Generic LLM error (include full message so user sees provider detail)
         raise LLMError(
-            f"LLM request failed: {error_msg[:300]}",
+            "LLM request failed: " + error_msg,
             original_error=error
         )
 
@@ -1011,8 +1081,12 @@ class CoreAgent:
                     "model": self.model,
                     "messages": messages,
                     "response_model": self.output_schema,
-                    "format": "json",
                 }
+
+                # Ollama requires the 'format' parameter for structured output;
+                # other providers (OpenAI, Anthropic, etc.) don't recognise it.
+                if self.model.startswith("ollama") or self.model.startswith("ollama_chat"):
+                    kwargs["format"] = "json"
 
 
                 if self.api_base:
@@ -1204,6 +1278,9 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
     def _extract_thoughts(self, messages: list[dict]) -> str:
         """Extract agent thoughts/reasoning from message history.
 
+        Includes both regular content and thinking/reasoning content from
+        extended-thinking models (stored in the ``thinking_content`` key).
+
         Args:
             messages: Full message history
 
@@ -1214,12 +1291,20 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
         max_chars = 1500
 
         for msg in messages:
-            if msg.get("role") == "assistant" and msg.get("content"):
+            if msg.get("role") != "assistant":
+                continue
+
+            # Prefer thinking_content (extended-thinking models) over plain content
+            thinking = msg.get("thinking_content")
+            if thinking and isinstance(thinking, str):
+                thoughts.append(thinking)
+            elif msg.get("content"):
                 content = msg["content"]
-                if content and isinstance(content, str):
+                if isinstance(content, str):
                     thoughts.append(content)
-                    if sum(len(t) for t in thoughts) > max_chars:
-                        break
+
+            if sum(len(t) for t in thoughts) > max_chars:
+                break
 
         result = "\n".join(thoughts)
         if len(result) > max_chars:
