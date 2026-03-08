@@ -24,13 +24,13 @@ export function MarkdownRenderer({ children, dimColor = false }: { children: str
       marked.setOptions({
         renderer: renderer,
       });
-      // Parse and render markdown
-      const result = marked.parse(trimmedInput);
+      // Parse and render markdown (sync: we don't use async extensions)
+      const result = marked.parse(trimmedInput) as string;
       // Remove horizontal rule lines (lines with only dashes, underscores, or asterisks)
       // This removes separator lines like "---" or "___" that marked-terminal creates
       const withoutHorizontalRules = result
         .split('\n')
-        .filter(line => {
+        .filter((line: string) => {
           const trimmed = line.trim();
           // Filter out lines that are only dashes, underscores, asterisks, or spaces
           return !/^[-_*=\s]+$/.test(trimmed);
