@@ -17,7 +17,7 @@ import requests
 from deadend_agent.config.settings import Config
 from deadend_agent.models.registry import ModelRegistry
 from deadend_agent.sandbox.sandbox_manager import SandboxManager
-from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
+from deadend_agent.rag.session_manager import RagSessionManager
 
 
 # Platform-specific sandbox binary configurations
@@ -52,13 +52,18 @@ def config_setup() -> Config:
     config.populate_providers()
     return config
 
-async def init_rag_database(database_url: str) -> RetrievalDatabaseConnector:
-    """Initialize RAG database"""
-    # Check database connection and raise exception
-    # if not connected
-    rag_database = RetrievalDatabaseConnector(database_url=database_url)
-    await rag_database.initialize_database()
-    return rag_database
+def init_rag_session_manager(
+    storage_root: str | Path | None = None,
+) -> RagSessionManager:
+    """Create a ``RagSessionManager`` backed by SQLite files.
+
+    Args:
+        storage_root: Root directory for agent session databases.
+            Defaults to ``~/.cache/deadend/agents``.
+    """
+    root = Path(storage_root) if storage_root else Path.home() / ".cache" / "deadend" / "agents"
+    root.mkdir(parents=True, exist_ok=True)
+    return RagSessionManager(storage_root=root)
 
 def sandbox_setup() -> SandboxManager:
     """Setup Sandbox manager"""

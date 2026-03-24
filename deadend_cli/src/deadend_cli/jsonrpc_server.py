@@ -558,7 +558,13 @@ def main(
 
         # components for embeddings
         embedder_client = component_manager.get_embedder()
-        rag_db = component_manager.get_rag_connector()
+        rag_manager = component_manager.get_rag_session_manager()
+        local_agent_id = component_manager.config.get_local_agent_id()
+        rag_db = await rag_manager.get_connector(
+            agent_id=local_agent_id,
+            embedding_session_id=embedding_session_id,
+            target=target,
+        )
         deadend_agent.set_approval_callback(approval_callback)
         deadend_agent.target = target
         deadend_agent_refs.update({str(agent_id): deadend_agent})
@@ -651,8 +657,8 @@ def main(
 
         # components for embeddings
         embedder_client = component_manager.get_embedder()
-        rag_db = component_manager.get_rag_connector()
-        config = component_manager.config
+        rag_manager = component_manager.get_rag_session_manager()
+        local_agent_id = component_manager.config.get_local_agent_id()
         agent.init_webtarget_indexer(
             target=target
         )
@@ -674,20 +680,23 @@ def main(
                 "phase": "init",
                 "data": {"message": f"Embedding diff: changed={changed} removed={removed}"},
             }
-        if rag_db is not None:
-            if embed_diff:
-                delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
-                if delete_files:
-                    await rag_db.delete_code_chunks_for_files(
-                        session_id=agent.embedding_session_id,
-                        files=delete_files
-                    )
+
+        rag_db = await rag_manager.get_connector(
+            agent_id=local_agent_id,
+            embedding_session_id=agent.embedding_session_id,
+            target=target,
+        )
+        if embed_diff:
+            delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
+            if delete_files:
+                await rag_db.delete_code_chunks_for_files(files=delete_files)
+        if code_chunks:
             await rag_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
 
-            yield {
-                    "phase": "init",
-                    "data": {"message": "Storing embeddings in database..."},
-            }
+        yield {
+                "phase": "init",
+                "data": {"message": "Storing embeddings in database..."},
+        }
         
         # Yield final completion message with "done" phase to signal stream end
         yield {

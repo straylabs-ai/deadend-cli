@@ -39,11 +39,11 @@ async def webapp_code_rag(
     )
     embedding = embedding[0]['embedding']
 
-    session_id = getattr(context.deps, "embedding_session_id", None) or context.deps.session_id
+    # With SQLite-per-session, the connector is already scoped to the
+    # session — no session_id parameter needed.
     results = await context.deps.rag.similarity_search_code_chunk(
         query_embedding=embedding,
         vector_dim=context.deps.embedder_client.vector_dim,
-        session_id=session_id,
         limit=5,
     )
     for chunk, similarity in results:

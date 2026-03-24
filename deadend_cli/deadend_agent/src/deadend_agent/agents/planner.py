@@ -11,13 +11,13 @@ testing tasks based on the target's characteristics and requirements.
 
 import uuid
 from typing import List, Any
-from deadend_agent.rag.database import EmbedderClient
+from deadend_agent.models.registry import EmbedderClient
 from pydantic import BaseModel
 from pydantic_ai import Tool
 from pydantic_ai.usage import RunUsage, UsageLimits
 
 from deadend_agent.agents.factory import AgentRunner
-from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
+from deadend_agent.rag.sqlite_connector import SqliteRagConnector
 from deadend_agent.config.settings import ModelSpec
 from deadend_agent.utils.structures import RagDeps, Task
 from deadend_agent.tools import webapp_code_rag
@@ -150,7 +150,7 @@ class Planner:
             usage: RunUsage,
             usage_limits: UsageLimits,
             embedder_client: EmbedderClient,
-            rag: RetrievalDatabaseConnector,
+            rag: SqliteRagConnector,
             session_id: uuid.UUID
         ):
         """Execute the planning workflow to generate security assessment tasks.

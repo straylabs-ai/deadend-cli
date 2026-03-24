@@ -10,7 +10,7 @@ from deadend_agent.config.settings import ModelSpec
 from deadend_agent.models.registry import EmbedderClient
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
-from deadend_agent.rag.db_cruds import RetrievalDatabaseConnector
+from deadend_agent.rag.sqlite_connector import SqliteRagConnector
 from deadend_agent.sandbox.sandbox import Sandbox
 from deadend_agent.agents.reporter import ReporterAgent
 from deadend_agent.agents.architecture import ADaPTAgent
@@ -192,7 +192,7 @@ class DeadEndAgent:
         self,
         *,
         embedder_client: EmbedderClient,
-        rag_connector: RetrievalDatabaseConnector | Any,
+        rag_connector: SqliteRagConnector | Any,
         sandbox: Sandbox | None,
         target: str | None = None,
     ) -> None:

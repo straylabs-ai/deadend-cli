@@ -10,9 +10,10 @@ for the security research CLI application.
 """
 
 from .config.settings import Config
-from .core import config_setup, init_rag_database, sandbox_setup, setup_model_registry
+from .core import config_setup, init_rag_session_manager, sandbox_setup, setup_model_registry
 from .models.registry import ModelRegistry, EmbedderClient
-from .rag.db_cruds import RetrievalDatabaseConnector
+from .rag.sqlite_connector import SqliteRagConnector
+from .rag.session_manager import RagSessionManager
 from .sandbox.sandbox import Sandbox
 from .deadend_agent import DeadEndAgent
 from .hooks import (
@@ -28,10 +29,11 @@ __all__ = [
     "Config",
     "ModelRegistry",
     "EmbedderClient",
-    "RetrievalDatabaseConnector",
+    "SqliteRagConnector",
+    "RagSessionManager",
     "Sandbox",
     "config_setup",
-    "init_rag_database",
+    "init_rag_session_manager",
     "sandbox_setup",
     "setup_model_registry",
     # Hooks
