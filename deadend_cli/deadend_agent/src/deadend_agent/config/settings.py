@@ -11,6 +11,7 @@ configuration file with caching and validation capabilities.
 
 import os
 import json
+import uuid
 from typing import Any, List
 from pathlib import Path
 from dotenv import load_dotenv
@@ -202,8 +203,8 @@ class Config:
 
     # List providers
     providers: ProvidersList = ProvidersList()
-    # Database
-    db_url: str | None = _cfg("DB_URL", "postgresql://postgres:postgres@localhost:54320/codeindexerdb")
+    # Storage
+    agents_storage_root: str = _cfg("AGENTS_STORAGE_ROOT", str(Path.home() / ".cache" / "deadend" / "agents")) or str(Path.home() / ".cache" / "deadend" / "agents")
     # Tools
     zap_api_key: str | None = _cfg("ZAP_PROXY_API_KEY")
 
@@ -338,6 +339,29 @@ class Config:
     def all_model_providers(cls) -> ProvidersList:
         """Returns the list of all providers"""
         return cls.providers
+
+    @classmethod
+    def get_local_agent_id(cls) -> str:
+        """Return a stable local agent ID, generating one on first use.
+
+        The ID is persisted in ``config.json`` under the ``local_agent_id`` key
+        so that the directory layout ``{agent_id}/{session}/`` is consistent
+        across runs.
+        """
+        config_file = load_config_json()
+        existing = config_file.get("local_agent_id")
+        if existing:
+            return existing
+
+        new_id = str(uuid.uuid4())
+        config_file["local_agent_id"] = new_id
+        try:
+            _CACHE_TOML_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(str(_CACHE_TOML_PATH), "w", encoding="utf-8") as f:
+                json.dump(config_file, f, indent=2)
+        except OSError:
+            logger.info("Could not persist local_agent_id to config file.")
+        return new_id
 
     @classmethod
     def get_model_from_provider(cls, provider_name: str) -> List[ModelSpec | EmbeddingSpec]:

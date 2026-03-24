@@ -12,14 +12,14 @@ from typing import Any, Optional
 from deadend_agent import ModelRegistry
 import docker
 from deadend_agent.core import (
-    init_rag_database,
+    init_rag_session_manager,
     sandbox_setup,
     setup_model_registry,
     start_python_sandbox,
     stop_python_sandbox,
     Config,
-    RetrievalDatabaseConnector
 )
+from deadend_agent.rag.session_manager import RagSessionManager
 from deadend_agent.tools.browser_automation import PlaywrightRequester
 from .jsonrpc.rpc_models import (
     ComponentStatus,
@@ -31,10 +31,7 @@ from .jsonrpc.rpc_models import (
 )
 from .init import (
     check_docker,
-    check_pgvector_container,
-    setup_pgvector_database,
     pull_sandboxed_kali_image,
-    stop_pgvector_container,
 )
 from .cli_logging import logger
 
@@ -61,7 +58,7 @@ class ComponentManager:
         # Component instances
         self.config: Config | None = None
         self.model_registry: ModelRegistry = None
-        self.rag_connector: RetrievalDatabaseConnector | None = None
+        self.rag_session_manager: RagSessionManager | None = None
         self.python_sandbox_process: Optional[subprocess.Popen] = None
         self.sandbox_manager: Any = None
         self.playwright_requester: Any = None
@@ -118,58 +115,43 @@ class ComponentManager:
                 message=f"Docker initialization failed: {e}",
             )
 
-    async def init_pgvector(self) -> InitResult:
-        """Setup pgvector container and verify database connectivity."""
-        logger.debug("Initializing pgvector component...")
-        if self.docker_client is None:
-            logger.error("Docker must be initialized before pgvector")
-            return InitResult(
-                success=False,
-                component="pgvector",
-                status=ComponentStatus.ERROR,
-                message="Docker must be initialized first",
-            )
+    async def init_rag(self) -> InitResult:
+        """Initialize the SQLite-based RAG session manager.
 
+        No Docker dependency — creates the storage directory and returns
+        immediately.
+        """
+        logger.debug("Initializing RAG session manager...")
         self.pgvector_state.status = ComponentStatus.INITIALIZING
         try:
-            # Use existing init functions
-            if not check_pgvector_container(self.docker_client):
-                logger.debug("pgvector container not found, setting up...")
-                if not setup_pgvector_database(self.docker_client):
-                    raise RuntimeError("Failed to setup pgvector database")
-                # Wait for async setup
-                logger.debug("Waiting for pgvector container to be ready...")
-                await asyncio.sleep(2)
-            else:
-                logger.debug("pgvector container already running")
-
-            # Verify database connectivity using init_rag_database from core.py
-            db_url = "postgresql://postgres:postgres@localhost:54320/codeindexerdb"
-            logger.debug("Connecting to database: %s", db_url)
-
-            self.rag_connector = await init_rag_database(database_url=db_url)
+            storage_root = self.config.agents_storage_root if self.config else None
+            self.rag_session_manager = init_rag_session_manager(
+                storage_root=storage_root
+            )
 
             self.pgvector_state.status = ComponentStatus.READY
-            self.pgvector_state.metadata["db_url"] = db_url
+            self.pgvector_state.metadata["storage_root"] = str(
+                self.rag_session_manager._root
+            )
             self.pgvector_state.last_check = datetime.now()
 
-            logger.debug("pgvector initialized successfully")
+            logger.debug("RAG session manager initialized at %s", self.rag_session_manager._root)
             return InitResult(
                 success=True,
-                component="pgvector",
+                component="rag",
                 status=ComponentStatus.READY,
-                message="pgvector database ready",
-                details={"db_url": db_url},
+                message="RAG session manager ready (SQLite)",
+                details={"storage_root": str(self.rag_session_manager._root)},
             )
         except Exception as e:
-            logger.error("pgvector initialization failed: %s", e)
+            logger.error("RAG initialization failed: %s", e)
             self.pgvector_state.status = ComponentStatus.ERROR
             self.pgvector_state.error_message = str(e)
             return InitResult(
                 success=False,
-                component="pgvector",
+                component="rag",
                 status=ComponentStatus.ERROR,
-                message=f"pgvector initialization failed: {e}",
+                message=f"RAG initialization failed: {e}",
             )
 
     async def init_config(self) -> InitResult:
@@ -373,9 +355,9 @@ class ComponentManager:
         """Initialize all components in the correct order.
 
         Initialization order:
-        1. Docker (required by pgvector and shell_sandbox)
-        2. Config (required by model_registry)
-        3. pgvector (requires Docker)
+        1. Docker (required by shell_sandbox)
+        2. Config (required by model_registry and RAG)
+        3. RAG session manager (requires Config, SQLite-based — no Docker)
         4. model_registry (requires Config)
         5. python_sandbox (standalone)
         6. shell_sandbox (requires Docker)
@@ -404,13 +386,13 @@ class ComponentManager:
             failed.append("config")
             logger.warning("Config loading failed")
 
-        # 3. pgvector - needs Docker
-        logger.info("Step 3/7: Initializing pgvector database...")
-        pgvector_result = await self.init_pgvector()
-        results.append(pgvector_result)
-        if not pgvector_result.success:
-            failed.append("pgvector")
-            logger.warning("pgvector initialization failed")
+        # 3. RAG (SQLite session manager — no Docker needed)
+        logger.info("Step 3/7: Initializing RAG session manager...")
+        rag_result = await self.init_rag()
+        results.append(rag_result)
+        if not rag_result.success:
+            failed.append("rag")
+            logger.warning("RAG initialization failed")
 
         # 4. Model registry - needs Config
         logger.info("Step 4/7: Initializing model registry...")
@@ -492,49 +474,35 @@ class ComponentManager:
                 message=f"Docker health check failed: {e}",
             )
 
-    async def health_pgvector(self) -> HealthResult:
-        """Check pgvector container and database connectivity."""
+    async def health_rag(self) -> HealthResult:
+        """Check RAG session manager health."""
         start_time = time.time()
         try:
-            if self.docker_client is None:
+            if self.rag_session_manager is None:
                 return HealthResult(
-                    component="pgvector",
+                    component="rag",
                     healthy=False,
                     status=ComponentStatus.NOT_INITIALIZED,
-                    message="Docker not initialized",
+                    message="RAG session manager not initialized",
                 )
-
-            if not check_pgvector_container(self.docker_client):
-                return HealthResult(
-                    component="pgvector",
-                    healthy=False,
-                    status=ComponentStatus.UNHEALTHY,
-                    message="Container not running",
-                )
-
-            # Check database connectivity
-            if self.rag_connector:
-                async with self.rag_connector.get_session() as session:
-                    from sqlalchemy import text
-                    await session.execute(text("SELECT 1"))
 
             latency = (time.time() - start_time) * 1000
             self.pgvector_state.last_check = datetime.now()
 
             return HealthResult(
-                component="pgvector",
+                component="rag",
                 healthy=True,
                 status=ComponentStatus.READY,
-                message="pgvector healthy",
+                message="RAG session manager healthy",
                 latency_ms=latency,
             )
         except Exception as e:
             self.pgvector_state.status = ComponentStatus.UNHEALTHY
             return HealthResult(
-                component="pgvector",
+                component="rag",
                 healthy=False,
                 status=ComponentStatus.UNHEALTHY,
-                message=f"pgvector health check failed: {e}",
+                message=f"RAG health check failed: {e}",
             )
 
     async def health_python_sandbox(self) -> HealthResult:
@@ -655,7 +623,7 @@ class ComponentManager:
         """Run all health checks concurrently."""
         results = await asyncio.gather(
             self.health_docker(),
-            self.health_pgvector(),
+            self.health_rag(),
             self.health_python_sandbox(),
             self.health_shell_sandbox(),
             self.health_playwright(),
@@ -817,20 +785,20 @@ class ComponentManager:
             )
         return self.model_registry.get_embedder_model()
 
-    def get_rag_connector(self):
-        """Get the RAG database connector.
+    def get_rag_session_manager(self) -> RagSessionManager:
+        """Get the RAG session manager.
 
         Returns:
-            RetrievalDatabaseConnector instance
+            RagSessionManager instance
 
         Raises:
-            RuntimeError: If pgvector is not initialized
+            RuntimeError: If RAG is not initialized
         """
-        if self.rag_connector is None:
+        if self.rag_session_manager is None:
             raise RuntimeError(
-                "RAG database not initialized. Call init_pgvector() first."
+                "RAG session manager not initialized. Call init_rag() first."
             )
-        return self.rag_connector
+        return self.rag_session_manager
 
     def create_task_sandbox(self, network_name: str = "host"):
         """Create a new sandbox for a task.
@@ -864,8 +832,8 @@ class ComponentManager:
             missing.append("config")
         if self.model_registry is None:
             missing.append("model_registry")
-        if self.rag_connector is None:
-            missing.append("pgvector")
+        if self.rag_session_manager is None:
+            missing.append("rag")
         if self.sandbox_manager is None:
             missing.append("shell_sandbox")
         return (len(missing) == 0, missing)
@@ -907,22 +875,13 @@ class ComponentManager:
             except Exception:
                 results["shell_sandbox"] = False
 
-        # Optionally stop pgvector
-        if self.docker_client:
+        # Close RAG session manager
+        if self.rag_session_manager:
             try:
-                stop_pgvector_container(self.docker_client)
-                results["pgvector"] = True
+                await self.rag_session_manager.close_all()
+                results["rag"] = True
             except Exception:
-                results["pgvector"] = False
-
-        # Close RAG connector
-        if self.rag_connector:
-            try:
-                if hasattr(self.rag_connector, "close"):
-                    await self.rag_connector.close()
-                results["rag_connector"] = True
-            except Exception:
-                results["rag_connector"] = False
+                results["rag"] = False
 
         self._shutdown_event.set()
         return results

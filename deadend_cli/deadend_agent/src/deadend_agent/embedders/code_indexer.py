@@ -18,7 +18,7 @@ from uuid import uuid4
 from pathlib import Path
 from typing import List
 
-from deadend_agent.rag.database import CodeSection
+from deadend_agent.rag.schemas import CodeSection
 from deadend_agent.tools.web_resource_extractor import WebResourceExtractor
 from deadend_agent.code_indexer.code_splitter import Chunker
 from deadend_agent.embedders.embedders import batch_embed_chunks
@@ -126,10 +126,9 @@ class SourceCodeIndexer:
         code_chunks = []
         for code_section in code_sections:
             chunk = {
-                    "session_id": self.session_id,
-                    "file_path": code_section.url_path, 
-                    "language": code_section.title, 
-                    "code_content": str(code_section.content), 
+                    "file_path": code_section.url_path,
+                    "language": code_section.title,
+                    "code_content": str(code_section.content),
                     "embedding": code_section.embeddings
                 }
             code_chunks.append(chunk)

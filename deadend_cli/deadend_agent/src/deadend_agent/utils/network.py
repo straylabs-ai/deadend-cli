@@ -14,6 +14,26 @@ from urllib.parse import urlparse
 from playwright.async_api import async_playwright
 
 
+def slugify_target(target: str) -> str:
+    """Convert a target URL to a filesystem-safe slug.
+
+    Uses the same convention as ``WebResourceExtractor`` where downloaded
+    resources are stored under ``{netloc.replace(':', '_')}``.
+
+    Examples::
+
+        >>> slugify_target("http://example.com:3000/app")
+        'example.com_3000'
+        >>> slugify_target("https://localhost:8080")
+        'localhost_8080'
+        >>> slugify_target("example.com")
+        'example.com'
+    """
+    normalized = _normalize_target_url(target)
+    parsed = urlparse(normalized)
+    return parsed.netloc.replace(":", "_")
+
+
 def _normalize_target_url(target: str) -> str:
     """
     Normalize target URL to ensure it has a proper protocol scheme.

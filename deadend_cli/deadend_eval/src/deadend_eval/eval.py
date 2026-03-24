@@ -16,7 +16,7 @@ from uuid import uuid4
 import docker
 from pydantic import BaseModel, Field
 from deadend_agent import (
-    RetrievalDatabaseConnector,
+    SqliteRagConnector,
     Sandbox,
     DeadEndAgent,
 )
@@ -81,7 +81,7 @@ async def eval_deadend_agent(
         model: ModelSpec,
         embedder_client: EmbedderClient,
         # evaluators: list[Evaluator],
-        code_indexer_db: RetrievalDatabaseConnector,
+        code_indexer_db: SqliteRagConnector,
         sandbox: Sandbox | None,
         eval_metadata: EvalMetadata,
         hard_prompt: bool,
@@ -186,7 +186,6 @@ async def eval_deadend_agent(
             delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
             if delete_files:
                 await code_indexer_db.delete_code_chunks_for_files(
-                    session_id=deadend_agent.session_id,
                     files=delete_files
                 )
         insert = await code_indexer_db.batch_insert_code_chunks(code_chunks_data=code_chunks)
