@@ -33,13 +33,12 @@ from prompt_toolkit.layout.containers import HSplit
 from prompt_toolkit.layout import Dimension as D
 from pydantic import BaseModel
 from pydantic_ai import DeferredToolRequests
-from sqlalchemy.exc import SQLAlchemyError
-
 from deadend_agent.utils.structures import Task
 from deadend_agent.agents import RequesterOutput
 from deadend_agent.agents.judge import JudgeOutput
 from deadend_agent.utils.network import check_target_alive, deterministic_session_id
-from deadend_agent import Config, DeadEndAgent, init_rag_database, sandbox_setup, ModelRegistry
+from deadend_agent import Config, DeadEndAgent, init_rag_session_manager, sandbox_setup, ModelRegistry
+from deadend_agent.rag.session_manager import RagSessionManager
 from .console import console_printer
 
 # Defining Agent modes
@@ -369,13 +368,9 @@ async def chat_interface(
     model = model_registry.get_model(provider=llm_provider)
     embedder_client = model_registry.get_embedder_model()
 
-    # Try to initialize optional dependencies without exiting the app
-    rag_db = None
-    try:
-        rag_db = await init_rag_database(config.db_url)
-    except (SQLAlchemyError, OSError) as exc:
-        console_printer.print(f"[red]Vector DB not accessible ({exc}). Exiting now.[/red]")
-        raise SystemExit(1) from exc
+    # Initialize SQLite-based RAG session manager
+    rag_manager = init_rag_session_manager(storage_root=config.agents_storage_root)
+    local_agent_id = config.get_local_agent_id()
     # Settings up sandbox
     try:
         sandbox_manager = sandbox_setup()
@@ -483,16 +478,20 @@ Please provide a target URL.[/yellow]")
             f"(session={deadend_agent.embedding_session_id})"
         )
 
-    # Inserting in database
-    if rag_db is not None and config.openai_api_key and config.embedding_model:
-        if embed_diff:
-            delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
-            if delete_files:
-                    await rag_db.delete_code_chunks_for_files(
-                        session_id=deadend_agent.embedding_session_id,
-                        files=delete_files
-                    )
-        insert = await chat_interface.wait_response(
+    # Get per-session SQLite RAG connector
+    rag_db = await rag_manager.get_connector(
+        agent_id=local_agent_id,
+        embedding_session_id=embedding_session_id,
+        target=target,
+    )
+
+    # Sync embeddings to SQLite
+    if embed_diff:
+        delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
+        if delete_files:
+            await rag_db.delete_code_chunks_for_files(files=delete_files)
+    if code_chunks:
+        await chat_interface.wait_response(
             func=rag_db.batch_insert_code_chunks,
             status="Syncing DB",
             code_chunks_data=code_chunks
@@ -592,19 +591,29 @@ Please provide a target URL.[/yellow]")
                                 f"[blue]Embedding diff[/blue] changed={changed} removed={removed} "
                                 f"(session={deadend_agent.embedding_session_id})"
                             )
-                        if rag_db is not None and config.openai_api_key and config.embedding_model:
-                            if embed_diff:
-                                delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
-                                if delete_files:
-                                    await rag_db.delete_code_chunks_for_files(
-                                        session_id=deadend_agent.embedding_session_id,
-                                        files=delete_files
-                                    )
+                        # Get new per-session SQLite connector for new target
+                        rag_db = await rag_manager.get_connector(
+                            agent_id=local_agent_id,
+                            embedding_session_id=embedding_session_id,
+                            target=target,
+                        )
+                        if embed_diff:
+                            delete_files = embed_diff.get("changed_files", []) + embed_diff.get("removed_files", [])
+                            if delete_files:
+                                await rag_db.delete_code_chunks_for_files(files=delete_files)
+                        if code_chunks:
                             insert = await chat_interface.wait_response(
                                 func=rag_db.batch_insert_code_chunks,
                                 status="Syncing DB with new target data",
                                 code_chunks_data=code_chunks
                             )
+                        # Re-prepare deps with the new connector
+                        deadend_agent.prepare_dependencies(
+                            embedder_client=embedder_client,
+                            rag_connector=rag_db,
+                            sandbox=sandbox,
+                            target=target,
+                        )
                     user_prompt = None
                     continue
                 elif user_prompt == "__HELP__":

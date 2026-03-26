@@ -9,9 +9,47 @@ metadata, content, and processing information for security research
 and analysis workflows.
 """
 
+from dataclasses import dataclass
+from typing import List
 from pydantic import BaseModel
 from datetime import datetime
 import uuid
+
+from deadend_agent.models.registry import EmbedderClient
+
+
+@dataclass
+class CodeSection:
+    """Represents a code section with metadata and embeddings.
+
+    Attributes:
+        url_path: URL or file path where the code section is located.
+        title: Descriptive title for the code section.
+        content: Dictionary containing the actual code content.
+        embeddings: Vector embeddings for semantic search.
+    """
+    url_path: str
+    title: str
+    content: dict[int, str] | None
+    embeddings: List[float] | None
+
+    def get_embedding_content(self) -> str:
+        """Get content formatted for embedding generation.
+
+        This method implements the Embeddable protocol by providing
+        a standardized way to get embedding content.
+        """
+        return '\n\n'.join(
+            (f'url_path: {self.url_path}', f'title: {self.title}', str(self.content))
+        )
+
+    async def embed_content(self, embedder_client: EmbedderClient):
+        """Generate embeddings for the code section content."""
+        try:
+            batch_embeddings = await embedder_client.batch_embed(input_texts=[str(self.content)])
+            self.embeddings = batch_embeddings[0]['embedding']
+        except Exception as e:
+            self.embeddings = None
 
 class WebResourceChunk(BaseModel):
     """

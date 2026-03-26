@@ -11,8 +11,7 @@ through various evaluation scenarios and metrics.
 
 import json
 from rich import print as console_printer
-from sqlalchemy.exc import SQLAlchemyError
-from deadend_agent import Config, init_rag_database, sandbox_setup, ModelRegistry
+from deadend_agent import Config, init_rag_session_manager, sandbox_setup, ModelRegistry
 from deadend_eval.eval import EvalMetadata, eval_deadend_agent
 
 async def eval_interface(
@@ -69,13 +68,16 @@ async def eval_interface(
         raise RuntimeError(f"No LM model configured. You can run `deadend init` to \
             initialize the required Model configuration for {providers[0]}")
 
-    database_url = config.db_url or ""
-    try:
-        # Initializing the rag code indexer database
-        rag_db = await init_rag_database(database_url)
-    except (SQLAlchemyError, OSError) as exc:
-        console_printer(f"[red]Vector DB not accessible ({exc}). Exiting now.[/red]")
-        raise SystemExit(1) from exc
+    # Initialize SQLite-based RAG
+    rag_manager = init_rag_session_manager(storage_root=config.agents_storage_root)
+    local_agent_id = config.get_local_agent_id()
+    from deadend_agent.utils.network import deterministic_session_id
+    embedding_session_id = deterministic_session_id(eval_metadata.target_host or "localhost")
+    rag_db = await rag_manager.get_connector(
+        agent_id=local_agent_id,
+        embedding_session_id=embedding_session_id,
+        target=eval_metadata.target_host or "localhost",
+    )
 
     try:
         sandbox_manager = sandbox_setup()
