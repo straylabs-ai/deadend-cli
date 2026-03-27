@@ -60,6 +60,7 @@ def chat(
         None, help="Path to the OpenAPI specification file."
     ),
     knowledge_base: str = typer.Option(None, help="Folder path to the knowledge base."),
+    workspace_root: str = typer.Option(None, help="Host workspace to mount into AVFS."),
 ):
     """Run the interactive chat agent.
 
@@ -106,6 +107,7 @@ def chat(
                 target=target,
                 openapi_spec=openapi_spec,
                 knowledge_base=knowledge_base,
+                workspace_root=workspace_root,
             )
         )
     finally:

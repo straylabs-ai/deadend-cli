@@ -21,7 +21,6 @@ from deadend_agent.utils.structures import Task, TaskPlanner
 from deadend_agent.utils.functions import num_tokens_from_string
 
 if TYPE_CHECKING:
-    from deadend_agent.agents import RouterOutput
     from deadend_agent.agents.reporter import ReporterAgent
 
 
@@ -1136,36 +1135,36 @@ class ContextEngine:
             self.workflow_context = result.output
         return token_count
 
-    def add_next_agent(self, router_output: "RouterOutput") -> None:
-        """Add router output information and set the next agent.
+#     def add_next_agent(self, router_output: "RouterOutput") -> None:
+#         """Add router output information and set the next agent.
         
-        Args:
-            router_output (RouterOutput): The output from the router agent
-                                         containing the next agent name and
-                                         routing information.
+#         Args:
+#             router_output (RouterOutput): The output from the router agent
+#                                          containing the next agent name and
+#                                          routing information.
         
-        Updates the next_agent attribute and adds the router output
-        to the workflow context. Also saves to text file.
-        """
-        self.next_agent = router_output.next_agent_name
-        self.workflow_context  += f"""\n
-[router agent]
-{str(router_output)}
-"""
-        self._append_to_context_file("[ai agent]", f"Router agent: {str(router_output)}")
-    def add_not_found_agent(self, agent_name: str) -> None:
-        """Add information about a not found agent to the workflow context.
+#         Updates the next_agent attribute and adds the router output
+#         to the workflow context. Also saves to text file.
+#         """
+#         self.next_agent = router_output.next_agent_name
+#         self.workflow_context  += f"""\n
+# [router agent]
+# {str(router_output)}
+# """
+#         self._append_to_context_file("[ai agent]", f"Router agent: {str(router_output)}")
+#     def add_not_found_agent(self, agent_name: str) -> None:
+#         """Add information about a not found agent to the workflow context.
         
-        Args:
-            agent_name (str): The name of the agent that was not found.
+#         Args:
+#             agent_name (str): The name of the agent that was not found.
         
-        Adds a message to the workflow context indicating that the
-        specified agent was not found. Also saves to text file.
-        """
-        self.workflow_context += f"""
-[agent not found {agent_name}]\n
-"""
-        self._append_to_context_file("[ai agent]", f"Not found agent name: {agent_name}")
+#         Adds a message to the workflow context indicating that the
+#         specified agent was not found. Also saves to text file.
+#         """
+#         self.workflow_context += f"""
+# [agent not found {agent_name}]\n
+# """
+#         self._append_to_context_file("[ai agent]", f"Not found agent name: {agent_name}")
     def add_agent_response(
         self,
         response: str,

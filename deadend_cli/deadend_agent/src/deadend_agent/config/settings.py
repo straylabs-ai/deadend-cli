@@ -341,7 +341,7 @@ class Config:
         return cls.providers
 
     @classmethod
-    def get_local_agent_id(cls) -> str:
+    def get_local_agent_id(cls) -> uuid.UUID:
         """Return a stable local agent ID, generating one on first use.
 
         The ID is persisted in ``config.json`` under the ``local_agent_id`` key
@@ -351,10 +351,10 @@ class Config:
         config_file = load_config_json()
         existing = config_file.get("local_agent_id")
         if existing:
-            return existing
+            return uuid.UUID(str(existing))
 
-        new_id = str(uuid.uuid4())
-        config_file["local_agent_id"] = new_id
+        new_id = uuid.uuid4()
+        config_file["local_agent_id"] = str(new_id)
         try:
             _CACHE_TOML_PATH.parent.mkdir(parents=True, exist_ok=True)
             with open(str(_CACHE_TOML_PATH), "w", encoding="utf-8") as f:

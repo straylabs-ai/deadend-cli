@@ -356,6 +356,8 @@ async def chat_interface(
         # OpenAPI spec if available
         knowledge_base: str,
         # Knowledge base path
+        workspace_root: str | None = None,
+        # Optional AVFS workspace root
         llm_provider: str = "openai"
         # LLM provider
     ):
@@ -389,6 +391,7 @@ async def chat_interface(
         'requester': "Agent specialized in fine-grained testing and sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites. Best for gathering auth tokens, testing individual endpoints, and precise request manipulation. Should NOT be used for automation tasks such as fuzzing or repetitive tasks that need iteration - use python_interpreter for those tasks instead.",
         'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly. Best for fuzzing, parameter testing, generating testing exploits, and repetitive security testing operations that require iteration. Use this agent for tasks that need automation, loops, or multiple iterations.",
         'shell': "Agent that gives access to a terminal bash shell. Run linux commands here.",
+        'memory': "Agent specialized in reading and writing the persistent memory workspace under the agent cache.",
         'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
     }
 
@@ -446,7 +449,7 @@ Please provide a target URL.[/yellow]")
                 console_printer.print("[red]No target provided. Exiting application...[/red]")
                 sys.exit(1)
 
-    # Create agent with deterministic session ID per target
+    # Create agent with a runtime session plus deterministic target embedding session
     runtime_session_id = uuid4()
     embedding_session_id = deterministic_session_id(target)
     deadend_agent = DeadEndAgent(
@@ -454,7 +457,10 @@ Please provide a target URL.[/yellow]")
         embedding_session_id=embedding_session_id,
         model=model,
         available_agents=available_agents,
-        max_depth=3
+        max_depth=3,
+        workspace_root=workspace_root,
+        agents_storage_root=config.agents_storage_root,
+        local_agent_id=local_agent_id,
     )
     deadend_agent.set_approval_callback(approval_callback)
 
@@ -570,7 +576,10 @@ Please provide a target URL.[/yellow]")
                             embedding_session_id=embedding_session_id,
                             model=model,
                             available_agents=available_agents,
-                            max_depth=3
+                            max_depth=3,
+                            workspace_root=workspace_root,
+                            agents_storage_root=config.agents_storage_root,
+                            local_agent_id=local_agent_id,
                         )
                         deadend_agent.set_approval_callback(approval_callback)
                         # Re-initialize with new target

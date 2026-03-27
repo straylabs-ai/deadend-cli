@@ -20,8 +20,9 @@ from deadend_agent import (
     Sandbox,
     DeadEndAgent,
 )
-from deadend_agent.config.settings import ModelSpec
+from deadend_agent.config.settings import Config, ModelSpec
 from deadend_agent.models.registry import EmbedderClient
+from deadend_agent.utils.network import deterministic_session_id
 from deadend_eval.metrics import (
     instrument_agent_runner,
     global_metrics,
@@ -166,11 +167,16 @@ async def eval_deadend_agent(
         target_host = eval_metadata.target_host
 
     session_id = uuid4()
+    local_agent_id = Config.get_local_agent_id()
+    embedding_session_id = deterministic_session_id(eval_metadata.target_host or "localhost")
     deadend_agent = DeadEndAgent(
         session_id=session_id,
+        embedding_session_id=embedding_session_id,
         model=model,
         available_agents=generic_agents,
-        max_depth=2
+        max_depth=2,
+        agents_storage_root=Config.agents_storage_root,
+        local_agent_id=local_agent_id,
     )
     # Set challenge name for trace file naming
     deadend_agent.challenge_name = eval_metadata.name

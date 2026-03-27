@@ -1,16 +1,16 @@
-# Copyright (C) 2025 Yassine Bargach
-# Licensed under the GNU Affero General Public License v3
-# See LICENSE file for full license information.
 from typing import Any
-from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
+
+from pydantic_ai import DeferredToolRequests, DeferredToolResults, Tool
 from pydantic_ai.usage import RunUsage, UsageLimits
+
+from deadend_agent.agents.factory import AgentRunner
 from deadend_agent.config.settings import ModelSpec
-from deadend_agent.agents.factory import AgentRunner, AgentOutput
-from deadend_agent.tools import webapp_analyzer
+from deadend_agent.tools import avfs_grep, avfs_list, avfs_read, avfs_write
 from deadend_prompts import render_agent_instructions, render_tool_description
 
 
-class WebAppAnalyzerAgent(AgentRunner):
+class MemoryAgent(AgentRunner):
+    """Agent dedicated to reading and writing the persistent memory workspace."""
 
     def __init__(
         self,
@@ -18,23 +18,29 @@ class WebAppAnalyzerAgent(AgentRunner):
         deps_type: Any | None,
     ):
         tools_metadata = {
-            "webapp_analyzer": render_tool_description("webapp_analyzer"),
+            "avfs_list": render_tool_description("avfs_list"),
+            "avfs_read": render_tool_description("avfs_read"),
+            "avfs_write": render_tool_description("avfs_write"),
+            "avfs_grep": render_tool_description("avfs_grep"),
         }
 
         self.instructions = render_agent_instructions(
-            agent_name="webapp_analyzer",
-            tools=tools_metadata
+            agent_name="memory",
+            tools=tools_metadata,
         )
 
         super().__init__(
-            name="webapp_analyzer",
+            name="memory",
             model=model,
             instructions=self.instructions,
             deps_type=deps_type,
-            output_type=[AgentOutput, DeferredToolRequests],
+            output_type=[str, DeferredToolRequests],
             tools=[
-                Tool(webapp_analyzer),
-            ]
+                Tool(avfs_list),
+                Tool(avfs_read),
+                Tool(avfs_write),
+                Tool(avfs_grep),
+            ],
         )
 
     async def run(
@@ -46,7 +52,7 @@ class WebAppAnalyzerAgent(AgentRunner):
         usage_limits: UsageLimits | None,
         deferred_tool_results: DeferredToolResults | None = None,
         *args,
-        **kwargs
+        **kwargs,
     ):
         return await super().run(
             prompt=prompt,
@@ -54,5 +60,5 @@ class WebAppAnalyzerAgent(AgentRunner):
             message_history=message_history,
             usage=usage,
             usage_limits=usage_limits,
-            deferred_tool_results=deferred_tool_results
+            deferred_tool_results=deferred_tool_results,
         )

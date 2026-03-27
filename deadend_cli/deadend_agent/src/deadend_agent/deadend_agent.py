@@ -1,12 +1,13 @@
 """Main DeadEnd agent orchestration module."""
 import re
+from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
 
 from deadend_agent.logging import logger
 
 from pydantic_ai import RunUsage, UsageLimits
-from deadend_agent.config.settings import ModelSpec
+from deadend_agent.config.settings import Config, ModelSpec
 from deadend_agent.models.registry import EmbedderClient
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
@@ -14,16 +15,19 @@ from deadend_agent.rag.sqlite_connector import SqliteRagConnector
 from deadend_agent.sandbox.sandbox import Sandbox
 from deadend_agent.agents.reporter import ReporterAgent
 from deadend_agent.agents.architecture import ADaPTAgent
+from deadend_agent.agents.generic_agents.memory_agent import MemoryAgent
 from deadend_agent.agents.components.executor import AgentExecutor, ResultEvent
 from deadend_agent.agents.components.planner import Planner, TaskNode
 from deadend_agent.agents.components.validator import Validator
 from deadend_agent.utils.structures import (
+    MemoryWorkspaceDeps,
     RequesterDeps,
     ShellDeps,
     ShellRunner,
     WebappreconDeps
 )
 from deadend_agent.tools.browser_automation.http_parser import extract_host_port
+from deadend_agent.tools.avfs import avfs
 from .agents.recon_threatmodel_agent import ReconThreatModelAgent
 from .agents.exploit_web_agent import PlannerExploitAgent
 # from deadend_eval.metrics imporst save_traces
@@ -34,6 +38,7 @@ ApprovalCallback = Callable[..., Awaitable[str]]
 class DeadEndAgent:
     """Main orchestrator for the DeadEnd security research framework."""
 
+    agent_id: UUID
     session_id: UUID
     embedding_session_id: UUID
     model: ModelSpec
@@ -55,6 +60,7 @@ class DeadEndAgent:
     requester_deps: RequesterDeps | None = None
     webapprecon_deps: WebappreconDeps | None = None
     challenge_name: str | None = None
+    local_agent_id: UUID
 
 
     def __init__(
@@ -65,7 +71,10 @@ class DeadEndAgent:
         max_depth: int = 3,
         validation_type: str | None = None,
         validation_format: str | None = None,
-        embedding_session_id: UUID | None = None
+        embedding_session_id: UUID | None = None,
+        workspace_root: str | None = None,
+        agents_storage_root: str | None = None,
+        local_agent_id: UUID | None = None,
     ):
         self.session_id = session_id
         self.embedding_session_id = embedding_session_id or session_id
@@ -78,6 +87,19 @@ class DeadEndAgent:
             validation_format=validation_format
         )
         self.context = ContextEngine(model=self.model, session_id=session_id)
+        self.workspace_root: str | None = None
+        self.local_agent_id = local_agent_id or Config.get_local_agent_id()
+        self.agent_id = self.local_agent_id
+        self.agents_storage_root = agents_storage_root or Config.agents_storage_root
+        self.memory_workspace_root = self._prepare_memory_workspace()
+        self.memory_context = ""
+        avfs.mount(
+            workspace_root=self.memory_workspace_root,
+            session_id=str(self.agent_id),
+            workspace="memory",
+        )
+        if workspace_root is not None:
+            self.set_workspace_root(workspace_root)
 
 
 ################################################################################
@@ -111,6 +133,64 @@ class DeadEndAgent:
             callback: Async function that returns user input for approval
         """
         self.approval_callback = callback
+
+    def set_workspace_root(self, workspace_root: str | None) -> None:
+        """Configure the AVFS workspace for this agent session."""
+        if workspace_root is None:
+            self.workspace_root = None
+            avfs.umount(session_id=str(self.agent_id), workspace="workspace")
+            return
+
+        avfs.mount(workspace_root=workspace_root, session_id=str(self.agent_id), workspace="workspace")
+        mounted_root = avfs.current_workspace_root(session_id=str(self.agent_id), workspace="workspace")
+        self.workspace_root = None if mounted_root is None else str(mounted_root)
+
+    def _prepare_memory_workspace(self) -> str:
+        """Ensure the persistent memory workspace exists for this local agent."""
+        memory_root = (
+            Path(self.agents_storage_root).expanduser().resolve()
+            / str(self.local_agent_id)
+            / str(self.embedding_session_id)
+            / "memory"
+        )
+        memory_root.mkdir(parents=True, exist_ok=True)
+        return str(memory_root)
+
+    async def _populate_memory_context(self, task_query: str) -> str:
+        """Refresh task-specific memory context right before supervisor execution."""
+        memory_agent = MemoryAgent(
+            model=self.model,
+            deps_type=MemoryWorkspaceDeps,
+        )
+        memory_deps = MemoryWorkspaceDeps(
+            session_id=str(self.agent_id),
+            memory_workspace_root=self.memory_workspace_root,
+        )
+        result = await memory_agent.run(
+            prompt=(
+                f"Current task:\n{task_query}\n\n"
+                "Inspect the persistent memory workspace using AVFS tools with workspace=\"memory\". "
+                "Return only a concise task-relevant memory summary as plain text for the supervisor. "
+                "If memory is empty or not useful for this task, return a short plain-text statement saying that no relevant persisted memory is available."
+            ),
+            deps=memory_deps,
+            message_history=[],
+            usage=RunUsage(),
+            usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None),
+            deferred_tool_results=None,
+        )
+
+        output = getattr(result, "output", None)
+        self.memory_context = str(output).strip() if output is not None else ""
+        if hasattr(self, "executor"):
+            self.executor.set_memory_context(self.memory_context)
+        if self.shell_deps is not None:
+            self.shell_deps.memory_context = self.memory_context
+        if self.requester_deps is not None:
+            self.requester_deps.memory_context = self.memory_context
+        if self.webapprecon_deps is not None:
+            self.webapprecon_deps.memory_context = self.memory_context
+        return self.memory_context
 ##################################################################################
 
 ##################################################################################
@@ -205,15 +285,23 @@ class DeadEndAgent:
             raise ValueError("target must be provided before initializing dependencies.")
 
 
-        shell_runner = ShellRunner(session=str(self.session_id), sandbox=sandbox)
+        shell_runner = ShellRunner(session=str(self.agent_id), sandbox=sandbox)
 
-        self.shell_deps = ShellDeps(shell_runner=shell_runner)
+        self.shell_deps = ShellDeps(
+            shell_runner=shell_runner,
+            session_id=self.agent_id,
+            workspace_root=self.workspace_root,
+            memory_workspace_root=self.memory_workspace_root,
+            memory_context=self.memory_context,
+        )
         self.requester_deps = RequesterDeps(
             embedder_client=embedder_client,
             rag=rag_connector,
             target=target_host,
             session_id=self.session_id,
-            embedding_session_id=self.embedding_session_id
+            embedding_session_id=self.embedding_session_id,
+            memory_workspace_root=self.memory_workspace_root,
+            memory_context=self.memory_context,
         )
         self.webapprecon_deps = WebappreconDeps(
             embedder_client=embedder_client,
@@ -221,14 +309,18 @@ class DeadEndAgent:
             target=target_host,
             shell_runner=shell_runner,
             session_id=self.session_id,
-            embedding_session_id=self.embedding_session_id
+            embedding_session_id=self.embedding_session_id,
+            memory_workspace_root=self.memory_workspace_root,
+            memory_context=self.memory_context,
         )
         self.executor = AgentExecutor(
             model=self.model,
             context=self.context,
             available_agents=self.available_agents,
-            session_id=self._target_session_key()
+            session_id=str(self.agent_id)
         )
+        self.executor.set_auth_session_key(self._target_session_key())
+        self.executor.set_memory_context(self.memory_context)
 
         self.executor.set_dependencies(
             requester_deps=self.requester_deps,

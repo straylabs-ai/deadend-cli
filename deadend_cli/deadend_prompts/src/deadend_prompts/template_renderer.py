@@ -35,7 +35,7 @@ class TemplateAgentRenderer:
 
         _metadata, instructions = _parse_template_metadata(instructions)
         instructions_template = self.env.from_string(instructions)
-        return instructions_template.render(tools=self.tools, **kwargs)
+        return instructions_template.render(agent_name=self.agent_name, tools=self.tools, **kwargs)
 
     def get_preprompt(self, **kwargs):
         raise NotImplementedError

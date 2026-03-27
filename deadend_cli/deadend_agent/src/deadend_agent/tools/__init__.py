@@ -22,6 +22,7 @@ from .webapp_code_rag import webapp_code_rag
 from .grep import grep_session_logs
 from .webapp_analyzer import webapp_analyzer
 from .tool_wrappers import with_tool_events, wrap_tool_with_events
+from .avfs import avfs_mount, avfs_umount, avfs_chdir, avfs_list, avfs_read, avfs_write, avfs_grep
 
 
 __all__ = [
@@ -41,6 +42,14 @@ __all__ = [
     "grep_session_logs",
     # web app analyzer
     "webapp_analyzer",
+    # AVFS
+    "avfs_mount",
+    "avfs_umount",
+    "avfs_chdir",
+    "avfs_list",
+    "avfs_read",
+    "avfs_write",
+    "avfs_grep",
     # Tool wrappers
     "with_tool_events",
     "wrap_tool_with_events",

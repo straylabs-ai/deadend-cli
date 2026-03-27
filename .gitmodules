@@ -4,3 +4,6 @@
 [submodule "benchmarks/xbow/validation-benchmarks-xbow"]
 	path = benchmarks/xbow/validation-benchmarks-xbow
 	url = https://github.com/xoxruns/validation-benchmarks-xbow.git
+[submodule "deadend_cli/simple-python-interpreter-sandbox"]
+	path = deadend_cli/simple-python-interpreter-sandbox
+	url = https://github.com/xoxruns/simple-python-interpreter-sandbox.git

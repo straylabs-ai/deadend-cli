@@ -502,6 +502,7 @@ def main(
         # Get provider and model from params, or use current defaults
         provider = params.get("provider")
         model_name = params.get("model_name")
+        workspace_root = params.get("workspace_root")
 
         # Get the model spec (will use current provider/model if not specified)
         logger.info("model and provider %s %s", provider, model_name)
@@ -528,6 +529,7 @@ def main(
                 "Best for fuzzing, parameter testing, and repetitive security testing operations."
             ),
             "shell": "Agent providing access to a bash shell for running Linux commands.",
+            "memory": "Agent specialized in reading and writing the persistent memory workspace under the agent cache.",
             "router_agent": "Router agent that selects the appropriate specialized agent.",
             "webapp_analyzer": (
                 "Front-end webapp analyzer. This agent is specialized in looking into the web application"
@@ -540,7 +542,10 @@ def main(
             embedding_session_id=embedding_session_id,
             model=model,
             available_agents=available_agents,
-            max_depth=3
+            max_depth=3,
+            workspace_root=workspace_root,
+            agents_storage_root=component_manager.config.agents_storage_root,
+            local_agent_id=component_manager.config.get_local_agent_id(),
         )
         async def approval_callback() -> str:
             return "yes"
