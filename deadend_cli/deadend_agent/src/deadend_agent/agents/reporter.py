@@ -37,7 +37,17 @@ class ReporterAgent(AgentRunner):
             output_type=ReporterOutput,
             tools=[]
         )
-    async def run(self, prompt, deps, message_history, usage, usage_limits, deferred_tool_results=None):
+    async def run(
+        self,
+        prompt,
+        deps,
+        message_history,
+        usage,
+        usage_limits,
+        deferred_tool_results=None,
+        *args,
+        **kwargs
+    ):
         return await super().run(
             prompt=prompt,
             deps=deps,

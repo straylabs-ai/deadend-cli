@@ -95,7 +95,6 @@ async def eval_interface(
     await eval_deadend_agent(
         model=model_registry.get_model(provider=providers[0]),
         embedder_client=embedder_client,
-        # evaluators=[CtfEvaluator],
         code_indexer_db=rag_db,
         sandbox=sandbox,
         eval_metadata=eval_metadata,
@@ -107,4 +106,4 @@ async def eval_interface(
         output_report="./",
         hard_prompt=False
     )
-    # for model in models:
+
