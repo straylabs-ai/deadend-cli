@@ -501,12 +501,10 @@ export interface AgentErrorData {
  *
  * @property thought - The full reasoning text
  * @property summary - Condensed version of the thought
- * @property relevance - How relevant this thought is to the task (0.0-1.0)
  */
 export interface AgentThoughtData {
   thought: string;
   summary?: string;
-  relevance: number;
 }
 
 /**

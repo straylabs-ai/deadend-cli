@@ -62,7 +62,6 @@ class EventHooks(Protocol):
         agent_name: str,
         thought: str,
         summary: Optional[str] = None,
-        relevance: float = 0.5,
     ) -> None:
         """Called when agent reasoning is extracted."""
         ...

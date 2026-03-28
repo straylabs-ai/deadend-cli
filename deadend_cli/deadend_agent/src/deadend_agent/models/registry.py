@@ -192,7 +192,6 @@ class ModelRegistry:
                     if spec.provider not in self._models:
                         self._models[spec.provider] = []
                     self._models[spec.provider].append(spec)
-        logger.info("models init: %s", str(self._models))
 
         # If no providers were found in TOML, registry will simply report no models.
 

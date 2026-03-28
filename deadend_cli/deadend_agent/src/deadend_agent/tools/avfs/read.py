@@ -26,6 +26,11 @@ async def avfs_read(
     workspace: str = "workspace",
 ) -> str:
     """Read a text file inside the current workspace root with optional 1-based line slicing."""
+    start_line = int(start_line)
+    if end_line is not None:
+        end_line = int(end_line)
+    max_chars = int(max_chars)
+
     session_id = _session_id_from_ctx(ctx)
     target = avfs.resolve(path, session_id=session_id, workspace=workspace)
     if not target.exists() or not target.is_file():

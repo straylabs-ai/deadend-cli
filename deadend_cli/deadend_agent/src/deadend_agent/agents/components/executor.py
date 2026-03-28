@@ -350,7 +350,6 @@ class AgentExecutor:
                         agent_name=agent_name,
                         thought=thoughts,
                         summary="",  # Let context auto-generate summary
-                        relevance=0.9
                     )
 
                 # Log the full agent response - NO TRUNCATION
