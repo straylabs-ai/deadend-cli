@@ -26,7 +26,6 @@ dependencies = [
     "lxml>=6.0.0",
     "nest-asyncio>=1.6.0",
     "numpy>=2.0.0,<2.3.0",
-    "pgvector>=0.4.1",
     "playwright>=1.56.0",
     "prompt-toolkit>=3.0.51",
     "pydantic>=2.11.5",

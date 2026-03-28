@@ -9,13 +9,12 @@ by prompting for environment variables and saving them to a cache TOML file.
 """
 
 import os
-import time
 from pathlib import Path
 import sys
 import docker
 import toml
 import typer
-from docker.errors import DockerException, NotFound
+from docker.errors import DockerException
 from rich.console import Console
 
 # Use stderr for console output so that stdout can remain reserved for
@@ -46,114 +45,6 @@ def check_docker(client: docker.DockerClient) -> bool:
         return False
 
 
-def check_pgvector_container(client: docker.DockerClient) -> bool:
-    """Check if pgvector container is running.
-
-    Args:
-        client: Docker client instance
-
-    Returns:
-        bool: True if pgvector container is running, False otherwise
-    """
-    try:
-        container = client.containers.get("deadend_pg")
-        return container.status == "running"
-    except NotFound:
-        return False
-    except DockerException as e:
-        console.print(
-            f"[yellow]Warning: Could not check pgvector container status: {e}[/yellow]"
-        )
-        return False
-
-
-def setup_pgvector_database(client: docker.DockerClient) -> bool:
-    """Setup pgvector database using Docker API.
-
-    Args:
-        client: Docker client instance
-
-    Returns:
-        bool: True if setup successful, False otherwise
-    """
-    try:
-        # Check if container already exists
-        try:
-            existing_container = client.containers.get("deadend_pg")
-            if existing_container.status == "running":
-                console.print("[green]pgvector database is already running.[/green]")
-                return True
-            else:
-                console.print(
-                    "[yellow]Found existing pgvector container, starting it...[/yellow]"
-                )
-                existing_container.start()
-                # Wait for container to be ready
-                time.sleep(5)
-                console.print("[green]pgvector database started successfully.[/green]")
-                return True
-        except NotFound:
-            pass  # Container doesn't exist, create new one
-
-        # Create postgres_data directory in cache if it doesn't exist
-        cache_dir = Path.home() / ".cache" / "deadend"
-        postgres_data_dir = cache_dir / "postgres_data"
-        postgres_data_dir.mkdir(parents=True, exist_ok=True)
-
-        console.print("[blue]Setting up pgvector database...[/blue]")
-
-        # Pull the pgvector image
-        console.print("Pulling pgvector image...")
-        client.images.pull("pgvector/pgvector:pg17")
-
-        # Create and run the container
-        container = client.containers.run(
-            "pgvector/pgvector:pg17",
-            name="deadend_pg",
-            environment={
-                "POSTGRES_DB": "codeindexerdb",
-                "POSTGRES_USER": "postgres",
-                "POSTGRES_PASSWORD": "postgres",
-            },
-            ports={"5432/tcp": 54320},
-            volumes={
-                str(postgres_data_dir): {
-                    "bind": "/var/lib/postgresql/data",
-                    "mode": "rw",
-                }
-            },
-            detach=True,
-            remove=False,
-        )
-
-        # Wait for container to be ready
-        console.print("Waiting for database to be ready...")
-        time.sleep(10)
-
-        # Check if container is running
-        container.reload()
-        if container.status == "running":
-            console.print(
-                "[green]pgvector database setup completed successfully.[/green]"
-            )
-            console.print(
-                "[blue]Database connection: postgresql://postgres:postgres@localhost:54320/codeindexerdb[/blue]"
-            )
-            return True
-        else:
-            console.print(
-                f"[red]Failed to start pgvector container. Status: {container.status}[/red]"
-            )
-            return False
-
-    except DockerException as e:
-        console.print(f"[red]Error setting up pgvector database: {e}[/red]")
-        return False
-    except (OSError, ConnectionError) as e:
-        console.print(f"[red]Connection error setting up pgvector: {e}[/red]")
-        return False
-
-
 def pull_sandboxed_kali_image(client: docker.DockerClient) -> bool:
     """Pull the sandboxed Kali image.
 
@@ -173,36 +64,6 @@ def pull_sandboxed_kali_image(client: docker.DockerClient) -> bool:
         return False
     except (OSError, ConnectionError) as e:
         console.print(f"[red]Connection error pulling sandboxed Kali image: {e}[/red]")
-        return False
-
-
-def stop_pgvector_container(client: docker.DockerClient) -> bool:
-    """Stop the pgvector container.
-
-    Args:
-        client: Docker client instance
-
-    Returns:
-        bool: True if stopped successfully, False otherwise
-    """
-    try:
-        container = client.containers.get("deadend_pg")
-        if container.status == "running":
-            console.print("[blue]Stopping pgvector database...[/blue]")
-            container.stop()
-            console.print("[green]pgvector database stopped successfully.[/green]")
-            return True
-        else:
-            console.print("[yellow]pgvector container is not running.[/yellow]")
-            return True
-    except NotFound:
-        console.print("[yellow]pgvector container not found.[/yellow]")
-        return True
-    except DockerException as e:
-        console.print(f"[red]Error stopping pgvector container: {e}[/red]")
-        return False
-    except (OSError, ConnectionError) as e:
-        console.print(f"[red]Connection error stopping pgvector: {e}[/red]")
         return False
 
 
@@ -230,16 +91,6 @@ def init_cli_config():
         )
         console.print("Please install and start Docker, then run this command again.")
         raise typer.Exit(1)
-
-    # Check and setup pgvector database
-    if not check_pgvector_container(docker_client):
-        console.print("\n[blue]pgvector database not found. Setting up...[/blue]")
-        if not setup_pgvector_database(docker_client):
-            console.print("\n[red]Failed to setup pgvector database.[/red]")
-            console.print("Please check Docker logs and try again.")
-            raise typer.Exit(1)
-    else:
-        console.print("[green]pgvector database is already running.[/green]")
 
     # Pull sandboxed Kali image
     console.print("\n[blue]Setting up sandboxed Kali image...[/blue]")
@@ -305,9 +156,7 @@ def init_cli_config():
         "LOCAL_MODEL": os.getenv("LOCAL_MODEL", "Kimi-K2-Thinking"),
         "LOCAL_BASE_URL": os.getenv("LOCAL_BASE_URL", ""),
         "EMBEDDING_MODEL": os.getenv("EMBEDDING_MODEL", ""),
-        "DB_URL": os.getenv(
-            "DB_URL", "postgresql://postgres:postgres@localhost:54320/codeindexerdb"
-        ),
+        "DB_URL": os.getenv("DB_URL", ""),
         "ZAP_PROXY_API_KEY": os.getenv("ZAP_PROXY_API_KEY", ""),
         "APP_ENV": os.getenv("APP_ENV", "development"),
         "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
@@ -329,7 +178,7 @@ def init_cli_config():
         ("LOCAL_MODEL", False, "Local model name (e.g., Kimi-K2-Thinking)"),
         ("LOCAL_BASE_URL", False, "Local model base URL (e.g., http://localhost:8000/v1)"),
         ("EMBEDDING_MODEL", False, "Embedding model (optional, for RAG features)"),
-        ("DB_URL", False, "Database URL (optional)"),
+        ("DB_URL", False, "Legacy PostgreSQL URL (optional; RAG uses SQLite per session)"),
         ("ZAP_PROXY_API_KEY", True, "ZAP Proxy API key (optional, for security testing)"),
         ("APP_ENV", False, "Application environment"),
         ("LOG_LEVEL", False, "Log level (INFO, DEBUG, etc.)"),

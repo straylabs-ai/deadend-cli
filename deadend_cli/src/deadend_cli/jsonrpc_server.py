@@ -168,14 +168,14 @@ def main(
         result = await component_manager.init_docker()
         return result.model_dump()
 
-    @server.add_method("init_pgvector")
-    async def init_pgvector(
+    @server.add_method("init_rag")
+    async def init_rag(
         _request_id: Any,
         _params: Dict[str, Any],
         component_manager: ComponentManager
     ) -> Dict[str, Any]:
-        """Initialize pgvector database."""
-        result = await component_manager.init_pgvector()
+        """Initialize SQLite-backed RAG session manager."""
+        result = await component_manager.init_rag()
         return result.model_dump()
 
     @server.add_method("init_config")
@@ -239,14 +239,14 @@ def main(
         result = await component_manager.health_docker()
         return result.model_dump()
 
-    @server.add_method("health_pgvector")
-    async def health_pgvector(
+    @server.add_method("health_rag")
+    async def health_rag(
         _request_id: Any,
         _params: Dict[str, Any],
         component_manager: ComponentManager
     ) -> Dict[str, Any]:
-        """Check pgvector health."""
-        result = await component_manager.health_pgvector()
+        """Check RAG (SQLite) session manager health."""
+        result = await component_manager.health_rag()
         return result.model_dump()
 
     @server.add_method("health_python_sandbox")

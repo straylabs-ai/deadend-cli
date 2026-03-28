@@ -14,14 +14,12 @@ import logging
 import docker
 import typer
 
-from docker.errors import DockerException
 from rich.console import Console
 from deadend_agent import config_setup
 from deadend_agent.core import start_python_sandbox
 from .banner import print_banner
 from .cli_logging import setup_logging
-from .init import init_cli_config, check_docker, \
-    check_pgvector_container, stop_pgvector_container, setup_pgvector_database
+from .init import init_cli_config, check_docker
 from .chat import Modes, chat_interface
 from .eval import eval_interface
 
@@ -81,14 +79,6 @@ def chat(
         )
         raise typer.Exit(1)
 
-    # Check pgvector database and setup if not running
-    if not check_pgvector_container(docker_client):
-        console.print("\n[blue]pgvector database is not running. Setting up...[/blue]")
-        if not setup_pgvector_database(docker_client):
-            console.print("\n[red]Failed to setup pgvector database.[/red]")
-            console.print("Please check Docker logs and try again.")
-            raise typer.Exit(1)
-
     # Init configuration
     config = config_setup()
     log_level_name = str(config.log_level or "INFO").upper()
@@ -113,13 +103,6 @@ def chat(
     finally:
         if python_process.poll() is None:
             python_process.terminate()
-        # Stop pgvector container when chat ends
-        try:
-            stop_pgvector_container(docker_client)
-        except (DockerException, OSError, ConnectionError) as e:
-            console.print(
-                f"[yellow]Warning: Could not stop pgvector container: {e}[/yellow]"
-            )
 
 
 @app.command()
@@ -155,14 +138,6 @@ def eval_agent(
         )
         raise typer.Exit(1)
 
-    # Check pgvector database and setup if not running
-    if not check_pgvector_container(docker_client):
-        console.print("\n[blue]pgvector database is not running. Setting up...[/blue]")
-        if not setup_pgvector_database(docker_client):
-            console.print("\n[red]Failed to setup pgvector database.[/red]")
-            console.print("Please check Docker logs and try again.")
-            raise typer.Exit(1)
-
     config = config_setup()
     log_level_name = str(config.log_level or "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
@@ -182,13 +157,6 @@ def eval_agent(
     finally:
         if python_process.poll() is None:
             python_process.terminate()
-        # Stop pgvector container when chat ends
-        try:
-            stop_pgvector_container(docker_client)
-        except (DockerException, OSError, ConnectionError) as e:
-            console.print(
-                f"[yellow]Warning: Could not stop pgvector container: {e}[/yellow]"
-            )
 
 
 @app.command()

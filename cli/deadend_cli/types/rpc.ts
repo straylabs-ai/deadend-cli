@@ -645,7 +645,7 @@ export type ComponentStatus =
  *
  * Returned by health_* RPC methods to report component status.
  *
- * @property component - Name of the component (docker, pgvector, etc.)
+ * @property component - Name of the component (docker, rag, config, etc.)
  * @property healthy - Whether the component is functioning correctly
  * @property status - Current lifecycle state of the component
  * @property message - Human-readable status message

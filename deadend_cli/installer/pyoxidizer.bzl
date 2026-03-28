@@ -316,7 +316,6 @@ from deadend_cli.jsonrpc_server import main; main()
             "opentelemetry-api>=1.39.1",
             "opentelemetry-exporter-otlp>=1.39.1",
             "opentelemetry-sdk>=1.39.1",
-            "pgvector>=0.4.1",
             "playwright>=1.56.0",
             "prompt-toolkit>=3.0.51",
             "pydantic>=2.11.5",

@@ -24,7 +24,7 @@
  * │  ┌─────────────────────────────────────────────────────────────────────────┐│
  * │  │                        DeadEndRpcClient                                 ││
  * │  │  - runTask() / runTaskWithCallbacks()                                   ││
- * │  │  - healthAll() / initDocker() / initPgvector() / ...                    ││
+ * │  │  - healthAll() / initDocker() / initRag() / ...                         ││
  * │  │  - subscribeEvents() / interrupt() / approve()                          ││
  * │  └────────────────────────────────────────────────────────────────────────┘│
  * │                                │                                            │
@@ -67,7 +67,7 @@
  *
  * // Initialize components
  * await client.initDocker();
- * await client.initPgvector();
+ * await client.initRag();
  * await client.initShellSandbox();
  *
  * // Run security testing task
@@ -301,8 +301,8 @@ export interface DeadEndRpcClientOptions extends StdioRpcClientOptions {
  *
  * Before running tasks, components must be initialized in order:
  * 1. `initDocker()` - Docker daemon connection (required)
- * 2. `initPgvector()` - Vector database for RAG (optional)
- * 3. `initConfig()` - Load LLM API keys and settings
+ * 2. `initConfig()` - Load LLM API keys and settings
+ * 3. `initRag()` - SQLite-backed RAG session manager (after config, for storage paths)
  * 4. `initShellSandbox()` - Prepare Kali container for shell commands
  * 5. `initPythonSandbox()` - Start Python interpreter sandbox
  * 6. `initPlaywright()` - Browser automation (optional)
@@ -443,7 +443,7 @@ export class DeadEndRpcClient {
    *
    * Returns a comprehensive health report including:
    * - Docker daemon connectivity
-   * - pgvector database status
+   * - RAG (SQLite) session manager status
    * - Python sandbox process status
    * - Shell sandbox readiness
    * - Playwright browser status
@@ -466,12 +466,12 @@ export class DeadEndRpcClient {
   }
 
   /**
-   * Checks pgvector database health.
+   * Checks RAG (SQLite) session manager health.
    *
-   * @returns Promise resolving to HealthResult for pgvector
+   * @returns Promise resolving to HealthResult for RAG
    */
-  async healthPgvector(): Promise<HealthResult> {
-    const result = await this.client.call("health_pgvector");
+  async healthRag(): Promise<HealthResult> {
+    const result = await this.client.call("health_rag");
     return result as HealthResult;
   }
 
@@ -523,17 +523,14 @@ export class DeadEndRpcClient {
   }
 
   /**
-   * Initializes the pgvector database container.
+   * Initializes the SQLite-backed RAG session manager.
    *
-   * Starts the pgvector container if not running and verifies
-   * database connectivity. Used for RAG (retrieval-augmented generation).
-   *
-   * Requires: initDocker() must be called first
+   * Prefer calling after `initConfig()` so storage paths from config apply.
    *
    * @returns Promise resolving to InitResult with success status
    */
-  async initPgvector(): Promise<InitResult> {
-    const result = await this.client.call("init_pgvector");
+  async initRag(): Promise<InitResult> {
+    const result = await this.client.call("init_rag");
     return result as InitResult;
   }
 
@@ -611,9 +608,9 @@ export class DeadEndRpcClient {
    * proper dependency order and provides a comprehensive result.
    *
    * Initialization order:
-   * 1. Docker (required by pgvector and shell_sandbox)
-   * 2. Config (required by model_registry)
-   * 3. pgvector (requires Docker)
+   * 1. Docker (required by shell_sandbox)
+   * 2. Config (required by model_registry and RAG paths)
+   * 3. RAG session manager (SQLite, no Docker)
    * 4. Model Registry (requires Config)
    * 5. Python sandbox (standalone)
    * 6. Shell sandbox (requires Docker)
@@ -1093,8 +1090,7 @@ export class DeadEndRpcClient {
    * - Playwright browser
    * - Python sandbox process
    * - Shell sandbox containers
-   * - pgvector database (optional)
-   * - RAG connector
+   * - RAG session manager (SQLite)
    *
    * @returns Promise resolving to shutdown status for each component
    */
