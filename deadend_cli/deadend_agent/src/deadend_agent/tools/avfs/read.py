@@ -16,16 +16,14 @@ def _session_id_from_ctx(ctx: RunContext[object]) -> str | None:
     return str(value) if value is not None else None
 
 
-@with_tool_events("avfs_read")
-async def avfs_read(
+def _read(
     ctx: RunContext[object],
     path: str,
-    start_line: int = 1,
-    end_line: int | None = None,
-    max_chars: int = 100_000,
-    workspace: str = "workspace",
+    start_line: int,
+    end_line: int | None,
+    max_chars: int,
+    workspace: str,
 ) -> str:
-    """Read a text file inside the current workspace root with optional 1-based line slicing."""
     start_line = int(start_line)
     if end_line is not None:
         end_line = int(end_line)
@@ -78,17 +76,15 @@ async def avfs_read(
     return result
 
 
-@with_tool_events("avfs_grep")
-async def avfs_grep(
+def _grep(
     ctx: RunContext[object],
     pattern: str,
-    path: str = ".",
-    max_results: int = 50,
-    case_sensitive: bool = False,
-    include_hidden: bool = False,
-    workspace: str = "workspace",
+    path: str,
+    max_results: int,
+    case_sensitive: bool,
+    include_hidden: bool,
+    workspace: str,
 ) -> list[dict[str, str | int]]:
-    """Search files in the current workspace root using a regex pattern."""
     session_id = _session_id_from_ctx(ctx)
     target = avfs.resolve(path, session_id=session_id, workspace=workspace)
     if not target.exists():
@@ -119,7 +115,7 @@ async def avfs_grep(
         if not submatches:
             matches.append(
                 {
-                                "path": avfs.to_virtual_path(host_path, session_id=session_id, workspace=workspace).as_posix(),
+                    "path": avfs.to_virtual_path(host_path, session_id=session_id, workspace=workspace).as_posix(),
                     "line_number": line_number,
                     "match": "",
                     "context": line_text[:240],
@@ -130,7 +126,7 @@ async def avfs_grep(
                 matched_text = _extract_text_field(submatch.get("match", {}))
                 matches.append(
                     {
-                                "path": avfs.to_virtual_path(host_path, session_id=session_id, workspace=workspace).as_posix(),
+                        "path": avfs.to_virtual_path(host_path, session_id=session_id, workspace=workspace).as_posix(),
                         "line_number": line_number,
                         "match": matched_text,
                         "context": line_text[:240],
@@ -141,6 +137,83 @@ async def avfs_grep(
         if len(matches) >= max_results:
             return matches
     return matches
+
+
+@with_tool_events("avfs_read")
+async def avfs_read(
+    ctx: RunContext[object],
+    path: str,
+    start_line: int = 1,
+    end_line: int | None = None,
+    max_chars: int = 100_000,
+    workspace: str = "workspace",
+) -> str:
+    """Read a text file inside the current workspace root with optional 1-based line slicing."""
+    return _read(ctx, path, start_line, end_line, max_chars, workspace)
+
+
+@with_tool_events("avfs_grep")
+async def avfs_grep(
+    ctx: RunContext[object],
+    pattern: str,
+    path: str = ".",
+    max_results: int = 50,
+    case_sensitive: bool = False,
+    include_hidden: bool = False,
+    workspace: str = "workspace",
+) -> list[dict[str, str | int]]:
+    """Search files in the current workspace root using a regex pattern."""
+    return _grep(ctx, pattern, path, max_results, case_sensitive, include_hidden, workspace)
+
+
+@with_tool_events("read_workspace_file")
+async def read_workspace_file(
+    ctx: RunContext[object],
+    path: str,
+    start_line: int = 1,
+    end_line: int | None = None,
+    max_chars: int = 100_000,
+) -> str:
+    """Read a text file from the fixed project workspace namespace."""
+    return _read(ctx, path, start_line, end_line, max_chars, "workspace")
+
+
+@with_tool_events("grep_workspace_files")
+async def grep_workspace_files(
+    ctx: RunContext[object],
+    pattern: str,
+    path: str = ".",
+    max_results: int = 50,
+    case_sensitive: bool = False,
+    include_hidden: bool = False,
+) -> list[dict[str, str | int]]:
+    """Search files in the fixed project workspace namespace."""
+    return _grep(ctx, pattern, path, max_results, case_sensitive, include_hidden, "workspace")
+
+
+@with_tool_events("read_memory_file")
+async def read_memory_file(
+    ctx: RunContext[object],
+    path: str,
+    start_line: int = 1,
+    end_line: int | None = None,
+    max_chars: int = 100_000,
+) -> str:
+    """Read a text file from the fixed memory workspace namespace."""
+    return _read(ctx, path, start_line, end_line, max_chars, "memory")
+
+
+@with_tool_events("grep_memory_files")
+async def grep_memory_files(
+    ctx: RunContext[object],
+    pattern: str,
+    path: str = ".",
+    max_results: int = 50,
+    case_sensitive: bool = False,
+    include_hidden: bool = False,
+) -> list[dict[str, str | int]]:
+    """Search files in the fixed memory workspace namespace."""
+    return _grep(ctx, pattern, path, max_results, case_sensitive, include_hidden, "memory")
 
 
 def _load_ripgrepy() -> Any:

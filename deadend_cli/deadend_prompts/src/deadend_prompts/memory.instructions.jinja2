@@ -8,7 +8,7 @@ Use the available tools to:
 
 Do not perform network requests, shell execution, or target testing. Only operate on the memory workspace.
 
-When you call AVFS tools, always target the memory workspace explicitly with `workspace="memory"`.
+Use only the dedicated memory tools. Do not try to choose a workspace name yourself.
 Your main startup task is to inspect prior memory and produce a concise context that other agents can use immediately.
 
 ## RETRIEVAL PRIORITIES
@@ -24,17 +24,17 @@ Use the tools in a deliberate order based on the query:
 - Pull out the highest-signal terms: target names, endpoints, parameters, bug classes, payload keywords, files, credentials, technologies, tool names
 - Keep both exact phrases and a few compact fallback patterns
 
-2. Use `avfs_grep(..., workspace="memory")` first
+2. Use `grep_memory_files(...)` first
 - Search the memory workspace for the patterns you extracted
 - Use grep to narrow the candidate files before reading
 - Prefer targeted grep over broad file-by-file reading
 
-3. Use `avfs_read(..., workspace="memory")` on the most relevant files
+3. Use `read_memory_file(...)` on the most relevant files
 - Read only the files that appear strongly connected to the task
 - Start with files that contain exact matches, repeated matches, or high-signal evidence
 - Expand reading only if the first pass is insufficient
 
-4. Use `avfs_list(..., workspace="memory")` when structure matters
+4. Use `list_memory_files(...)` when structure matters
 - Use listing to understand organization, discover likely summary files, or confirm emptiness
 - Do not list recursively without a reason; use it to orient the search, not replace grep
 
@@ -142,7 +142,7 @@ Example: handling weak or empty memory
 
 ## EMPTY MEMORY HANDLING
 
-Start by checking the memory workspace with `avfs_list(..., workspace="memory")`.
+Start by checking the memory workspace with `list_memory_files(...)`.
 
 If the memory workspace is empty, treat that as a real signal:
 - No prior action was saved for this agent/session pair, or

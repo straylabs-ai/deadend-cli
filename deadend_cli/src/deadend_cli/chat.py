@@ -16,7 +16,6 @@ import sys
 from enum import Enum
 from typing import Dict, List, Callable, Optional
 from deadend_agent.agents.recon_threatmodel_agent import ThreatModelOutput
-from deadend_agent.agents.reporter import ReporterOutput
 from rich.console import Console
 from rich.layout import Layout
 from rich.panel import Panel
@@ -671,9 +670,9 @@ Please provide a target URL.[/yellow]")
                         console_printer.print(f"[bold yellow]The tech stack is :[/bold yellow] {item.technology_stack}")
                         console_printer.print(f"[bold yellow]Discovered endpoints:[/bold yellow] {item.endpoints}")
                         threat_model += str(item.model_dump())
-                    if isinstance(item, ReporterOutput):
-                        console_printer.print(f"The threat model analyzed is : \n{item.summarized_context}")
-                        threat_model += str(item.model_dump())
+                    if isinstance(item, str) and len(item) > 50:
+                        console_printer.print(f"The threat model analyzed is : \n{item}")
+                        threat_model += item
                     # Special handling for RequesterOutput - print just the reasoning
                     if hasattr(item, 'output') and isinstance(item.output, RequesterOutput):
                         console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.output.reasoning}")
@@ -743,8 +742,8 @@ Please provide a target URL.[/yellow]")
                         console_printer.print(f"[bold yellow]Target extracted information:[/bold yellow] {item.website_general_information}")
                         console_printer.print(f"[bold yellow]The tech stack is :[/bold yellow] {item.technology_stack}")
                         console_printer.print(f"[bold yellow]Discovered endpoints:[/bold yellow] {item.endpoints}")
-                    if isinstance(item, ReporterOutput):
-                        console_printer.print(f"The threat model analyzed is : \n{item.summarized_context}")
+                    if isinstance(item, str) and len(item) > 50:
+                        console_printer.print(f"The threat model analyzed is : \n{item}")
                     # Special handling for RequesterOutput - print just the reasoning
                     if hasattr(item, 'output') and isinstance(item.output, RequesterOutput):
                         console_printer.print(f"[bold green]Requester Analysis:[/bold green] {item.output.reasoning}")

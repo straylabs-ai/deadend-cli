@@ -16,14 +16,12 @@ def _session_id_from_ctx(ctx: RunContext[object]) -> str | None:
     return str(value) if value is not None else None
 
 
-@with_tool_events("avfs_mount")
-async def avfs_mount(
+def _mount(
     ctx: RunContext[object],
     workspace_root: str,
-    directory: str = ".",
-    workspace: str = "workspace",
+    directory: str,
+    workspace: str,
 ) -> str:
-    """Register a workspace root and initialize the virtual working directory."""
     session_id = _session_id_from_ctx(ctx)
     mounted = avfs.mount(
         workspace_root=workspace_root,
@@ -34,37 +32,31 @@ async def avfs_mount(
     return f"AVFS workspace '{workspace}': {mounted} (cwd={avfs.current_directory(session_id=session_id, workspace=workspace)})"
 
 
-@with_tool_events("avfs_umount")
-async def avfs_umount(
+def _umount(
     ctx: RunContext[object],
-    workspace: str = "workspace",
+    workspace: str,
 ) -> str:
-    """Unmount AVFS for current session."""
     avfs.umount(session_id=_session_id_from_ctx(ctx), workspace=workspace)
     return f"Unmounted AVFS workspace '{workspace}'."
 
 
-@with_tool_events("avfs_chdir")
-async def avfs_chdir(
+def _chdir(
     ctx: RunContext[object],
     path: str,
-    workspace: str = "workspace",
+    workspace: str,
 ) -> str:
-    """Change the virtual working directory inside the mounted AVFS root."""
     directory = avfs.chdir(path, session_id=_session_id_from_ctx(ctx), workspace=workspace)
     return f"Changed AVFS directory to {directory}"
 
 
-@with_tool_events("avfs_list")
-async def avfs_list(
+def _list(
     ctx: RunContext[object],
-    path: str = ".",
-    recursive: bool = False,
-    include_hidden: bool = False,
-    max_entries: int = 200,
-    workspace: str = "workspace",
+    path: str,
+    recursive: bool,
+    include_hidden: bool,
+    max_entries: int,
+    workspace: str,
 ) -> list[dict[str, str | int | bool]]:
-    """List files and directories inside the current workspace root."""
     session_id = _session_id_from_ctx(ctx)
     target = avfs.resolve(path, session_id=session_id, workspace=workspace)
     if not target.exists():
@@ -118,3 +110,124 @@ async def avfs_list(
             if len(items) >= max_entries:
                 return items
     return items
+
+
+@with_tool_events("avfs_mount")
+async def avfs_mount(
+    ctx: RunContext[object],
+    workspace_root: str,
+    directory: str = ".",
+    workspace: str = "workspace",
+) -> str:
+    """Register a workspace root and initialize the virtual working directory."""
+    return _mount(ctx, workspace_root, directory, workspace)
+
+
+@with_tool_events("avfs_umount")
+async def avfs_umount(
+    ctx: RunContext[object],
+    workspace: str = "workspace",
+) -> str:
+    """Unmount AVFS for current session."""
+    return _umount(ctx, workspace)
+
+
+@with_tool_events("avfs_chdir")
+async def avfs_chdir(
+    ctx: RunContext[object],
+    path: str,
+    workspace: str = "workspace",
+) -> str:
+    """Change the virtual working directory inside the mounted AVFS root."""
+    return _chdir(ctx, path, workspace)
+
+
+@with_tool_events("avfs_list")
+async def avfs_list(
+    ctx: RunContext[object],
+    path: str = ".",
+    recursive: bool = False,
+    include_hidden: bool = False,
+    max_entries: int = 200,
+    workspace: str = "workspace",
+) -> list[dict[str, str | int | bool]]:
+    """List files and directories inside the current workspace root."""
+    return _list(ctx, path, recursive, include_hidden, max_entries, workspace)
+
+
+@with_tool_events("mount_workspace")
+async def mount_workspace(
+    ctx: RunContext[object],
+    workspace_root: str,
+    directory: str = ".",
+) -> str:
+    """Mount the current project workspace under the fixed 'workspace' namespace."""
+    return _mount(ctx, workspace_root, directory, "workspace")
+
+
+@with_tool_events("umount_workspace")
+async def umount_workspace(
+    ctx: RunContext[object],
+) -> str:
+    """Unmount the fixed project workspace namespace."""
+    return _umount(ctx, "workspace")
+
+
+@with_tool_events("chdir_workspace")
+async def chdir_workspace(
+    ctx: RunContext[object],
+    path: str,
+) -> str:
+    """Change directory inside the fixed project workspace namespace."""
+    return _chdir(ctx, path, "workspace")
+
+
+@with_tool_events("list_workspace_files")
+async def list_workspace_files(
+    ctx: RunContext[object],
+    path: str = ".",
+    recursive: bool = False,
+    include_hidden: bool = False,
+    max_entries: int = 200,
+) -> list[dict[str, str | int | bool]]:
+    """List files inside the fixed project workspace namespace."""
+    return _list(ctx, path, recursive, include_hidden, max_entries, "workspace")
+
+
+@with_tool_events("mount_memory_workspace")
+async def mount_memory_workspace(
+    ctx: RunContext[object],
+    workspace_root: str,
+    directory: str = ".",
+) -> str:
+    """Mount the persistent memory workspace under the fixed 'memory' namespace."""
+    return _mount(ctx, workspace_root, directory, "memory")
+
+
+@with_tool_events("umount_memory_workspace")
+async def umount_memory_workspace(
+    ctx: RunContext[object],
+) -> str:
+    """Unmount the fixed memory workspace namespace."""
+    return _umount(ctx, "memory")
+
+
+@with_tool_events("chdir_memory_directory")
+async def chdir_memory_directory(
+    ctx: RunContext[object],
+    path: str,
+) -> str:
+    """Change directory inside the fixed memory workspace namespace."""
+    return _chdir(ctx, path, "memory")
+
+
+@with_tool_events("list_memory_files")
+async def list_memory_files(
+    ctx: RunContext[object],
+    path: str = ".",
+    recursive: bool = False,
+    include_hidden: bool = False,
+    max_entries: int = 200,
+) -> list[dict[str, str | int | bool]]:
+    """List files inside the fixed memory workspace namespace."""
+    return _list(ctx, path, recursive, include_hidden, max_entries, "memory")

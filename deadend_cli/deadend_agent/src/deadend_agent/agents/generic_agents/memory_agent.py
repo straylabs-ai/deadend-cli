@@ -5,7 +5,12 @@ from pydantic_ai.usage import RunUsage, UsageLimits
 
 from deadend_agent.agents.factory import AgentRunner
 from deadend_agent.config.settings import ModelSpec
-from deadend_agent.tools import avfs_grep, avfs_list, avfs_read, avfs_write
+from deadend_agent.tools import (
+    grep_memory_files,
+    list_memory_files,
+    read_memory_file,
+    write_memory_file,
+)
 from deadend_prompts import render_agent_instructions, render_tool_description
 
 
@@ -18,10 +23,10 @@ class MemoryAgent(AgentRunner):
         deps_type: Any | None,
     ):
         tools_metadata = {
-            "avfs_list": render_tool_description("avfs_list"),
-            "avfs_read": render_tool_description("avfs_read"),
-            "avfs_write": render_tool_description("avfs_write"),
-            "avfs_grep": render_tool_description("avfs_grep"),
+            "list_memory_files": render_tool_description("list_memory_files"),
+            "read_memory_file": render_tool_description("read_memory_file"),
+            "write_memory_file": render_tool_description("write_memory_file"),
+            "grep_memory_files": render_tool_description("grep_memory_files"),
         }
 
         self.instructions = render_agent_instructions(
@@ -36,10 +41,10 @@ class MemoryAgent(AgentRunner):
             deps_type=deps_type,
             output_type=[str, DeferredToolRequests],
             tools=[
-                Tool(avfs_list),
-                Tool(avfs_read),
-                Tool(avfs_write),
-                Tool(avfs_grep),
+                Tool(list_memory_files),
+                Tool(read_memory_file),
+                Tool(write_memory_file),
+                Tool(grep_memory_files),
             ],
         )
 

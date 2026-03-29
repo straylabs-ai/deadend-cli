@@ -374,8 +374,6 @@ class AgentExecutor:
             @supervisor.agent.tool
             async def call_requester_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the requester agent to perform HTTP request testing."""
-                print(f"input tool looking for the error : {prompt}")
-
                 if ctx.deps.requester_agent is None or ctx.deps.requester_deps is None:
                     return "Requester agent dependencies not configured."
                 memory_prefix = _memory_prompt_prefix(ctx.deps.memory_context)
@@ -388,7 +386,6 @@ class AgentExecutor:
                     deferred_tool_results=ctx.deps.deferred_tool_results
                 )
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
-                    # Add output to context for future reference
                     _add_agent_output_to_context(
                         task=task_node.task,
                         context=ctx.deps.context,
@@ -396,13 +393,15 @@ class AgentExecutor:
                         output=result.output
                     )
                     _persist_agent_summary("requester", prompt, result.output)
-                    return f"Requester agent result: {result.output.model_dump()}"
-                return str(result.output) if hasattr(result, 'output') else str(result)
+                    result_str = f"Requester agent result: {result.output.model_dump()}"
+                else:
+                    result_str = str(result.output) if hasattr(result, 'output') else str(result)
+                emit(f"[requester] prompt={prompt[:200]} | result={result_str[:300]}")
+                return result_str
 
             @supervisor.agent.tool
             async def call_shell_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the shell agent to execute shell commands."""
-                print(f"input tool looking for the error : {prompt}")
                 if ctx.deps.shell_agent is None or ctx.deps.shell_deps is None:
                     return "Shell agent dependencies not configured."
                 memory_prefix = _memory_prompt_prefix(ctx.deps.memory_context)
@@ -415,7 +414,6 @@ class AgentExecutor:
                     deferred_tool_results=ctx.deps.deferred_tool_results
                 )
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
-                    # Add output to context for future reference
                     _add_agent_output_to_context(
                         task=task_node.task,
                         context=ctx.deps.context,
@@ -423,14 +421,15 @@ class AgentExecutor:
                         output=result.output
                     )
                     _persist_agent_summary("shell", prompt, result.output)
-                    return f"Shell agent result: {result.output.model_dump()}"
-                return str(result.output) if hasattr(result, 'output') else str(result)
+                    result_str = f"Shell agent result: {result.output.model_dump()}"
+                else:
+                    result_str = str(result.output) if hasattr(result, 'output') else str(result)
+                emit(f"[shell] prompt={prompt[:200]} | result={result_str[:300]}")
+                return result_str
             
             @supervisor.agent.tool
             async def call_webapp_analyzer_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
-                print(f"input tool looking for the error : {prompt}")
-
-                print(ctx.deps.requester_deps)
+                """Call the webapp analyzer agent to analyze web application structure and behavior."""
                 memory_prefix = _memory_prompt_prefix(ctx.deps.memory_context)
                 result = await ctx.deps.webapp_analyzer_agent.run(
                     f"{memory_prefix}{prompt}",
@@ -438,16 +437,15 @@ class AgentExecutor:
                     message_history=ctx.deps.message_history,
                     usage=ctx.usage,
                     usage_limits=ctx.deps.usage_limits,
-                    deferred_tool_results=ctx.deps.deferred_tool_results 
+                    deferred_tool_results=ctx.deps.deferred_tool_results
                 )
-
-                return str(result.output.model_dump())
+                result_str = str(result.output.model_dump())
+                emit(f"[webapp_analyzer] prompt={prompt[:200]} | result={result_str[:300]}")
+                return result_str
 
             @supervisor.agent.tool
             async def call_python_interpreter_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the python interpreter agent to execute Python scripts."""
-                print(f"input tool looking for the error : {prompt}")
-
                 memory_prefix = _memory_prompt_prefix(ctx.deps.memory_context)
                 result = await ctx.deps.python_interpreter_agent.run(
                     f"{memory_prefix}{prompt}",
@@ -459,7 +457,6 @@ class AgentExecutor:
                     deferred_tool_results=ctx.deps.deferred_tool_results
                 )
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
-                    # Add output to context for future reference
                     _add_agent_output_to_context(
                         task=task_node.task,
                         context=ctx.deps.context,
@@ -467,8 +464,11 @@ class AgentExecutor:
                         output=result.output
                     )
                     _persist_agent_summary("python_interpreter", prompt, result.output)
-                    return f"Python interpreter agent result: {result.output.model_dump()}"
-                return str(result.output) if hasattr(result, 'output') else str(result)
+                    result_str = f"Python interpreter agent result: {result.output.model_dump()}"
+                else:
+                    result_str = str(result.output) if hasattr(result, 'output') else str(result)
+                emit(f"[python_interpreter] prompt={prompt[:200]} | result={result_str[:300]}")
+                return result_str
 
             @supervisor.agent.tool
             async def call_memory_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:

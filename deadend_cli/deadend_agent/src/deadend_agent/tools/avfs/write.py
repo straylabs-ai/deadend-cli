@@ -34,6 +34,23 @@ def write_text(
     return f"Wrote {len(content.encode('utf-8'))} bytes to {avfs.format_virtual_path(virtual_path)}"
 
 
+def _write(
+    ctx: RunContext[object],
+    path: str,
+    content: str,
+    append: bool,
+    workspace: str,
+) -> str:
+    session_id = _session_id_from_ctx(ctx)
+    return write_text(
+        path,
+        content,
+        session_id=session_id,
+        workspace=workspace,
+        append=append,
+    )
+
+
 @with_tool_events("avfs_write")
 async def avfs_write(
     ctx: RunContext[object],
@@ -43,11 +60,26 @@ async def avfs_write(
     workspace: str = "workspace",
 ) -> str:
     """Write content to a file under the current workspace root."""
-    session_id = _session_id_from_ctx(ctx)
-    return write_text(
-        path,
-        content,
-        session_id=session_id,
-        workspace=workspace,
-        append=append,
-    )
+    return _write(ctx, path, content, append, workspace)
+
+
+@with_tool_events("write_workspace_file")
+async def write_workspace_file(
+    ctx: RunContext[object],
+    path: str,
+    content: str,
+    append: bool = False,
+) -> str:
+    """Write a file to the fixed project workspace namespace."""
+    return _write(ctx, path, content, append, "workspace")
+
+
+@with_tool_events("write_memory_file")
+async def write_memory_file(
+    ctx: RunContext[object],
+    path: str,
+    content: str,
+    append: bool = False,
+) -> str:
+    """Write a file to the fixed memory workspace namespace."""
+    return _write(ctx, path, content, append, "memory")

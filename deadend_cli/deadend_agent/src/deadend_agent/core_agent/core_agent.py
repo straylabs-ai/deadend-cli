@@ -205,11 +205,16 @@ class CoreAgent:
         # We always *attempt* to use Instructor when available and an output_schema
         # is provided, but will gracefully fall back to manual JSON extraction
         # if the Instructor call fails for any reason.
-        if INSTRUCTOR_AVAILABLE and output_schema:
+        # Only use structured output for actual Pydantic BaseModel subclasses,
+        # not plain types like str, int, etc.
+        _is_pydantic_schema = (
+            isinstance(output_schema, type) and issubclass(output_schema, BaseModel)
+        )
+        if INSTRUCTOR_AVAILABLE and output_schema and _is_pydantic_schema:
             self.instructor_client = instructor.from_litellm(acompletion)
         else:
             self.instructor_client = None
-            if output_schema and not INSTRUCTOR_AVAILABLE:
+            if output_schema and not INSTRUCTOR_AVAILABLE and _is_pydantic_schema:
                 logger.warning("instructor not available, structured output disabled")
 
     def tool(self, func: Callable) -> Callable:
@@ -526,8 +531,14 @@ class CoreAgent:
                 if usage_limits and self.tool_call_count >= usage_limits.get("tools", float('inf')):
                     raise UsageLimitExceeded(f"Tool call limit reached: {usage_limits['tools']}")
 
-        # Extract structured output
-        if self.output_schema and self.instructor_client:
+        # Extract structured output when output_schema is a Pydantic BaseModel.
+        # Uses Instructor if available, otherwise falls back to manual JSON extraction.
+        _has_pydantic_schema = (
+            self.output_schema
+            and isinstance(self.output_schema, type)
+            and issubclass(self.output_schema, BaseModel)
+        )
+        if _has_pydantic_schema:
             output = await self._extract_structured(messages)
         else:
             # Return last assistant message content
@@ -1237,6 +1248,7 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
         kwargs = {
             "model": self.model,
             "messages": extraction_messages,
+            "response_format": {"type": "json_object"},
         }
         if self.api_base:
             kwargs["api_base"] = self.api_base

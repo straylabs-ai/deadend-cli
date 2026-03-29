@@ -2,41 +2,84 @@
 # Licensed under the GNU Affero General Public License v3
 # See LICENSE file for full license information.
 
-"""Reporter agent for summarizing workflow context and maintaining token limits.
+"""Reporter agent for summarizing assessment findings and writing reports.
 
-This module implements an AI agent that analyzes the accumulated workflow context,
-summarizes key information, and ensures the context remains within manageable token
-limits (under 150,000 tokens) for optimal AI model performance and cost efficiency.
+This agent has access to the AVFS write tool.  When invoked it analyzes
+the execution context, produces a structured markdown report, and
+**writes it to disk itself** via the tool — there is no programmatic
+write after the LLM call.
 """
 
-from pydantic import BaseModel
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from pydantic_ai import Tool
+from pydantic_ai.usage import RunUsage, UsageLimits
+
+from deadend_agent.agents.components.validation_strategies import ValidationVerdict
+from deadend_agent.config.settings import ModelSpec
 from deadend_agent.context.context_engine import ContextEngine
-from deadend_prompts import render_agent_instructions
+from deadend_agent.logging import logger
+from deadend_agent.tools import write_workspace_file
+from deadend_prompts import render_agent_instructions, render_tool_description
+
 from .factory import AgentRunner
 
-class ReporterOutput(BaseModel):
-    summarized_context: str
+
+# ---------------------------------------------------------------------------
+# Deps — the reporter only needs a session_id so write_workspace_file can resolve paths
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ReporterDeps:
+    """Minimal deps for the reporter agent."""
+    session_id: str
+
+
+# ---------------------------------------------------------------------------
+# Agent
+# ---------------------------------------------------------------------------
 
 class ReporterAgent(AgentRunner):
+    """Reporter agent — summarizes findings and writes reports to AVFS.
+
+    Unlike a passive summarizer, this agent has the ``write_workspace_file`` tool
+    and is instructed to write the report file itself during execution.
+    ``output_type`` is ``str`` (plain text confirmation) to avoid the
+    Azure AI ``tool_choice`` object format incompatibility that occurs
+    with pydantic output schemas.
     """
-    Reporter Agent 
-    """
-    def __init__(self, model, deps_type, tools, validation_type: str | None, validation_format: str | None):
+
+    def __init__(
+        self,
+        model: ModelSpec,
+        validation_type: str | None = None,
+        validation_format: str | None = None,
+    ):
+        tools_metadata = {
+            "write_workspace_file": render_tool_description("write_workspace_file"),
+        }
+
         reporter_instructions = render_agent_instructions(
-            "reporter", 
-            tools={},
-            validation_type=validation_type,
-            validation_format=validation_format
+            "reporter",
+            tools=tools_metadata,
+            validation_type=validation_type or "security assessment",
+            validation_format=validation_format or "Information",
         )
-        self._set_description()
+
         super().__init__(
             name="reporter",
             model=model,
             instructions=reporter_instructions,
-            deps_type=deps_type,
-            output_type=ReporterOutput,
-            tools=[]
+            deps_type=ReporterDeps,
+            output_type=str,
+            tools=[Tool(write_workspace_file)],
         )
+        self.description = (
+            "The reporter summarizes assessment findings and writes reports."
+        )
+
     async def run(
         self,
         prompt,
@@ -46,7 +89,7 @@ class ReporterAgent(AgentRunner):
         usage_limits,
         deferred_tool_results=None,
         *args,
-        **kwargs
+        **kwargs,
     ):
         return await super().run(
             prompt=prompt,
@@ -54,48 +97,108 @@ class ReporterAgent(AgentRunner):
             message_history=message_history,
             usage=usage,
             usage_limits=usage_limits,
-            deferred_tool_results=None,
+            deferred_tool_results=deferred_tool_results,
         )
 
-    async def summarize_context(self, context_engine: ContextEngine):
-        """Summarize the workflow context and update it using the context engine setter.
-        
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    async def summarize_and_write(
+        self,
+        root_goal: str,
+        verdict: ValidationVerdict,
+        context: str,
+        session_id: str,
+    ) -> str:
+        """Run the reporter agent to generate and write a report.
+
+        The agent itself calls ``write_workspace_file`` to persist the report.
+        We do NOT write programmatically after the call — the agent
+        does it.
+
         Args:
-            context_engine: The ContextEngine instance containing the workflow context to summarize.
-        
+            root_goal: The top-level objective of the assessment.
+            verdict: The ValidationVerdict that triggered the report.
+            context: Full accumulated execution context.
+            session_id: AVFS session identifier (passed via deps).
+
         Returns:
-            ReporterOutput: The summarized context output.
+            The agent's text output (confirmation message).
         """
-        # Get the current workflow context (with possible summarization)
-        current_context = context_engine.workflow_context
+        prompt = self._build_prompt(root_goal, verdict, context)
+        deps = ReporterDeps(session_id=session_id)
 
-        # Create a prompt for summarization
-        summarization_prompt = f"""
-analyze and summarize the following workflow context while preserving all critical security information, vulnerabilities, and technical details. Keep the summary under 150,000 tokens while maintaining actionable intelligence for continued security testing.
-Current workflow context:
-{current_context}
-        """
-
-        # Run the reporter agent to get the summary
         result = await self.run(
-            prompt=summarization_prompt,
-            deps=None,
+            prompt=prompt,
+            deps=deps,
             message_history="",
-            usage=None,
-            usage_limits=None
+            usage=RunUsage(),
+            usage_limits=UsageLimits(request_limit=None),
         )
-        # Extract the summarized context from the result
-        if hasattr(result, 'output') and hasattr(result.output, 'summarized_context'):
-            summarized_context = result.output.summarized_context
-        else:
-            # Fallback if the output structure is different
-            summarized_context = str(result.output)
-        print(f"result reporter : {result}")
-        print(f"result reporter output : {result.output}")
-        # Update the context engine with the summarized context
-        context_engine.set_new_workflow(summarized_context)
 
-        return result
+        output = str(result.output) if hasattr(result, "output") else str(result)
+        logger.debug("ReporterAgent output: %s", output[:200])
+        return output
 
-    def _set_description(self):
-        self.description = "The reporter summarize the context as it understood it."
+    async def summarize_context(self, context_engine: ContextEngine, session_id: str) -> str:
+        """Summarize the workflow context and write it.
+
+        Legacy entry point used outside of the validation gate.
+        """
+        current_context = context_engine.workflow_context
+        prompt = (
+            "Analyze and summarize the following workflow context into a "
+            "security assessment report. Preserve all critical security "
+            "information, vulnerabilities, and technical details.\n\n"
+            "Write the report to `reports/context_summary.md` using the "
+            "write_workspace_file tool.\n\n"
+            f"## Workflow Context\n{current_context}"
+        )
+
+        deps = ReporterDeps(session_id=session_id)
+        result = await self.run(
+            prompt=prompt,
+            deps=deps,
+            message_history="",
+            usage=RunUsage(),
+            usage_limits=UsageLimits(request_limit=None),
+        )
+
+        output = str(result.output) if hasattr(result, "output") else str(result)
+        return output
+
+    # ------------------------------------------------------------------
+    # Prompt builder
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_prompt(
+        root_goal: str,
+        verdict: ValidationVerdict,
+        context: str,
+    ) -> str:
+        token_line = (
+            f"- Validation token found: `{verdict.token}`\n"
+            if verdict.token else ""
+        )
+        return (
+            "You are writing a security assessment report. Analyze the data "
+            "below and produce a comprehensive markdown report.\n\n"
+            "**You MUST write the report to `reports/validation_report.md` "
+            "using the write_workspace_file tool.** Do not just return the report as "
+            "text — call the tool to persist it.\n\n"
+            "IMPORTANT:\n"
+            "- Preserve EXACT working payloads character-for-character\n"
+            "- Include full HTTP requests that succeeded\n"
+            "- Include response snippets proving vulnerabilities\n"
+            "- Document filter bypass techniques with exact encoding used\n"
+            "- Note validation status (reflected vs executed, needs browser test)\n\n"
+            f"## Goal\n{root_goal}\n\n"
+            f"## Validation Result\n"
+            f"- Verdict: {'ACHIEVED' if verdict.stop else 'NOT ACHIEVED'}\n"
+            f"- Confidence: {verdict.confidence:.2f}\n"
+            f"{token_line}"
+            f"- Critique: {verdict.critique}\n\n"
+            f"## Assessment Data\n{context}\n"
+        )

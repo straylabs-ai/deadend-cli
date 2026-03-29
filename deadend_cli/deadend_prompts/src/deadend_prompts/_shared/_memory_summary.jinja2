@@ -1,7 +1,7 @@
 ## MEMORY SUMMARY
 
-At the end of your work, append a concise summary to the persistent memory workspace using `avfs_write(..., workspace="memory")`.
-For the memory workspace, you may only use `avfs_write`. Do not use `avfs_list`, `avfs_read`, or `avfs_grep` against `workspace="memory"`.
+At the end of your work, append a concise summary to the persistent memory workspace using `write_memory_file(...)`.
+For the memory workspace, use `write_memory_file` for writes and the dedicated memory tools for retrieval.
 
 Requirements:
 - Write only factual summaries derived from the work you actually performed.

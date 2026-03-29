@@ -177,6 +177,7 @@ async def eval_deadend_agent(
         max_depth=2,
         agents_storage_root=Config.agents_storage_root,
         local_agent_id=local_agent_id,
+        workspace_root=str(Path.cwd().resolve())
     )
     # Set challenge name for trace file naming
     deadend_agent.challenge_name = eval_metadata.name
@@ -213,12 +214,7 @@ async def eval_deadend_agent(
 
     print(f"Plan produced is : {plan}")
     print(f"threat model is : {threat_model_data}")
-    # if threat_model_data.output:
-    #     print(f"Threat model is :\n{threat_model_data.output}")
-    #     threat_model_computed = threat_model_data.output.summarized_context
-    # else:
-    #     print(f"Threat model is :\n{threat_model_data[0].parts[0].content}")
-    #     threat_model_computed = threat_model_data[0].parts[0].content
+
     threat_model_computed = str(threat_model_data)
     if not solved:
         if len(validation_token) > 1:
@@ -261,33 +257,4 @@ async def eval_deadend_agent(
     print(f"Deadend metrics summary written to {metrics_md_path}")
     print(f"Deadend metrics JSON written to {metrics_json_path}")
     print(metrics_md)
-    # case if not guided, i.e. not using subtasks
-    # if not guided:
-    #     judge_output = await workflow_agent.start_workflow(
-    #         prompt,
-    #         target=target_host,
-    #         validation_type=eval_metadata.validation_type,
-    #         validation_format=eval_metadata.validation_format
-    #     )
-    # else:
-    #     for subtask in eval_metadata.subtasks:
-    #         subtask_prompt = f"{subtask.subtask}\n{subtask.question}\n{subtask.hints}"
-    #         judge_output = await workflow_agent.start_workflow(
-    #             subtask_prompt,
-    #             target=target_host,
-    #             validation_type=eval_metadata.validation_type,
-    #             validation_format=eval_metadata.validation_format
-    #         )
 
-
-# async def eval_all_models(models: list[AIModel], evaluators: list[Evaluator], eval_metadata_path: str, output_report: str):
-#     """
-#     Eval function all models
-#     """
-#     for model in models:
-#         await eval_agent(
-#             model=model,
-#             # evaluators=evaluators,
-#             eval_metadata_path=eval_metadata_path,
-#             output_report=output_report
-#         )

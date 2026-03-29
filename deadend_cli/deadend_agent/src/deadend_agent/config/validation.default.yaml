@@ -1,0 +1,62 @@
+# Validation Strategy Configuration
+# ----------------------------------
+# This file defines how the agent validates whether the root goal
+# has been achieved. Copy this to ~/.cache/deadend/validation.yaml
+# to customize.
+#
+# Available strategies (chained in order, first stop=True wins):
+#
+#   flag   — Deterministic regex match on proofs/summary/context.
+#            Zero cost, runs every supervisor return.
+#            Config: pattern (regex string)
+#
+#   judge  — LLM agent that evaluates the execution trace against
+#            the root goal. Can re-verify findings. Self-throttles
+#            when no new evidence has appeared.
+#            Config: validation_type, validation_format
+#
+# Top-level validation_format is injected into all agent prompts
+# (anti-fabrication guidance adapts to show token-specific rules).
+
+# --- CTF preset (default) ---
+# Flag regex first (free), LLM judge as fallback.
+
+validation_format: "FLAG{}"
+validation_type: "flag"
+
+strategies:
+  - name: flag
+    pattern: "FLAG\\{[^}]+\\}"
+
+  - name: judge
+
+# --- Examples for other use cases ---
+#
+# # Recon / generic security assessment (no flag to match):
+# validation_format: null
+# validation_type: "security assessment"
+# strategies:
+#   - name: judge
+#
+# # HackTheBox:
+# validation_format: "HTB{}"
+# validation_type: "flag"
+# strategies:
+#   - name: flag
+#     pattern: "HTB\\{[^}]+\\}"
+#   - name: judge
+#     validation_format: "HTB{}"
+#
+# # picoCTF:
+# validation_format: "picoCTF{}"
+# validation_type: "flag"
+# strategies:
+#   - name: flag
+#     pattern: "picoCTF\\{[^}]+\\}"
+#   - name: judge
+#     validation_format: "picoCTF{}"
+#
+# # Flag-only (no LLM judge, fastest):
+# validation_format: "FLAG{}"
+# strategies:
+#   - name: flag

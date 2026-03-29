@@ -159,6 +159,118 @@ The agent uses a two-phase approach (reconnaissance → exploitation) with a sup
 
 ---
 
+## Validation Configuration
+
+The agent uses a composable validation system to determine when the root goal of an assessment has been achieved. Configuration is driven by a YAML file at `~/.cache/deadend/validation.yaml`.
+
+### How It Works
+
+After every supervisor execution, a **validation gate** runs a chain of strategies in order. The first strategy that returns `stop: true` triggers a report and exits the loop. If no strategy stops, the ADaPT policy (expand/refine/fail) continues as normal.
+
+**Available strategies:**
+
+| Strategy | Cost | What it does |
+|----------|------|-------------|
+| `flag` | Zero (regex) | Scans proofs, summaries, and context for a token matching a configurable regex pattern |
+| `judge` | 1 LLM call | Agent that evaluates the full execution trace against the root goal. Self-throttles when no new evidence has appeared |
+
+### Configuration File
+
+Create `~/.cache/deadend/validation.yaml`. A reference file with all options is at `deadend_agent/src/deadend_agent/config/validation.default.yaml`.
+
+### Examples
+
+**CTF with `FLAG{}` tokens** (default if no file exists):
+
+```yaml
+validation_format: "FLAG{}"
+validation_type: "flag"
+strategies:
+  - name: flag
+    pattern: "FLAG\\{[^}]+\\}"
+  - name: judge
+```
+
+The `flag` strategy runs first (free regex check). If no match, the `judge` LLM evaluates whether the goal is done.
+
+**HackTheBox:**
+
+```yaml
+validation_format: "HTB{}"
+validation_type: "flag"
+strategies:
+  - name: flag
+    pattern: "HTB\\{[^}]+\\}"
+  - name: judge
+    validation_format: "HTB{}"
+```
+
+**picoCTF:**
+
+```yaml
+validation_format: "picoCTF{}"
+validation_type: "flag"
+strategies:
+  - name: flag
+    pattern: "picoCTF\\{[^}]+\\}"
+  - name: judge
+    validation_format: "picoCTF{}"
+```
+
+**Recon / security assessment** (no flag to find):
+
+```yaml
+validation_type: "security assessment"
+strategies:
+  - name: judge
+```
+
+No `flag` strategy — the LLM judge evaluates whether the recon goal (e.g., "map the attack surface") is satisfied based on accumulated evidence.
+
+**Flag-only (fastest, no LLM judge):**
+
+```yaml
+validation_format: "FLAG{}"
+strategies:
+  - name: flag
+```
+
+Only regex matching, no LLM call at all. Cheapest option for CTFs where the flag format is known.
+
+### Configuration Reference
+
+**Top-level fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `validation_format` | `string \| null` | Token format shown in agent prompts (e.g., `"FLAG{}"`, `"HTB{}"`). Set to `null` for assessments without tokens |
+| `validation_type` | `string \| null` | Type label for the judge prompt (e.g., `"flag"`, `"security assessment"`) |
+| `strategies` | `list` | Ordered list of strategy configurations |
+
+**Per-strategy fields:**
+
+| Field | Strategy | Description |
+|-------|----------|-------------|
+| `name` | all | Strategy name: `"flag"` or `"judge"` |
+| `pattern` | `flag` | Regex pattern (default: `FLAG\{[^}]+\}`) |
+| `validation_type` | `judge` | Override top-level `validation_type` for this strategy |
+| `validation_format` | `judge` | Override top-level `validation_format` for this strategy |
+
+### Programmatic Override
+
+Pass a custom config path when constructing the agent:
+
+```python
+agent = DeadEndAgent(
+    session_id=session_id,
+    model=model,
+    available_agents=agents,
+    validation_config_path="/path/to/custom/validation.yaml",
+)
+```
+
+---
+
 ## Benchmark Results
 
 Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026):

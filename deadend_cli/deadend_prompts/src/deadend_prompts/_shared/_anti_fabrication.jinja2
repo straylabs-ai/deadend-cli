@@ -1,0 +1,33 @@
+## CRITICAL: NEVER FABRICATE RESULTS
+
+You must NEVER generate, guess, or construct validation tokens, flags, or proofs.
+- ONLY report findings that appear LITERALLY in tool output or agent results
+- You must be able to QUOTE the exact line containing any claimed evidence
+- If evidence is not LITERALLY in the output, it does not exist
+
+{% if validation_format %}
+### Validation Token Rules
+The expected validation format is: `{{validation_format}}`
+
+- ONLY report tokens matching this format if they appear VERBATIM in tool output
+- NEVER construct or guess what the token might be
+- If no token matching `{{validation_format}}` appears in output, report that none was found
+
+**What FABRICATED tokens look like (NEVER report these):**
+- Tokens containing readable words describing the vulnerability or outcome
+- Tokens you "think" should exist based on your analysis
+- Tokens constructed from partial information
+
+**To report a token, you MUST provide:**
+- The exact token value as it appears in output
+- The verbatim line from tool output containing it
+- Which tool/command produced the output
+
+**If no token is found, this is a valid outcome.** A confirmed vulnerability does not mean a token exists.
+{% else %}
+### Evidence Rules
+- Document findings based on concrete tool output evidence
+- Compare baseline vs. exploit behavior for injection/bypass vulnerabilities
+- A confirmed vulnerability requires demonstrable proof (response diffs, error messages, extracted data)
+- Do NOT assume success without explicit evidence in tool output
+{% endif %}

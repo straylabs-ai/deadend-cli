@@ -30,9 +30,9 @@ if "pydantic_ai" not in sys.modules:
     pydantic_ai_module.RunContext = RunContext
     sys.modules["pydantic_ai"] = pydantic_ai_module
 
-from deadend_agent.tools.avfs.list import avfs_mount, avfs_umount
-from deadend_agent.tools.avfs.read import avfs_read
-from deadend_agent.tools.avfs.write import avfs_write
+from deadend_agent.tools.avfs.list import avfs_mount, avfs_umount, list_memory_files
+from deadend_agent.tools.avfs.read import avfs_read, read_memory_file
+from deadend_agent.tools.avfs.write import avfs_write, write_memory_file
 
 
 def test_avfs_write_updates_named_memory_workspace(tmp_path):
@@ -66,6 +66,39 @@ def test_avfs_write_updates_named_memory_workspace(tmp_path):
                 workspace="memory",
             )
             assert await avfs_read(ctx, "summaries/requester.md", workspace="memory") == "alpha\nbeta"
+        finally:
+            await avfs_umount(ctx, workspace="memory")
+
+    asyncio.run(run_test())
+
+
+def test_memory_wrappers_use_fixed_memory_namespace(tmp_path):
+    memory_root = tmp_path / "agents" / "local-agent" / "memory"
+    memory_root.mkdir(parents=True)
+    ctx = SimpleNamespace(
+        deps=SimpleNamespace(
+            session_id="memory-session",
+            memory_workspace_root=str(memory_root),
+        )
+    )
+
+    async def run_test() -> None:
+        await avfs_mount(ctx, workspace_root=str(memory_root), workspace="memory")
+        try:
+            await write_memory_file(ctx, "summaries/requester.md", "alpha")
+            listed = await list_memory_files(ctx, "summaries")
+            read_back = await read_memory_file(ctx, "summaries/requester.md")
+
+            assert listed == [
+                {
+                    "path": "summaries/requester.md",
+                    "type": "file",
+                    "size_bytes": 5,
+                    "is_hidden": False,
+                }
+            ]
+            assert read_back == "alpha"
+            assert (memory_root / "summaries" / "requester.md").read_text(encoding="utf-8") == "alpha"
         finally:
             await avfs_umount(ctx, workspace="memory")
 

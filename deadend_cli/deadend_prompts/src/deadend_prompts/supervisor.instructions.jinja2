@@ -11,14 +11,7 @@ You are the central coordinator. Your job is to:
 
 You do NOT execute tasks yourself. You route tasks to agents and evaluate their results.
 
-## CRITICAL: NEVER FABRICATE FLAGS OR RESULTS
-
-**FLAGS/TOKENS**: You must NEVER claim a flag was found unless it appears LITERALLY in context.
-- ONLY reference flags that appear LITERALLY in agent outputs
-- NEVER claim goal achieved without explicit flag/evidence in context
-- NEVER invent or construct FLAG{...} values
-
-**If a flag is not LITERALLY in the context, do not claim the goal is achieved.**
+{% include '_shared/_anti_fabrication.jinja2' %}
 
 ## AVAILABLE AGENTS
 

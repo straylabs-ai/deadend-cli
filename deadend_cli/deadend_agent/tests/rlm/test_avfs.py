@@ -37,9 +37,9 @@ if "pydantic_ai" not in sys.modules:
     sys.modules["pydantic_ai"] = pydantic_ai_module
 
 from deadend_agent.tools.avfs.avfs import AVFS, avfs
-from deadend_agent.tools.avfs.list import avfs_mount, avfs_umount
-from deadend_agent.tools.avfs.read import avfs_grep
-from deadend_agent.tools.avfs.write import avfs_write, write_text
+from deadend_agent.tools.avfs.list import avfs_mount, avfs_umount, list_workspace_files
+from deadend_agent.tools.avfs.read import avfs_grep, read_workspace_file
+from deadend_agent.tools.avfs.write import avfs_write, write_text, write_workspace_file
 
 
 def test_avfs_mount_and_resolve(tmp_path):
@@ -135,6 +135,34 @@ def test_avfs_write_updates_host_file(tmp_path):
 
             await avfs_write(ctx, "notes.txt", "\nbeta", append=True)
             assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == "alpha\nbeta"
+        finally:
+            await avfs_umount(ctx)
+
+    asyncio.run(run_test())
+
+
+def test_workspace_wrappers_use_fixed_workspace_namespace(tmp_path):
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    ctx = SimpleNamespace(deps=SimpleNamespace(session_id="session-workspace"))
+
+    async def run_test() -> None:
+        await avfs_mount(ctx, workspace_root=str(workspace_root))
+        try:
+            await write_workspace_file(ctx, "notes.txt", "alpha")
+            listed = await list_workspace_files(ctx)
+            read_back = await read_workspace_file(ctx, "notes.txt")
+
+            assert listed == [
+                {
+                    "path": "notes.txt",
+                    "type": "file",
+                    "size_bytes": 5,
+                    "is_hidden": False,
+                }
+            ]
+            assert read_back == "alpha"
+            assert (workspace_root / "notes.txt").read_text(encoding="utf-8") == "alpha"
         finally:
             await avfs_umount(ctx)
 

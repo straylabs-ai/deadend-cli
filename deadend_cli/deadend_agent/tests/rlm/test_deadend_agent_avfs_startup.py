@@ -225,15 +225,21 @@ if "deadend_agent.agents.components.planner" not in sys.modules:
     planner_module.TaskNode = type("TaskNode", (), {})
     sys.modules["deadend_agent.agents.components.planner"] = planner_module
 
-if "deadend_agent.agents.components.validator" not in sys.modules:
-    validator_module = types.ModuleType("deadend_agent.agents.components.validator")
+if "deadend_agent.agents.components.validation_strategies" not in sys.modules:
+    validation_module = types.ModuleType("deadend_agent.agents.components.validation_strategies")
 
-    class Validator:
+    class ValidationGate:
         def __init__(self, *args, **kwargs):
             pass
 
-    validator_module.Validator = Validator
-    sys.modules["deadend_agent.agents.components.validator"] = validator_module
+    class ValidationVerdict:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    validation_module.ValidationGate = ValidationGate
+    validation_module.ValidationVerdict = ValidationVerdict
+    validation_module.build_validation_gate = lambda **kwargs: ValidationGate()
+    sys.modules["deadend_agent.agents.components.validation_strategies"] = validation_module
 
 if "deadend_agent.utils.structures" not in sys.modules:
     structures_module = types.ModuleType("deadend_agent.utils.structures")
