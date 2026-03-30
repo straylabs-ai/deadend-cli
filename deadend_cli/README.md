@@ -75,44 +75,6 @@ uv sync && uv build
 ```bash
 # Initialize configuration
 deadend-cli init
-
-# Start testing
-deadend-cli chat \
-  --target "http://localhost:3000" \
-  --prompt "find SQL injection vulnerabilities"
-```
-
----
-
-## Usage Examples
-
-### Basic Vulnerability Testing
-
-```bash
-# Test OWASP Juice Shop
-docker run -p 3000:3000 bkimminich/juice-shop
-
-deadend-cli chat \
-  --target "http://localhost:3000" \
-  --prompt "test the login endpoint for SQL injection"
-```
-
-### API Security Testing
-
-```bash
-deadend-cli chat \
-  --target "https://api.example.com" \
-  --prompt "test authentication endpoints"
-```
-
-### Autonomous Mode
-
-```bash
-# Run without approval prompts (CTFs/labs only)
-deadend-cli chat \
-  --target "http://ctf.example.com" \
-  --mode yolo \
-  --prompt "find and exploit all vulnerabilities"
 ```
 
 ---
@@ -123,21 +85,13 @@ deadend-cli chat \
 
 Initialize configuration and set up pgvector database
 
-### `deadend-cli chat`
-
-Start interactive security testing session
-
-- `--target`: Target URL
-- `--prompt`: Initial testing prompt
-- `--mode`: `hacker` (approval required) or `yolo` (autonomous)
-
 ### `deadend-cli eval-agent`
 
 Run evaluation against challenge datasets
 
 - `--eval-metadata-file`: Challenge dataset file
-- `--llm-providers`: AI model providers to test
-- `--guided`: Run with subtask decomposition
+- `--provider`: AI model provider to use
+- `--model-name`: AI model to use
 
 ### `deadend-cli version`
 
@@ -286,24 +240,6 @@ Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026
 
 Strong performance: XSS (91%), Business Logic (86%), SQL injection (83%), IDOR (80%)
 Perfect scores: GraphQL, SSRF, NoSQL injection, HTTP method tampering (100%)
-
----
-
-## Operating Modes
-
-**Hacker Mode (default):** Requires approval for dangerous operations
-
-```bash
-deadend-cli chat --target URL --mode hacker
-```
-
-**YOLO Mode:** Autonomous execution (CTFs/labs only)
-
-```bash
-deadend-cli chat --target URL --mode yolo
-```
-
----
 
 ## Technology Stack
 

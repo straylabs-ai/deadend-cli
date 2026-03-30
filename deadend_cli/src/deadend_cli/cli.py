@@ -4,12 +4,11 @@
 
 """Deadend CLI entrypoint using Typer.
 
-Defines commands to run interactive chat and evaluation agents.
+Defines maintenance and evaluation commands for the Python package.
 """
 import asyncio
 import importlib.metadata
 import os
-from typing import List
 import logging
 import docker
 import typer
@@ -17,10 +16,8 @@ import typer
 from rich.console import Console
 from deadend_agent import config_setup
 from deadend_agent.core import start_python_sandbox
-from .banner import print_banner
 from .cli_logging import setup_logging
 from .init import init_cli_config, check_docker
-from .chat import Modes, chat_interface
 from .eval import eval_interface
 
 # Fix Docker socket path if default doesn't exist
@@ -32,7 +29,7 @@ if not os.path.exists("/var/run/docker.sock"):
 
 console = Console()
 
-app = typer.Typer(help="Deadend CLI - interact with the Deadend framework.")
+app = typer.Typer(help="Deadend CLI - Python maintenance and evaluation commands.")
 
 
 @app.command()
@@ -45,64 +42,6 @@ def version():
         console.print(
             "[bold red]Deadend CLI[/bold red] - [yellow]Version not available[/yellow]"
         )
-
-
-@app.command()
-def chat(
-    prompt: str = typer.Option(None, help="Send a prompt directly to chat mode."),
-    target: str = typer.Option(None, help="Target URL or identifier for chat."),
-    mode: Modes = typer.Option(
-        Modes.hacker, help="Two modes available, yolo and hacker."
-    ),
-    openapi_spec: str = typer.Option(
-        None, help="Path to the OpenAPI specification file."
-    ),
-    knowledge_base: str = typer.Option(None, help="Folder path to the knowledge base."),
-    workspace_root: str = typer.Option(None, help="Host workspace to mount into AVFS."),
-):
-    """Run the interactive chat agent.
-
-    Args:
-        prompt: Optional initial prompt to pre-fill the chat.
-        target: Target host or URL context for the agent.
-        openapi_spec: Path to an OpenAPI spec to load for context.
-    """
-    # Check Docker availability first
-    docker_client = docker.from_env()
-    if not check_docker(docker_client):
-        console.print(
-            "\n[red]Docker is required for this application to function properly.[/red]"
-        )
-        console.print("Please install Docker from: https://docs.docker.com/get-docker/")
-        console.print(
-            "Make sure Docker daemon is running, then run this command again."
-        )
-        raise typer.Exit(1)
-
-    # Init configuration
-    config = config_setup()
-    log_level_name = str(config.log_level or "INFO").upper()
-    log_level = getattr(logging, log_level_name, logging.INFO)
-    setup_logging(level=log_level)
-    print_banner(config=config)
-
-    python_process = start_python_sandbox()
-    console.print(f"Python sandbox started: {python_process}")
-    try:
-        asyncio.run(
-            chat_interface(
-                config=config,
-                prompt=prompt,
-                mode=mode,
-                target=target,
-                openapi_spec=openapi_spec,
-                knowledge_base=knowledge_base,
-                workspace_root=workspace_root,
-            )
-        )
-    finally:
-        if python_process.poll() is None:
-            python_process.terminate()
 
 
 @app.command()

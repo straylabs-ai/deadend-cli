@@ -1,3 +1,6 @@
+# Pushes to Docker Hub only on: push to main/release_* (not on pull_request), or workflow_dispatch.
+# PRs build the image for CI but intentionally do not push (no registry credentials / avoid polluting tags).
+
 name: Build and Push Deadend Docker Image
 
 on:
@@ -36,6 +39,22 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
+    - name: Explain no push on pull requests
+      if: github.event_name == 'pull_request'
+      run: |
+        echo "PR workflow: image is built only (push=false). After merge to main or release_*, a push event will build and push to Docker Hub."
+
+    - name: Require Docker Hub secrets when pushing
+      if: github.event_name != 'pull_request'
+      env:
+        DOCKER_USER: ${{ secrets.DOCKER_USERNAME }}
+        DOCKER_PASS: ${{ secrets.DOCKER_TOKEN }}
+      run: |
+        if [ -z "$DOCKER_USER" ] || [ -z "$DOCKER_PASS" ]; then
+          echo "::error::Add repository Actions secrets DOCKER_USERNAME and DOCKER_TOKEN (Docker Hub access token). Without them, the job cannot log in and nothing is pushed to Docker Hub."
+          exit 1
+        fi
+
     - name: Log in to Docker Hub
       if: github.event_name != 'pull_request'
       uses: docker/login-action@v3
@@ -58,6 +77,7 @@ jobs:
           type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event.inputs.tag != '' }}
 
     - name: Build and push Docker image
+      id: build
       uses: docker/build-push-action@v5
       with:
         context: .
