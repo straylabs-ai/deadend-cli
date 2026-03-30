@@ -111,8 +111,11 @@ def eval_agent(
         None,
         help="Dataset file containing all the information about the challenges to run",
     ),
-    llm_providers: List[str] = typer.Option(
-        ["openai"], help="Specify the eval providers"
+    provider: str = typer.Option(
+        default="azure_ai", help="Provider name"
+    ),
+    model_name: str = typer.Option(
+        default="Kimi-K2.5", help="Model name"
     ),
     guided: bool = typer.Option(
         False, help="Run subtasks instead of one general task."
@@ -150,8 +153,8 @@ def eval_agent(
             eval_interface(
                 config=config,
                 eval_metadata_file=eval_metadata_file,
-                providers=llm_providers,
-                guided=guided,
+                provider=provider,
+                model_name=model_name,
             )
         )
     finally:
@@ -161,8 +164,8 @@ def eval_agent(
 
 @app.command()
 def init():
-    """Initialize CLI config by prompting for env vars and saving to cache TOML.
+    """Initialize CLI config by prompting for env vars and saving to cache JSON.
 
-    Writes to ~/.cache/deadend/config.toml
+    Writes to ~/.cache/deadend/config.json
     """
     init_cli_config()

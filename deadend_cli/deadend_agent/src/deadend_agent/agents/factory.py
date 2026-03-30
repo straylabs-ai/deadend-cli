@@ -373,7 +373,7 @@ class AgentRunner:
 
         return fq_model_name, api_key, api_base
 
-    def _create_fallback_output(self, error_msg: str, error_type: str) -> BaseModel:
+    def _create_fallback_output(self, error_msg: str, error_type: str) -> AgentOutput:
         """Create a fallback output with the correct schema type.
 
         Args:

@@ -498,7 +498,7 @@ class ADaPTAgent:
 
         subtasks, website_info, exploit_info = await self.planner.expand(
             root,
-            context=context,
+            context=context if context else "",
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None),
         )

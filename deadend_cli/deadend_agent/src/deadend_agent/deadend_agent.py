@@ -444,7 +444,7 @@ IMPORTANT:
             message_history=""
         )
 
-        return task_node, context, validation_token
+        return task_node, threat_model_data, validation_token
 
     async def threat_model_stream(self, task: str):
         """Execute the threat modeling and orchestration workflow.

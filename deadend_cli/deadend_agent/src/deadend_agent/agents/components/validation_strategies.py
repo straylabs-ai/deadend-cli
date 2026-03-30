@@ -308,7 +308,7 @@ class JudgeAgentStrategy:
         if not isinstance(judge_output, _JudgeOutput):
             logger.debug("JudgeAgentStrategy: unexpected output type %s", type(judge_output))
             return ValidationVerdict(stop=False, confidence=0.0)
-        print(judge_output)
+        # print(judge_output)
         return ValidationVerdict(
             stop=judge_output.valid,
             confidence=judge_output.confidence_score,

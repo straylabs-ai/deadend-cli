@@ -8,6 +8,7 @@ This module provides evaluation functionality for testing AI agent performance,
 security research capabilities, and workflow effectiveness using various
 evaluation metrics and testing scenarios.
 """
+from deadend_agent.agents import AgentOutput
 
 from datetime import datetime
 from pathlib import Path
@@ -87,17 +88,9 @@ async def eval_deadend_agent(
         eval_metadata: EvalMetadata,
         hard_prompt: bool,
         # choosing between hard and soft prompt
-        guided: bool,
-        # If guided enabled, the evaluation runs also on the subtasks
-        human_intervention: bool,
-        # whether or not ask user to specify information.
-        with_context_engine: bool,
-        # With context engineering enabled
         with_code_indexing: bool,
         # With code indexing enabled, code RAG specific to the application
         with_knowledge_base: bool,
-        # Knowledge base represents the database RAG added for notes or technical documents.
-        output_report: str
     ):
     """Evaluate an AI agent's performance on a security challenge.
     
@@ -223,16 +216,11 @@ async def eval_deadend_agent(
 
         # Safely extract detailed_summary from threat_model_data
         # When supervisor fails, detailed_summary may not be set
-        detailed_summary = threat_model_data.get('detailed_summary', '')
-        if not detailed_summary:
-            # Fallback to last_output if available
-            last_output = threat_model_data.get('last_output', '')
-            if isinstance(last_output, dict):
-                detailed_summary = last_output.get('detailed_summary', str(last_output))
-            else:
-                detailed_summary = str(last_output) if last_output else "No threat model data available"
-
-        plan, validation_token = await deadend_agent.run_exploitation(threat_model=detailed_summary, task=prompt)
+        if isinstance(threat_model_data.output, AgentOutput):
+            detailed_summary = threat_model_data.output.get('detailed_summary', '')
+        else:
+            detailed_summary = threat_model_data.output
+        task_node, plan, validation_token = await deadend_agent.run_exploitation(threat_model=detailed_summary, task=prompt)
         if validation_token and len(validation_token) > 1 and eval_metadata.solution:
             solved = (validation_token == eval_metadata.solution)
             print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
