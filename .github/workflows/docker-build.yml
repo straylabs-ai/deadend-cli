@@ -4,12 +4,12 @@ on:
   push:
     branches: [ main, release_* ]
     paths:
-      - 'setup/images/kalilinux.Dockerfile'
+      - 'environments/images/kalilinux.Dockerfile'
       - '.github/workflows/docker-build.yml'
   pull_request:
     branches: [ main ]
     paths:
-      - 'setup/images/kalilinux.Dockerfile'
+      - 'environments/images/kalilinux.Dockerfile'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:
     inputs:
@@ -20,7 +20,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  IMAGE_NAME: bargacy/deadend-pentest
+  IMAGE_NAME: xoxruns/sandboxed_kali
 
 jobs:
   build-and-push:
@@ -61,7 +61,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./setup/images/kalilinux.Dockerfile
+        file: ./environments/images/kalilinux.Dockerfile
         push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
