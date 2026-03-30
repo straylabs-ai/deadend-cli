@@ -202,6 +202,8 @@ async def eval_deadend_agent(
     if validation_token and len(validation_token) > 1 and eval_metadata.solution:
         solved = (validation_token == eval_metadata.solution)
         print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
+    elif deadend_agent.goal_achieved:
+        print(f"Validation stopped workflow in recon phase with token={validation_token}")
     else:
         print("Validation check: Continuing to the exploitation phase.")
 
@@ -209,21 +211,27 @@ async def eval_deadend_agent(
     print(f"threat model is : {threat_model_data}")
 
     threat_model_computed = str(threat_model_data)
-    if not solved:
+    if not deadend_agent.goal_achieved:
         if len(validation_token) > 1:
             threat_model_computed += f"## Important NOTE\nThe flag found previously \
                 {str(validation_token)} is false and is not the right response. Find another way."
 
-        # Safely extract detailed_summary from threat_model_data
-        # When supervisor fails, detailed_summary may not be set
-        if isinstance(threat_model_data.output, AgentOutput):
-            detailed_summary = threat_model_data.output.get('detailed_summary', '')
+        # Pull the summary from the structured reporter output when available.
+        threat_model_output = getattr(threat_model_data, "output", threat_model_data)
+        if isinstance(threat_model_output, AgentOutput):
+            detailed_summary = threat_model_output.detailed_summary
         else:
-            detailed_summary = threat_model_data.output
-        task_node, plan, validation_token = await deadend_agent.run_exploitation(threat_model=detailed_summary, task=prompt)
+            detailed_summary = str(threat_model_output)
+
+        task_node, validation_token = await deadend_agent.run_exploitation(
+            threat_model=detailed_summary,
+            task=prompt,
+        )
         if validation_token and len(validation_token) > 1 and eval_metadata.solution:
             solved = (validation_token == eval_metadata.solution)
             print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
+        elif deadend_agent.goal_achieved:
+            print(f"Validation stopped workflow in exploitation phase with token={validation_token}")
         else:
             print("Validation check: FLAG NOT FOUND.")
     # Render and persist metrics for the end user.
@@ -245,4 +253,3 @@ async def eval_deadend_agent(
     print(f"Deadend metrics summary written to {metrics_md_path}")
     print(f"Deadend metrics JSON written to {metrics_json_path}")
     print(metrics_md)
-

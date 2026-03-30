@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from typing import Any, Literal, AsyncGenerator
-from uuid import UUID
 
 from pydantic_ai.usage import RunUsage, UsageLimits
 
-from deadend_agent.agents.components.executor import AgentExecutor, ResultEvent, LogEvent
+from deadend_agent.agents.components.executor import (
+    AgentExecutor,
+    LogEvent,
+    ResultEvent,
+    ValidationStopEvent,
+)
 from deadend_agent.agents.components.planner import Planner, TaskNode
-from deadend_agent.agents.components.validation_strategies import ValidationGate, ValidationVerdict
-from deadend_agent.agents.reporter import ReporterAgent
 from deadend_agent.context import ContextEngine
 from deadend_agent.logging import logger
 from deadend_agent.utils.structures import TaskPlanner
@@ -42,9 +44,9 @@ class ADaPTAgent:
 
     This implementation follows the algorithm presented in the paper,
     by retaking the most relevant information:
-    - Usage of 3 components Executors, Planner and Validator.
+    - Usage of execution and planning components, with root-goal validation
+      handled centrally by the shared executor.
     """
-    session_id: UUID
     task_node: TaskNode
     max_depth: int
     context: ContextEngine
@@ -59,35 +61,22 @@ class ADaPTAgent:
 
     def __init__(
         self,
-        session_id: UUID,
-        agent_id: UUID,
         context: ContextEngine,
         executor: AgentExecutor,
         planner: Planner,
-        validation_gate: ValidationGate,
-        reporter: ReporterAgent,
         max_depth: int = 3,
     ):
         """Initialize the ADaPT agent.
 
         Args:
-            session_id: Unique identifier for this ADaPT session.
-            agent_id: Local agent ID used for AVFS workspace mounts.
             context: Shared context engine across all agents.
             executor: AgentExecutor instance for executing tasks.
             planner: Planner instance for decomposing tasks.
-            validation_gate: Composable gate that checks whether the
-                root goal is satisfied after every supervisor return.
-            reporter: ReporterAgent that writes an MD report on stop.
             max_depth: Maximum depth for task decomposition (default: 3).
         """
-        self.session = session_id
-        self.agent_id = agent_id
         self.max_depth = max_depth
         self.executor = executor
         self.planner = planner
-        self.validation_gate = validation_gate
-        self.reporter = reporter
         self.context = context
 
         # Track attempted tasks to prevent redundant retries.
@@ -102,10 +91,11 @@ class ADaPTAgent:
     ) -> AsyncGenerator[str | dict[str, Any], None]:
         """Recursively solve a task node using the ADaPT algorithm.
 
-        After every supervisor return the validation gate is consulted.
-        If the gate says stop (root goal achieved), write a report and
-        propagate exit_loop.  Otherwise fall through to the ADaPT policy
-        (fail / expand / refine).
+        Each supervisor run is executed through the shared executor. The
+        executor owns root-goal validation and can emit a stop event when the
+        objective has been solved. ADaPT only reacts to that event and then
+        falls through to the normal policy (fail / expand / refine) when the
+        root goal is still unresolved.
 
         Args:
             node: The TaskNode to solve.
@@ -210,6 +200,17 @@ class ADaPTAgent:
                     )
                     break
 
+                elif isinstance(event, ValidationStopEvent):
+                    node.status = "completed"
+                    node.confidence_score = event.confidence_score
+                    self.context.mark_task_completed(node.task, event.confidence_score)
+                    yield emit(
+                        f"[VALIDATION] Root goal achieved (confidence={event.confidence_score:.2f})"
+                    )
+                    yield event
+                    yield {"exit_loop": True}
+                    return
+
                 elif isinstance(event, LogEvent):
                     self.context.structured.append_to_log(event.message)
                     yield emit(event.message)
@@ -243,51 +244,12 @@ class ADaPTAgent:
             if detailed_summary:
                 yield emit(f"[RESULT] {detailed_summary[:200]}")
 
-            # ----- 2. Validation gate -----
-            # Only run the full gate (which may include expensive LLM judge)
-            # when there is reason to believe the root goal might be done:
-            # either the supervisor says the subtask is achieved, or
-            # confidence is high enough to warrant checking.
-            supervisor_output = {
-                "task_achieved": task_achieved,
-                "detailed_summary": detailed_summary,
-                "proofs": proofs,
-                "confidence_score": confidence_score,
-            }
-
-            should_validate = (
-                task_achieved
-                or confidence_score >= self.VALIDATE_THRESHOLD
-            )
-
-            if should_validate:
-                validation_context = self.context.get_unified_context(max_tokens=8000)
-                verdict = await self.validation_gate.check(
-                    output=supervisor_output,
-                    root_goal=self.context.final_goal,
-                    context=validation_context,
-                )
-
-                if verdict.stop:
-                    node.status = "completed"
-                    node.confidence_score = verdict.confidence
-                    self.context.mark_task_completed(node.task, verdict.confidence)
-                    yield emit(f"[VALIDATION] Root goal achieved (confidence={verdict.confidence:.2f})")
-
-                    # Write report via the reporter agent.
-                    await self._write_report(verdict)
-
-                    if verdict.token:
-                        yield {"validation_token": verdict.token}
-                    yield {"exit_loop": True}
-                    return
-
-            # ----- 3. If subtask done but root goal not yet, continue -----
+            # ----- 2. If subtask done but root goal not yet, continue -----
             if task_achieved:
                 yield emit(f"[SUPERVISOR] Subtask completed: {node.task[:50]}...")
                 return
 
-            # ----- 4. ADaPT policy (expand / refine / fail) -----
+            # ----- 3. ADaPT policy (expand / refine / fail) -----
             decision = self._policy(confidence_score)
             logger.debug(
                 "task: %s decision: %s confidence: %.2f",
@@ -448,24 +410,6 @@ class ADaPTAgent:
             return "validate"
         return "refine"
 
-    async def _write_report(self, verdict: ValidationVerdict) -> None:
-        """Delegate report generation and persistence to the ReporterAgent.
-
-        The reporter agent has the write_workspace_file tool and writes the report
-        itself during execution — no programmatic write after the call.
-        Uses agent_id (not session_id) to match the mounted AVFS workspace.
-        """
-        try:
-            await self.reporter.summarize_and_write(
-                root_goal=self.context.final_goal,
-                verdict=verdict,
-                context=self.context.get_unified_context(max_tokens=100_000),
-                session_id=str(self.agent_id),
-            )
-        except Exception as exc:
-            # Report writing must never crash the agent loop.
-            logger.warning("ReporterAgent failed to write report: %s", exc)
-
     async def run(
         self,
         task: str,
@@ -494,7 +438,6 @@ class ADaPTAgent:
             parent=None,
             children=[],
         )
-        self.context.set_root_task(root.task)
 
         subtasks, website_info, exploit_info = await self.planner.expand(
             root,

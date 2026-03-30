@@ -5,6 +5,7 @@ from uuid import UUID
 
 from deadend_agent.logging import logger
 
+from pydantic import BaseModel
 from pydantic_ai import RunUsage, UsageLimits
 from deadend_agent.config.settings import Config, ModelSpec
 from deadend_agent.models.registry import EmbedderClient
@@ -15,10 +16,13 @@ from deadend_agent.sandbox.sandbox import Sandbox
 from deadend_agent.agents.reporter import ReporterAgent, ReporterDeps
 from deadend_agent.agents.architecture import ADaPTAgent
 from deadend_agent.agents.generic_agents.memory_agent import MemoryAgent
-from deadend_agent.agents.components.executor import AgentExecutor, ResultEvent
+from deadend_agent.agents.components.executor import (
+    AgentExecutor,
+    ResultEvent,
+    ValidationStopEvent,
+)
 from deadend_agent.agents.components.planner import Planner, TaskNode
 from deadend_agent.agents.components.validation_strategies import (
-    ValidationConfig,
     ValidationGate,
     build_validation_gate,
     load_validation_config,
@@ -36,6 +40,21 @@ from .agents.recon_threatmodel_agent import ReconThreatModelAgent
 from .agents.exploit_web_agent import PlannerExploitAgent
 
 ApprovalCallback = Callable[..., Awaitable[str]]
+
+
+class WorkflowStopResult(BaseModel):
+    """Stores the solved root-task result for the lifetime of a workflow run.
+
+    Top-level workflow methods use this model to stop subsequent phases once a
+    validated solution has been found. The executor produces the validation
+    event, and DeadEndAgent persists the outcome so later phases can exit early.
+    """
+
+    solved: bool
+    validation_token: str = ""
+    confidence_score: float = 0.0
+    critique: str = ""
+    reporter_output: str = ""
 
 
 class DeadEndAgent:
@@ -65,6 +84,7 @@ class DeadEndAgent:
     webapprecon_deps: WebappreconDeps | None = None
     challenge_name: str | None = None
     local_agent_id: UUID
+    stop_result: WorkflowStopResult | None = None
 
 
     def __init__(
@@ -138,8 +158,34 @@ class DeadEndAgent:
         """
         self.goal_achieved = False
         self.interrupted = False
+        self.stop_result = None
 
         yield "[green]Workflow state reset for new execution[/green]"
+
+    def _create_completed_task_node(self, task: str) -> TaskNode:
+        """Create a completed task node for early-return success paths."""
+        confidence_score = self.stop_result.confidence_score if self.stop_result else 1.0
+        return TaskNode(
+            task=task,
+            depth=0,
+            confidence_score=confidence_score,
+            status="completed",
+            parent=None,
+            children=[],
+        )
+
+    def _record_validation_stop(self, event: ValidationStopEvent) -> WorkflowStopResult:
+        """Persist a validated root-task solution for the rest of the workflow run."""
+        stop_result = WorkflowStopResult(
+            solved=True,
+            validation_token=event.validation_token,
+            confidence_score=event.confidence_score,
+            critique=event.critique,
+            reporter_output=event.reporter_output,
+        )
+        self.goal_achieved = True
+        self.stop_result = stop_result
+        return stop_result
 
     def set_approval_callback(self, callback):
         """Set a callback function for user approval input.
@@ -332,7 +378,9 @@ class DeadEndAgent:
             model=self.model,
             context=self.context,
             available_agents=self.available_agents,
-            session_id=str(self.agent_id)
+            session_id=str(self.agent_id),
+            validation_gate=self.validation_gate,
+            reporter=self.reporter,
         )
         self.executor.set_auth_session_key(self._target_session_key())
         self.executor.set_memory_context(self.memory_context)
@@ -355,11 +403,17 @@ class DeadEndAgent:
         Returns:
             TaskNode with the execution plan and results
         """
+        if self.goal_achieved and self.stop_result is not None:
+            return (
+                self._create_completed_task_node(task),
+                self.stop_result.reporter_output,
+                self.stop_result.validation_token,
+            )
+
         # Simplified: directly use the executor's supervisor pattern
         # instead of going through the full ADaPT agent loop
 
         validation_token: str = ""
-        traces: list[str | dict[str, Any]] = []
 
         prompt_task = f"""
 Prepare the necessary information (reconnaissance) to achieve the following task: {task}
@@ -395,8 +449,6 @@ Critical rules:
         # Set root task in context
         self.context.set_root_task(task)
 
-        # Get unified context for the executor
-        unified_context = self.context.get_unified_context(max_tokens=6000)
         target_context =f"Target : {self.context.target}"
         context = {}
         confidence_score = 0.0
@@ -407,7 +459,12 @@ Critical rules:
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
         ):
-            traces.append(event.model_dump())
+            if isinstance(event, ValidationStopEvent):
+                stop_result = self._record_validation_stop(event)
+                task_node.confidence_score = event.confidence_score
+                task_node.status = "completed"
+                return task_node, stop_result.reporter_output, stop_result.validation_token
+
             if isinstance(event, ResultEvent):
                 confidence_score = event.confidence_score
                 context = event.context
@@ -456,6 +513,10 @@ IMPORTANT:
         Returns:
             TaskNode with the execution plan and results
         """
+        if self.goal_achieved and self.stop_result is not None:
+            yield self.stop_result.reporter_output
+            return
+
         prompt_task = f"""
 Prepare the necessary information (reconnaissance) to achieve the following task: {task}
 
@@ -476,7 +537,6 @@ Critical rules:
 - Do NOT invent or guess endpoints - only use what is discovered
 - Return when you have gathered sufficient information to proceed with the task
 """
-        validation_token: str = ""
         task_root = TaskNode(
             task=prompt_task,
             depth=0,
@@ -486,7 +546,7 @@ Critical rules:
             children=[]
         )
 
-        self.context.set_root_task(task_root.task)
+        self.context.set_root_task(task)
 
         target_context =f"Target : {self.context.target}"
         context = {}
@@ -502,6 +562,12 @@ Critical rules:
             if self.interrupted:
                 return
             # traces.append(event)
+            if isinstance(event, ValidationStopEvent):
+                stop_result = self._record_validation_stop(event)
+                task_root.confidence_score = event.confidence_score
+                task_root.status = "completed"
+                yield stop_result.reporter_output
+                return
             if isinstance(event, ResultEvent):
                 confidence_score = event.confidence_score
                 context = event.context
@@ -543,6 +609,9 @@ IMPORTANT:
 
     async def run_exploitation(self, threat_model: str, task: str):
         """Runs the exploitation workflow"""
+        if self.goal_achieved and self.stop_result is not None:
+            return self._create_completed_task_node(task), self.stop_result.validation_token
+
         # Create exploit agent as planner
         self.exploit_agent = PlannerExploitAgent(
             model=self.model,
@@ -560,14 +629,11 @@ IMPORTANT:
 
         # Pass session_key as deps for the exploit agent
         self.planner = Planner(planner_agent=self.exploit_agent, deps=self._target_session_key())
+        self.context.set_root_task(task)
         self.adapt_agent = ADaPTAgent(
-            session_id=self.session_id,
-            agent_id=self.agent_id,
             context=self.context,
             executor=self.executor,
             planner=self.planner,
-            validation_gate=self.validation_gate,
-            reporter=self.reporter,
             max_depth=self.max_depth,
         )
         plan: TaskNode | None = None
@@ -588,22 +654,28 @@ The flag that you need to find has the following format : FLAG{{}}.
 {threat_model}
 """
         traces: list[str | dict[str, Any]] = []
-        validation_token = ""
 
         async for event in self.adapt_agent.run(task=task_exploit):
             # interrupt signal
             if self.interrupted:
                 return
             # Collect all events for trace saving
-            traces.append(event)
+            if hasattr(event, "model_dump"):
+                traces.append(event.model_dump())
+            else:
+                traces.append(event)
+
+            if isinstance(event, ValidationStopEvent):
+                stop_result = self._record_validation_stop(event)
+                if plan is None:
+                    plan = self._create_completed_task_node(task)
+                return plan, stop_result.validation_token
 
             if isinstance(event, dict):
                 if event.get("type") == "result":
                     root_candidate = event.get("root")
                     if isinstance(root_candidate, TaskNode):
                         plan = root_candidate
-                elif event.get("validation_token"):
-                    validation_token = event.get("validation_token")
                 else:
                     logger.debug("Event: %s", event.get("message", str(event)))
             else:
@@ -612,10 +684,14 @@ The flag that you need to find has the following format : FLAG{{}}.
         if plan is None:
             raise RuntimeError("ADaPT agent did not produce a plan.")
 
-        return plan, validation_token
+        return plan, ""
 
     async def start_testing_stream(self, threat_model: str, task: str):
         """Runs the exploitation workflow"""
+        if self.goal_achieved and self.stop_result is not None:
+            yield self.stop_result.reporter_output
+            return
+
         # Create exploit agent as planner
         self.exploit_agent = PlannerExploitAgent(
             model=self.model,
@@ -624,17 +700,14 @@ The flag that you need to find has the following format : FLAG{{}}.
         )
         # We reset the context to make space and less confusion
         self.context.reset()
+        self.context.set_root_task(task)
 
         # Pass session_key as deps for the exploit agent
         self.planner = Planner(planner_agent=self.exploit_agent, deps=self._target_session_key())
         self.adapt_agent = ADaPTAgent(
-            session_id=self.session_id,
-            agent_id=self.agent_id,
             context=self.context,
             executor=self.executor,
             planner=self.planner,
-            validation_gate=self.validation_gate,
-            reporter=self.reporter,
             max_depth=self.max_depth,
         )
         plan: TaskNode | None = None
@@ -647,6 +720,10 @@ The threat model has been done :
         async for event in self.adapt_agent.run(task=task_exploit):
             # interrupt signal
             if self.interrupted:
+                return
+            if isinstance(event, ValidationStopEvent):
+                stop_result = self._record_validation_stop(event)
+                yield stop_result.reporter_output
                 return
             if isinstance(event, dict):
                 if event.get("type") == "result":
@@ -717,6 +794,10 @@ IMPORTANT:
         Returns:
             TaskNode with the execution plan and results
         """
+        if self.goal_achieved and self.stop_result is not None:
+            yield self.stop_result.reporter_output
+            return
+
         prompt_task = f"""
 Your goal is to achieve the following task: {task}
 
@@ -748,7 +829,6 @@ Your goal is to achieve the following task: {task}
 ## The previous context if available is :
 {self.context.get_unified_context()}
 """
-        validation_token: str = ""
         task_root = TaskNode(
             task=prompt_task,
             depth=0,
@@ -758,7 +838,7 @@ Your goal is to achieve the following task: {task}
             children=[]
         )
 
-        self.context.set_root_task(task_root.task)
+        self.context.set_root_task(task)
 
         target_context =f"Target : {self.context.target}"
         context = {}
@@ -770,6 +850,12 @@ Your goal is to achieve the following task: {task}
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
         ):
+            if isinstance(event, ValidationStopEvent):
+                stop_result = self._record_validation_stop(event)
+                task_root.confidence_score = event.confidence_score
+                task_root.status = "completed"
+                yield stop_result.reporter_output
+                return
             if isinstance(event, ResultEvent):
                 confidence_score = event.confidence_score
                 context = event.context

@@ -12,6 +12,8 @@ from deadend_agent.agents import (
     MemoryAgent,
 )
 from deadend_agent.agents.components.planner import TaskNode
+from deadend_agent.agents.components.validation_strategies import ValidationGate, ValidationInput
+from deadend_agent.agents.reporter import ReporterAgent
 from deadend_agent.context import ContextEngine
 from deadend_agent.config.settings import ModelSpec
 from deadend_agent.tools.avfs.write import write_text
@@ -30,8 +32,18 @@ class ResultEvent(BaseModel):
     confidence_score: float
     context: dict[str, Any]
 
+
+class ValidationStopEvent(BaseModel):
+    """Event emitted when validation confirms the root objective is solved."""
+
+    type: Literal["validation_stop"] = "validation_stop"
+    validation_token: str = ""
+    confidence_score: float
+    critique: str = ""
+    reporter_output: str = ""
+
 # Union type for all possible executor events
-ExecutorEvent = LogEvent | ResultEvent
+ExecutorEvent = LogEvent | ResultEvent | ValidationStopEvent
 
 
 def _memory_prompt_prefix(memory_context: str) -> str:
@@ -92,7 +104,9 @@ class AgentExecutor:
         available_agents: dict[str, str] | None = None,
         agent_factory: Any | None = None,
         requires_approval: bool = False,
-        session_id: str | None = None
+        session_id: str | None = None,
+        validation_gate: ValidationGate | None = None,
+        reporter: ReporterAgent | None = None,
     ) -> None:
         """Initialize the AgentExecutor.
         
@@ -109,6 +123,8 @@ class AgentExecutor:
         self.requires_approval = requires_approval
         self.context = context
         self.session_id = session_id
+        self.validation_gate = validation_gate
+        self.reporter = reporter
         self.memory_context = ""
         self.auth_session_key = ""
 
@@ -144,6 +160,55 @@ class AgentExecutor:
     def set_auth_session_key(self, auth_session_key: str) -> None:
         """Register the auth storage session key used by the python interpreter agent."""
         self.auth_session_key = auth_session_key
+
+    def _build_validation_input(
+        self,
+        confidence_score: float,
+        result_context: dict[str, Any],
+    ) -> ValidationInput:
+        """Convert the latest supervisor result into structured validation input."""
+        return ValidationInput(
+            task_achieved=result_context.get("task_achieved", False),
+            detailed_summary=result_context.get("detailed_summary", ""),
+            proofs=result_context.get("proofs", ""),
+            confidence_score=confidence_score,
+        )
+
+    async def _run_validation_and_report(
+        self,
+        validation_input: ValidationInput,
+    ) -> ValidationStopEvent | None:
+        """Validate the root goal and write the success report when solved.
+
+        Validation is executed at the executor boundary so every supervisor
+        result is checked consistently, regardless of whether the caller is the
+        ADaPT planner or a direct top-level workflow entrypoint.
+        """
+        if self.validation_gate is None or self.reporter is None:
+            return None
+        if not self.context.final_goal:
+            return None
+
+        verdict = await self.validation_gate.check(
+            output=validation_input,
+            root_goal=self.context.final_goal,
+            context=self.context.get_unified_context(max_tokens=8000),
+        )
+        if not verdict.stop:
+            return None
+
+        reporter_output = await self.reporter.summarize_and_write(
+            root_goal=self.context.final_goal,
+            verdict=verdict,
+            context=self.context.get_unified_context(max_tokens=100_000),
+            session_id=str(self.session_id),
+        )
+        return ValidationStopEvent(
+            validation_token=verdict.token,
+            confidence_score=verdict.confidence,
+            critique=verdict.critique,
+            reporter_output=reporter_output,
+        )
 
     async def _refresh_memory_context_for_task(self, task_query: str) -> str:
         """Retrieve task-specific memory immediately before supervisor execution."""
@@ -219,7 +284,8 @@ class AgentExecutor:
             
         Yields:
             LogEvent instances for streaming updates.
-            The final event is a ResultEvent instance.
+            The final event is either a ResultEvent for continued execution or
+            a ValidationStopEvent when the root task has been solved.
         """
 
         context: dict[str, Any] = {"log": ""}
@@ -515,6 +581,15 @@ class AgentExecutor:
                 context["detailed_summary"] = output_str
                 context["task_achieved"] = False
                 context["proofs"] = ""
+
+            validation_input = self._build_validation_input(
+                confidence_score=confidence_score,
+                result_context=context,
+            )
+            validation_event = await self._run_validation_and_report(validation_input)
+            if validation_event is not None:
+                yield validation_event
+                return
 
             yield ResultEvent(
                 confidence_score=confidence_score,

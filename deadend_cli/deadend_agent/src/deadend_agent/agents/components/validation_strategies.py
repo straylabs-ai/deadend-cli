@@ -61,6 +61,20 @@ class ValidationVerdict(BaseModel):
     report: str = ""
 
 
+class ValidationInput(BaseModel):
+    """Structured supervisor output used by root-goal validation strategies.
+
+    Keeping validation input in a Pydantic model makes the contract between the
+    executor and the validation layer explicit and avoids passing loosely-shaped
+    dictionaries through the workflow.
+    """
+
+    task_achieved: bool = False
+    detailed_summary: str = ""
+    proofs: str = ""
+    confidence_score: float = 0.0
+
+
 # ---------------------------------------------------------------------------
 # YAML-driven configuration
 # ---------------------------------------------------------------------------
@@ -150,15 +164,14 @@ class ValidationStrategy(Protocol):
 
     async def check(
         self,
-        output: dict,
+        output: ValidationInput,
         root_goal: str,
         context: str,
     ) -> ValidationVerdict:
         """Evaluate whether *root_goal* is satisfied.
 
         Args:
-            output: The supervisor output dict (keys: task_achieved,
-                    detailed_summary, proofs, confidence_score).
+            output: Structured supervisor output used for validation.
             root_goal: The top-level goal of the entire assessment.
             context: Accumulated execution context (unified context string).
 
@@ -184,14 +197,14 @@ class FlagStrategy:
 
     async def check(
         self,
-        output: dict,
+        output: ValidationInput,
         root_goal: str,
         context: str,
     ) -> ValidationVerdict:
         # Search in order: proofs first (most likely), then summary, then full context.
         searchable_fields = [
-            output.get("proofs", ""),
-            output.get("detailed_summary", ""),
+            output.proofs,
+            output.detailed_summary,
             context,
         ]
         for field in searchable_fields:
@@ -210,15 +223,15 @@ class FlagStrategy:
         return ValidationVerdict(stop=False, confidence=0.0)
 
     @staticmethod
-    def _build_report(output: dict, token: str, root_goal: str) -> str:
+    def _build_report(output: ValidationInput, token: str, root_goal: str) -> str:
         return (
             "# Validation Report — Flag Captured\n\n"
             f"**Goal:** {root_goal}\n\n"
             f"**Token:** `{token}`\n\n"
             "## Evidence\n\n"
-            f"```\n{output.get('proofs', 'N/A')}\n```\n\n"
+            f"```\n{output.proofs or 'N/A'}\n```\n\n"
             "## Summary\n\n"
-            f"{output.get('detailed_summary', 'N/A')}\n"
+            f"{output.detailed_summary or 'N/A'}\n"
         )
 
 
@@ -265,7 +278,7 @@ class JudgeAgentStrategy:
 
     async def check(
         self,
-        output: dict,
+        output: ValidationInput,
         root_goal: str,
         context: str,
     ) -> ValidationVerdict:
@@ -282,9 +295,9 @@ class JudgeAgentStrategy:
             "satisfied based on the execution trace.\n\n"
             f"## Goal\n{root_goal}\n\n"
             f"## Latest Supervisor Output\n"
-            f"Summary: {output.get('detailed_summary', '')}\n"
-            f"Proofs: {output.get('proofs', '')}\n"
-            f"Confidence: {output.get('confidence_score', 0.0)}\n\n"
+            f"Summary: {output.detailed_summary}\n"
+            f"Proofs: {output.proofs}\n"
+            f"Confidence: {output.confidence_score}\n\n"
             "# Execution Trace\n"
             f"{context}\n\n"
             "# Instructions\n"
@@ -361,7 +374,7 @@ class ValidationGate:
 
     async def check(
         self,
-        output: dict,
+        output: ValidationInput,
         root_goal: str,
         context: str,
     ) -> ValidationVerdict:
