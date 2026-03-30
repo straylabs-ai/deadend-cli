@@ -22,7 +22,7 @@ export interface ComponentHealthProps {
 // Short display names for components
 const COMPONENT_NAMES: Record<string, string> = {
   docker: "Docker",
-  pgvector: "pgvector",
+  rag: "RAG",
   config: "Config",
   python_sandbox: "Python",
   shell_sandbox: "Shell",
@@ -31,8 +31,8 @@ const COMPONENT_NAMES: Record<string, string> = {
 // Order to display components
 const COMPONENT_ORDER = [
   "docker",
-  "pgvector",
   "config",
+  "rag",
   "python_sandbox",
   "shell_sandbox",
 ];

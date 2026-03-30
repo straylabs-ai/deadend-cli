@@ -163,7 +163,6 @@ class AgentThoughtData(BaseModel):
 
     thought: str
     summary: Optional[str] = None
-    relevance: float = 0.5
 
 
 class AgentRoutedData(BaseModel):
@@ -419,7 +418,6 @@ class AgentEvent(BaseModel):
         agent_name: str,
         thought: str,
         summary: Optional[str] = None,
-        relevance: float = 0.5,
     ) -> "AgentEvent":
         """Create an AGENT_THOUGHT event."""
         return cls(
@@ -429,7 +427,6 @@ class AgentEvent(BaseModel):
             data=AgentThoughtData(
                 thought=thought,
                 summary=summary,
-                relevance=relevance,
             ),
         )
 

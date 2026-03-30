@@ -427,9 +427,9 @@ class TestRPCServerHealthChecks:  # noqa: F811
     
     @pytest.mark.asyncio
     @pytest.mark.slow
-    async def test_health_pgvector(self, rpc_client):
-        """Test health_pgvector method."""
-        await rpc_client.send_request("health_pgvector")
+    async def test_health_rag(self, rpc_client):
+        """Test health_rag method."""
+        await rpc_client.send_request("health_rag")
         response = await rpc_client.read_response(timeout=10.0)
         
         assert response["jsonrpc"] == "2.0"
@@ -702,9 +702,9 @@ class TestRPCServerInitialization:  # noqa: F811
     @pytest.mark.asyncio
     @pytest.mark.slow
     @pytest.mark.docker
-    async def test_init_pgvector(self, rpc_client):
-        """Test init_pgvector method (requires Docker)."""
-        await rpc_client.send_request("init_pgvector")
+    async def test_init_rag(self, rpc_client):
+        """Test init_rag method."""
+        await rpc_client.send_request("init_rag")
         response = await rpc_client.read_response(timeout=60.0)
 
         assert response["jsonrpc"] == "2.0"

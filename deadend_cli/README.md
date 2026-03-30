@@ -75,44 +75,6 @@ uv sync && uv build
 ```bash
 # Initialize configuration
 deadend-cli init
-
-# Start testing
-deadend-cli chat \
-  --target "http://localhost:3000" \
-  --prompt "find SQL injection vulnerabilities"
-```
-
----
-
-## Usage Examples
-
-### Basic Vulnerability Testing
-
-```bash
-# Test OWASP Juice Shop
-docker run -p 3000:3000 bkimminich/juice-shop
-
-deadend-cli chat \
-  --target "http://localhost:3000" \
-  --prompt "test the login endpoint for SQL injection"
-```
-
-### API Security Testing
-
-```bash
-deadend-cli chat \
-  --target "https://api.example.com" \
-  --prompt "test authentication endpoints"
-```
-
-### Autonomous Mode
-
-```bash
-# Run without approval prompts (CTFs/labs only)
-deadend-cli chat \
-  --target "http://ctf.example.com" \
-  --mode yolo \
-  --prompt "find and exploit all vulnerabilities"
 ```
 
 ---
@@ -123,21 +85,13 @@ deadend-cli chat \
 
 Initialize configuration and set up pgvector database
 
-### `deadend-cli chat`
-
-Start interactive security testing session
-
-- `--target`: Target URL
-- `--prompt`: Initial testing prompt
-- `--mode`: `hacker` (approval required) or `yolo` (autonomous)
-
 ### `deadend-cli eval-agent`
 
 Run evaluation against challenge datasets
 
 - `--eval-metadata-file`: Challenge dataset file
-- `--llm-providers`: AI model providers to test
-- `--guided`: Run with subtask decomposition
+- `--provider`: AI model provider to use
+- `--model-name`: AI model to use
 
 ### `deadend-cli version`
 
@@ -159,6 +113,118 @@ The agent uses a two-phase approach (reconnaissance → exploitation) with a sup
 
 ---
 
+## Validation Configuration
+
+The agent uses a composable validation system to determine when the root goal of an assessment has been achieved. Configuration is driven by a YAML file at `~/.cache/deadend/validation.yaml`.
+
+### How It Works
+
+After every supervisor execution, a **validation gate** runs a chain of strategies in order. The first strategy that returns `stop: true` triggers a report and exits the loop. If no strategy stops, the ADaPT policy (expand/refine/fail) continues as normal.
+
+**Available strategies:**
+
+| Strategy | Cost | What it does |
+|----------|------|-------------|
+| `flag` | Zero (regex) | Scans proofs, summaries, and context for a token matching a configurable regex pattern |
+| `judge` | 1 LLM call | Agent that evaluates the full execution trace against the root goal. Self-throttles when no new evidence has appeared |
+
+### Configuration File
+
+Create `~/.cache/deadend/validation.yaml`. A reference file with all options is at `deadend_agent/src/deadend_agent/config/validation.default.yaml`.
+
+### Examples
+
+**CTF with `FLAG{}` tokens** (default if no file exists):
+
+```yaml
+validation_format: "FLAG{}"
+validation_type: "flag"
+strategies:
+  - name: flag
+    pattern: "FLAG\\{[^}]+\\}"
+  - name: judge
+```
+
+The `flag` strategy runs first (free regex check). If no match, the `judge` LLM evaluates whether the goal is done.
+
+**HackTheBox:**
+
+```yaml
+validation_format: "HTB{}"
+validation_type: "flag"
+strategies:
+  - name: flag
+    pattern: "HTB\\{[^}]+\\}"
+  - name: judge
+    validation_format: "HTB{}"
+```
+
+**picoCTF:**
+
+```yaml
+validation_format: "picoCTF{}"
+validation_type: "flag"
+strategies:
+  - name: flag
+    pattern: "picoCTF\\{[^}]+\\}"
+  - name: judge
+    validation_format: "picoCTF{}"
+```
+
+**Recon / security assessment** (no flag to find):
+
+```yaml
+validation_type: "security assessment"
+strategies:
+  - name: judge
+```
+
+No `flag` strategy — the LLM judge evaluates whether the recon goal (e.g., "map the attack surface") is satisfied based on accumulated evidence.
+
+**Flag-only (fastest, no LLM judge):**
+
+```yaml
+validation_format: "FLAG{}"
+strategies:
+  - name: flag
+```
+
+Only regex matching, no LLM call at all. Cheapest option for CTFs where the flag format is known.
+
+### Configuration Reference
+
+**Top-level fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `validation_format` | `string \| null` | Token format shown in agent prompts (e.g., `"FLAG{}"`, `"HTB{}"`). Set to `null` for assessments without tokens |
+| `validation_type` | `string \| null` | Type label for the judge prompt (e.g., `"flag"`, `"security assessment"`) |
+| `strategies` | `list` | Ordered list of strategy configurations |
+
+**Per-strategy fields:**
+
+| Field | Strategy | Description |
+|-------|----------|-------------|
+| `name` | all | Strategy name: `"flag"` or `"judge"` |
+| `pattern` | `flag` | Regex pattern (default: `FLAG\{[^}]+\}`) |
+| `validation_type` | `judge` | Override top-level `validation_type` for this strategy |
+| `validation_format` | `judge` | Override top-level `validation_format` for this strategy |
+
+### Programmatic Override
+
+Pass a custom config path when constructing the agent:
+
+```python
+agent = DeadEndAgent(
+    session_id=session_id,
+    model=model,
+    available_agents=agents,
+    validation_config_path="/path/to/custom/validation.yaml",
+)
+```
+
+---
+
 ## Benchmark Results
 
 Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026):
@@ -174,24 +240,6 @@ Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026
 
 Strong performance: XSS (91%), Business Logic (86%), SQL injection (83%), IDOR (80%)
 Perfect scores: GraphQL, SSRF, NoSQL injection, HTTP method tampering (100%)
-
----
-
-## Operating Modes
-
-**Hacker Mode (default):** Requires approval for dangerous operations
-
-```bash
-deadend-cli chat --target URL --mode hacker
-```
-
-**YOLO Mode:** Autonomous execution (CTFs/labs only)
-
-```bash
-deadend-cli chat --target URL --mode yolo
-```
-
----
 
 ## Technology Stack
 

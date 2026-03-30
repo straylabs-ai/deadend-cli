@@ -61,7 +61,7 @@ class Planner:
         context: str,
         usage: RunUsage,
         usage_limits: UsageLimits,
-    ) -> tuple[list[TaskNode], GeneralInfoOutput]:
+    ) -> tuple[list[TaskNode], GeneralInfoOutput, ExploitInfo]:
         """Expand a parent task into subtasks.
         
         Args:
@@ -146,7 +146,7 @@ Break down this task into a maximum of 5 subtasks.{parent_task.task}. The goal i
         context: str,
         usage: RunUsage,
         usage_limits: UsageLimits,
-    ) -> tuple[list[TaskNode], GeneralInfoOutput | ExploitInfo]:
+    ) -> tuple[list[TaskNode], GeneralInfoOutput | ExploitInfo, GeneralInfoOutput | ExploitInfo]:
         """Update and refine the plan for all tasks that share the same parent.
         
         This function takes a task node, finds all tasks that share the same parent

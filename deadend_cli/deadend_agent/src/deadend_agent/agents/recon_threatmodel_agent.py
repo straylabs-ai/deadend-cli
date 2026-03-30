@@ -45,7 +45,9 @@ class ReconThreatModelAgent(AgentRunner):
         message_history,
         usage: RunUsage | None,
         usage_limits: UsageLimits | None,
-        deferred_tool_results: DeferredToolResults | None = None
+        deferred_tool_results: DeferredToolResults | None = None,
+        *args,
+        **kwargs
     ):
 
         return await super().run(

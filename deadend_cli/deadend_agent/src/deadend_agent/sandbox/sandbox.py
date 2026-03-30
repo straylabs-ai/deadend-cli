@@ -161,15 +161,13 @@ class Sandbox(BaseModel):
             self.status = SandboxStatus.RUNNING
             image = self._docker_client.images.get(container_image)
 
-            print("Creating container on network: %s", network_name)
-
             # Add host.docker.internal for host access when using non-host networks
             extra_hosts = None
             if network_name != "host":
                 extra_hosts = {
                     "host.docker.internal": "host-gateway"  # Maps to the host machine
                 }
-                print("Adding host.docker.internal alias for host access")
+                # print("Adding host.docker.internal alias for host access")
                 
             container = self._docker_client.containers.run(
                 image=image,
@@ -272,7 +270,7 @@ class Sandbox(BaseModel):
 
             # Test basic container responsiveness with a simple command
             health_check = container.exec_run(["/bin/bash", "-c", "echo 'health_check'"])
-            print("Health check exit code: %s", health_check.exit_code)
+            # print("Health check exit code: %s", health_check.exit_code)
         except Exception as health_exc:
             print("Container health check failed: %s", health_exc)
 
@@ -287,8 +285,8 @@ class Sandbox(BaseModel):
 
         try:
             # Debug: Log the exact command being executed
-            print("Executing command: %s", ' '.join(shell_command))
-            print("Stream mode: %s, Timeout: %s", stream, timeout_seconds)
+            # print("Executing command: %s", ' '.join(shell_command))
+            # print("Stream mode: %s, Timeout: %s", stream, timeout_seconds)
             
             if timeout_seconds:
                 # Use threading for timeout implementation
@@ -318,9 +316,9 @@ class Sandbox(BaseModel):
                     tty=False,  # Changed from True to False
                     demux=True
                 )
-                print("Command executed, exit code: %s", command_result.exit_code)
+                # print("Command executed, exit code: %s", command_result.exit_code)
                 (stdout, stderr) = command_result.output
-                print("Raw stdout length: %d, stderr: %d", len(stdout) if stdout else 0, len(stderr) if stderr else 0)
+                # print("Raw stdout length: %d, stderr: %d", len(stdout) if stdout else 0, len(stderr) if stderr else 0)
                 result = {
                     "command": command,
                     "exit_code": command_result.exit_code,
@@ -330,7 +328,7 @@ class Sandbox(BaseModel):
                     "timed_out": False,
                     "execution_time": time.time() - start_time
                 }
-                print("Decoded stdout length: %d, stderr: %d", len(result['stdout']), len(result['stderr']))
+                # print("Decoded stdout length: %d, stderr: %d", len(result['stdout']), len(result['stderr']))
 
             return result
 
@@ -392,7 +390,7 @@ class Sandbox(BaseModel):
 
         def execute_worker():
             try:
-                print("Starting worker thread for command: %s", ' '.join(command if isinstance(command, list) else [command]))
+                # print("Starting worker thread for command: %s", ' '.join(command if isinstance(command, list) else [command]))
                 start_time = time.time()
                 if stream:
                     command_result = container.exec_run(
@@ -402,7 +400,7 @@ class Sandbox(BaseModel):
                         socket=True,
                         stream=True,
                     )
-                    print("Streaming command completed")
+                    # print("Streaming command completed")
 
                     result_container["result"] = {
                         "command": self.last_command,
@@ -418,9 +416,9 @@ class Sandbox(BaseModel):
                         tty=False,  # Changed from True to False
                         demux=True
                     )
-                    print("Command executed, exit code: %s", command_result.exit_code)
+                    # print("Command executed, exit code: %s", command_result.exit_code)
                     (stdout, stderr) = command_result.output
-                    print("Raw stdout length: %d, stderr: %d", len(stdout) if stdout else 0, len(stderr) if stderr else 0)
+                    # print("Raw stdout length: %d, stderr: %d", len(stdout) if stdout else 0, len(stderr) if stderr else 0)
                     result_container["result"] = {
                         "command": self.last_command,
                         "exit_code": command_result.exit_code,
@@ -430,12 +428,12 @@ class Sandbox(BaseModel):
                         "timed_out": False,
                         "execution_time": time.time() - start_time
                     }
-                    print("Decoded stdout length: %d, stderr: %d", len(result_container['result']['stdout']), len(result_container['result']['stderr']))
+                    # print("Decoded stdout length: %d, stderr: %d", len(result_container['result']['stdout']), len(result_container['result']['stderr']))
             except (docker.errors.ContainerError, docker.errors.APIError, OSError) as exc:
-                print("Docker/system error in worker: %s", exc)
+                # print("Docker/system error in worker: %s", exc)
                 exception_container["exception"] = exc
             except Exception as exc:
-                print("Unexpected error in execute_worker: %s", exc, exc_info=True)
+                # print("Unexpected error in execute_worker: %s", exc, exc_info=True)
                 exception_container["exception"] = exc
 
         thread = threading.Thread(target=execute_worker)

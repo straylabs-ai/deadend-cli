@@ -4,7 +4,7 @@ import type { DeadEndRpcClient } from "../runtime/deadend-rpc-client.ts";
 
 export type ComponentName =
   | "docker"
-  | "pgvector"
+  | "rag"
   | "config"
   | "python_sandbox"
   | "shell_sandbox";
@@ -104,8 +104,8 @@ export function useComponentHealth(
           case "docker":
             result = await rpcClient.initDocker();
             break;
-          case "pgvector":
-            result = await rpcClient.initPgvector();
+          case "rag":
+            result = await rpcClient.initRag();
             break;
           case "config":
             result = await rpcClient.initConfig();
@@ -154,8 +154,8 @@ export function useComponentHealth(
 
     const components: ComponentName[] = [
       "docker",
-      "pgvector",
       "config",
+      "rag",
       "python_sandbox",
       "shell_sandbox",
     ];

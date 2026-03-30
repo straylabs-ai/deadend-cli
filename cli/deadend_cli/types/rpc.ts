@@ -501,12 +501,10 @@ export interface AgentErrorData {
  *
  * @property thought - The full reasoning text
  * @property summary - Condensed version of the thought
- * @property relevance - How relevant this thought is to the task (0.0-1.0)
  */
 export interface AgentThoughtData {
   thought: string;
   summary?: string;
-  relevance: number;
 }
 
 /**
@@ -647,7 +645,7 @@ export type ComponentStatus =
  *
  * Returned by health_* RPC methods to report component status.
  *
- * @property component - Name of the component (docker, pgvector, etc.)
+ * @property component - Name of the component (docker, rag, config, etc.)
  * @property healthy - Whether the component is functioning correctly
  * @property status - Current lifecycle state of the component
  * @property message - Human-readable status message

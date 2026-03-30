@@ -21,7 +21,6 @@ from deadend_agent.utils.structures import Task, TaskPlanner
 from deadend_agent.utils.functions import num_tokens_from_string
 
 if TYPE_CHECKING:
-    from deadend_agent.agents import RouterOutput
     from deadend_agent.agents.reporter import ReporterAgent
 
 
@@ -123,13 +122,11 @@ class AgentThought:
         agent_name: Which agent produced this thought
         thought: The raw thought/reasoning text
         summary: A concise summary of the key insight
-        relevance: How relevant this is for future actions (0.0-1.0)
         timestamp: When this was recorded
     """
     agent_name: str
     thought: str
     summary: str = ""
-    relevance: float = 0.5
     timestamp: float = field(default_factory=time.time)
 
     def format_for_context(self) -> str:
@@ -335,14 +332,12 @@ class StructuredContext:
         agent_name: str,
         thought: str,
         summary: str = "",
-        relevance: float = 0.5
     ) -> None:
         """Convenience method to add an agent thought."""
         self.add_thought(AgentThought(
             agent_name=agent_name,
             thought=thought,
             summary=summary,
-            relevance=relevance
         ))
 
     def was_technique_tested(self, endpoint: str, technique: str) -> bool:
@@ -770,12 +765,12 @@ class StructuredContext:
                         lines.append(f"Credential: {af.details.get('username', 'N/A')} / {af.details.get('password', 'N/A')}")
             sections.append("\n".join(lines))
 
-        # SECTION 7: AGENT INSIGHTS (summarized learnings)
+        # SECTION 7: AGENT INSIGHTS (recent summarized learnings)
         if self.thoughts:
-            high_relevance = [t for t in self.thoughts if t.relevance >= 0.6]
-            if high_relevance:
+            recent_thoughts = [t for t in self.thoughts if t.summary or t.thought]
+            if recent_thoughts:
                 lines = ["## INSIGHTS"]
-                for t in high_relevance[-5:]:
+                for t in recent_thoughts[-5:]:
                     summary = t.summary or t.thought[:150]
                     lines.append(f"[{t.agent_name}] {summary}")
                 sections.append("\n".join(lines))
@@ -1136,36 +1131,36 @@ class ContextEngine:
             self.workflow_context = result.output
         return token_count
 
-    def add_next_agent(self, router_output: "RouterOutput") -> None:
-        """Add router output information and set the next agent.
+#     def add_next_agent(self, router_output: "RouterOutput") -> None:
+#         """Add router output information and set the next agent.
         
-        Args:
-            router_output (RouterOutput): The output from the router agent
-                                         containing the next agent name and
-                                         routing information.
+#         Args:
+#             router_output (RouterOutput): The output from the router agent
+#                                          containing the next agent name and
+#                                          routing information.
         
-        Updates the next_agent attribute and adds the router output
-        to the workflow context. Also saves to text file.
-        """
-        self.next_agent = router_output.next_agent_name
-        self.workflow_context  += f"""\n
-[router agent]
-{str(router_output)}
-"""
-        self._append_to_context_file("[ai agent]", f"Router agent: {str(router_output)}")
-    def add_not_found_agent(self, agent_name: str) -> None:
-        """Add information about a not found agent to the workflow context.
+#         Updates the next_agent attribute and adds the router output
+#         to the workflow context. Also saves to text file.
+#         """
+#         self.next_agent = router_output.next_agent_name
+#         self.workflow_context  += f"""\n
+# [router agent]
+# {str(router_output)}
+# """
+#         self._append_to_context_file("[ai agent]", f"Router agent: {str(router_output)}")
+#     def add_not_found_agent(self, agent_name: str) -> None:
+#         """Add information about a not found agent to the workflow context.
         
-        Args:
-            agent_name (str): The name of the agent that was not found.
+#         Args:
+#             agent_name (str): The name of the agent that was not found.
         
-        Adds a message to the workflow context indicating that the
-        specified agent was not found. Also saves to text file.
-        """
-        self.workflow_context += f"""
-[agent not found {agent_name}]\n
-"""
-        self._append_to_context_file("[ai agent]", f"Not found agent name: {agent_name}")
+#         Adds a message to the workflow context indicating that the
+#         specified agent was not found. Also saves to text file.
+#         """
+#         self.workflow_context += f"""
+# [agent not found {agent_name}]\n
+# """
+#         self._append_to_context_file("[ai agent]", f"Not found agent name: {agent_name}")
     def add_agent_response(
         self,
         response: str,
@@ -1494,27 +1489,24 @@ class ContextEngine:
         agent_name: str,
         thought: str,
         summary: str = "",
-        relevance: float = 0.5
     ) -> None:
         """Record an agent's reasoning/insight for context.
 
-        Thoughts with higher relevance (>= 0.6) are shown to subsequent agents.
+        Recent thoughts are surfaced to subsequent agents in the INSIGHTS section.
 
         Args:
             agent_name: Which agent produced this thought
             thought: The raw thought/reasoning text
             summary: A concise summary of the key insight (auto-generated if empty)
-            relevance: How relevant this is for future actions (0.0-1.0)
 
         Example:
             context.add_thought(
                 agent_name="shell",
                 thought="The application uses Jinja2 templates based on the error message format.",
                 summary="Application uses Jinja2 templates",
-                relevance=0.8
             )
         """
-        self.structured.add_thought_simple(agent_name, thought, summary, relevance)
+        self.structured.add_thought_simple(agent_name, thought, summary)
 
     def was_technique_tested(self, endpoint: str, technique: str) -> bool:
         """Check if a specific technique was already tested on an endpoint.

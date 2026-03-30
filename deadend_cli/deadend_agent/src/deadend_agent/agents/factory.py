@@ -116,11 +116,10 @@ def summarize_agent_thought(raw_thought: str, max_length: int = 200) -> str:
 class ExtractedThought:
     """Container for an extracted and summarized agent thought."""
 
-    def __init__(self, agent_name: str, raw_thought: str, summary: str = "", relevance: float = 0.5):
+    def __init__(self, agent_name: str, raw_thought: str, summary: str = ""):
         self.agent_name = agent_name
         self.raw_thought = raw_thought
         self.summary = summary or summarize_agent_thought(raw_thought)
-        self.relevance = relevance
 
     def to_dict(self) -> dict:
         """Convert to dictionary for context engine."""
@@ -128,7 +127,6 @@ class ExtractedThought:
             "agent_name": self.agent_name,
             "thought": self.raw_thought,
             "summary": self.summary,
-            "relevance": self.relevance
         }
 
 
@@ -375,7 +373,7 @@ class AgentRunner:
 
         return fq_model_name, api_key, api_base
 
-    def _create_fallback_output(self, error_msg: str, error_type: str) -> BaseModel:
+    def _create_fallback_output(self, error_msg: str, error_type: str) -> AgentOutput:
         """Create a fallback output with the correct schema type.
 
         Args:

@@ -5,7 +5,7 @@
 """JSON-RPC server over stdio for communicating with other front-end components.
 
 This server supports:
-- Component initialization (Docker, pgvector, config, sandboxes, Playwright)
+- Component initialization (Docker, RAG/SQLite, config, sandboxes, Playwright)
 - Health checks for all components
 - Event streaming for agent/tool execution
 - Approval workflow for dangerous tool calls

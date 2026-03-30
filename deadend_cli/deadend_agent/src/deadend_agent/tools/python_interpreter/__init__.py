@@ -76,7 +76,7 @@ async def read_auth_storage(ctx: str) -> str:
 
 @with_tool_events("run_python_file")
 async def run_python_file(
-    ctx: RunContext[str],
+    ctx: RunContext[Any],
     code: str,
     filename: str,
     packages: list[str]
@@ -109,9 +109,12 @@ async def run_python_file(
     file_path.write_text(code, encoding="utf-8")
     print(code)
 
-    # Get session_id from context deps (passed from agent), or generate one if not provided
-    # ctx.deps is the session_id string passed from PythonInterpreterAgent
-    session_id = ctx.deps if ctx.deps and isinstance(ctx.deps, str) else f"session_{id(file_path)}"
+    deps = getattr(ctx, "deps", None)
+    if isinstance(deps, str):
+        session_id = deps
+    else:
+        session_id = getattr(deps, "session_id", None) if deps is not None else None
+    session_id = session_id or f"session_{id(file_path)}"
 
     # Initializing the PythonInterpreter
     # Convert cache_dir Path to string for the directory parameter

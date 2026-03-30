@@ -10,7 +10,6 @@ the context, progress, and requirements of the ongoing assessment.
 """
 from typing import Dict
 from pydantic import BaseModel
-from pydantic_ai import AgentRunResult
 from deadend_prompts import render_agent_instructions
 from .factory import AgentRunner
 
@@ -41,7 +40,6 @@ class ValidatorAgent(AgentRunner):
             tools=[]
         )
 
-
     async def run(
         self,
         prompt,
@@ -49,7 +47,9 @@ class ValidatorAgent(AgentRunner):
         message_history,
         usage,
         usage_limits,
-        deferred_tool_results
+        deferred_tool_results=None,
+        *args,
+        **kwargs
     ):
         return await super().run(
             prompt=prompt,

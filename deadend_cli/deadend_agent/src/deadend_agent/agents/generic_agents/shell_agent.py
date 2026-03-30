@@ -55,9 +55,7 @@ class ShellAgent(AgentRunner):
             instructions=self.instructions,
             deps_type=deps_type,
             output_type=[ShellOutput, DeferredToolRequests],
-            tools=[
-                Tool(sandboxed_shell_tool, requires_approval=requires_approval),
-            ]
+            tools=[Tool(sandboxed_shell_tool, requires_approval=requires_approval)],
         )
 
     async def run(

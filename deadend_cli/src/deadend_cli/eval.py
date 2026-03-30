@@ -17,8 +17,8 @@ from deadend_eval.eval import EvalMetadata, eval_deadend_agent
 async def eval_interface(
         config: Config,
         eval_metadata_file: str,
-        providers: list[str],
-        guided: bool,
+        provider: str,
+        model_name: str,
     ):
     """Run evaluation interface for testing AI agent performance.
 
@@ -66,7 +66,7 @@ async def eval_interface(
     model_registry = ModelRegistry(config=config)
     if not model_registry.has_any_model():
         raise RuntimeError(f"No LM model configured. You can run `deadend init` to \
-            initialize the required Model configuration for {providers[0]}")
+            initialize the required Model configuration for {provider}:{model_name}")
 
     # Initialize SQLite-based RAG
     rag_manager = init_rag_session_manager(storage_root=config.agents_storage_root)
@@ -93,18 +93,13 @@ async def eval_interface(
     sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)
     embedder_client = model_registry.get_embedder_model()
     await eval_deadend_agent(
-        model=model_registry.get_model(provider=providers[0]),
+        model=model_registry.get_model(provider=provider, model_name=model_name),
         embedder_client=embedder_client,
-        # evaluators=[CtfEvaluator],
         code_indexer_db=rag_db,
         sandbox=sandbox,
         eval_metadata=eval_metadata,
-        guided=guided,
-        human_intervention=False,
-        with_context_engine=True,
         with_code_indexing=True,
         with_knowledge_base=True,
-        output_report="./",
         hard_prompt=False
     )
-    # for model in models:
+

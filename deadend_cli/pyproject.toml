@@ -26,7 +26,6 @@ dependencies = [
     "lxml>=6.0.0",
     "nest-asyncio>=1.6.0",
     "numpy>=2.0.0,<2.3.0",
-    "pgvector>=0.4.1",
     "playwright>=1.56.0",
     "prompt-toolkit>=3.0.51",
     "pydantic>=2.11.5",
@@ -57,6 +56,7 @@ dependencies = [
     "arize-phoenix-evals>=2.10.0",
     "openinference-instrumentation>=0.1.44",
     "openinference-instrumentation-litellm>=0.1.29",
+    "ripgrepy>=2.2.0",
 ]
 
 [project.scripts]
@@ -149,11 +149,13 @@ extraPaths = [
 members = [
     "deadend_agent",
     "deadend_prompts",
-    "deadend_eval"
+    "deadend_eval",
+    "simple-python-interpreter-sandbox",
 ]
 
 [tool.uv.sources]
 deadend-agent = { workspace = true }
 deadend-prompts = { workspace = true }
 deadend-eval = { workspace = true }
+python-sandbox-client = { workspace = true }
 

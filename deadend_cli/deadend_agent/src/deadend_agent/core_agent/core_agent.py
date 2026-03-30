@@ -51,18 +51,31 @@ from deadend_agent.hooks import get_event_hooks
 
 # OpenInference span attributes for tool tracing (generic pattern usable by any agent)
 try:
+    from openinference.semconv.trace import MessageAttributes as _MsgAttrs
     from openinference.semconv.trace import SpanAttributes as _SpanAttrs
     _TOOL_ATTR_KIND = _SpanAttrs.OPENINFERENCE_SPAN_KIND
     _TOOL_ATTR_NAME = _SpanAttrs.TOOL_NAME
     _TOOL_ATTR_PARAMS = _SpanAttrs.TOOL_PARAMETERS
     _TOOL_ATTR_INPUT = _SpanAttrs.INPUT_VALUE
     _TOOL_ATTR_OUTPUT = _SpanAttrs.OUTPUT_VALUE
+    _LLM_INPUT_PREFIX = _SpanAttrs.LLM_INPUT_MESSAGES
+    _LLM_OUTPUT_PREFIX = _SpanAttrs.LLM_OUTPUT_MESSAGES
+    _LLM_MSG_ROLE = _MsgAttrs.MESSAGE_ROLE
+    _LLM_MSG_CONTENT = _MsgAttrs.MESSAGE_CONTENT
+    _LLM_MSG_TOOL_CALLS = _MsgAttrs.MESSAGE_TOOL_CALLS
+    _LLM_MODEL_NAME = _SpanAttrs.LLM_MODEL_NAME
 except ImportError:
     _TOOL_ATTR_KIND = "openinference.span.kind"
     _TOOL_ATTR_NAME = "tool.name"
     _TOOL_ATTR_PARAMS = "tool.parameters"
     _TOOL_ATTR_INPUT = "input.value"
     _TOOL_ATTR_OUTPUT = "output.value"
+    _LLM_INPUT_PREFIX = "llm.input_messages"
+    _LLM_OUTPUT_PREFIX = "llm.output_messages"
+    _LLM_MSG_ROLE = "message.role"
+    _LLM_MSG_CONTENT = "message.content"
+    _LLM_MSG_TOOL_CALLS = "message.tool_calls"
+    _LLM_MODEL_NAME = "llm.model_name"
 
 # Custom attribute for LLM thinking/reasoning content (not part of OpenInference yet)
 _ATTR_LLM_THINKING = "llm.thinking_content"
@@ -192,11 +205,16 @@ class CoreAgent:
         # We always *attempt* to use Instructor when available and an output_schema
         # is provided, but will gracefully fall back to manual JSON extraction
         # if the Instructor call fails for any reason.
-        if INSTRUCTOR_AVAILABLE and output_schema:
+        # Only use structured output for actual Pydantic BaseModel subclasses,
+        # not plain types like str, int, etc.
+        _is_pydantic_schema = (
+            isinstance(output_schema, type) and issubclass(output_schema, BaseModel)
+        )
+        if INSTRUCTOR_AVAILABLE and output_schema and _is_pydantic_schema:
             self.instructor_client = instructor.from_litellm(acompletion)
         else:
             self.instructor_client = None
-            if output_schema and not INSTRUCTOR_AVAILABLE:
+            if output_schema and not INSTRUCTOR_AVAILABLE and _is_pydantic_schema:
                 logger.warning("instructor not available, structured output disabled")
 
     def tool(self, func: Callable) -> Callable:
@@ -389,7 +407,11 @@ class CoreAgent:
             if thinking_content:
                 assistant_message["thinking_content"] = thinking_content
 
-            # Create a child span for this LLM iteration
+            tool_calls = getattr(choice.message, "tool_calls", None) or []
+            llm_trace_full = self._build_llm_trace_output(content, thinking_content, tool_calls)
+            llm_trace_attr = self._truncate_for_span_attr(llm_trace_full)
+
+            # Create a child span for this LLM iteration (OpenInference LLM + Phoenix .llm_call UI)
             with self.tracer.start_as_current_span(
                 f"{self.name}.llm_call",
                 attributes={
@@ -397,12 +419,24 @@ class CoreAgent:
                     "llm.iteration": iteration,
                 },
             ) as llm_span:
-                if content:
-                    out_attr = content[:4096] + "..." if len(content) > 4096 else content
-                    llm_span.set_attribute(_TOOL_ATTR_OUTPUT, out_attr)
+                if self.model:
+                    llm_span.set_attribute(_LLM_MODEL_NAME, self.model)
+                self._set_llm_input_message_attributes(llm_span, messages)
+                if llm_trace_attr:
+                    llm_span.set_attribute(_TOOL_ATTR_OUTPUT, llm_trace_attr)
+                    llm_span.set_attribute(
+                        f"{_LLM_OUTPUT_PREFIX}.0.{_LLM_MSG_ROLE}",
+                        "assistant",
+                    )
+                    llm_span.set_attribute(
+                        f"{_LLM_OUTPUT_PREFIX}.0.{_LLM_MSG_CONTENT}",
+                        llm_trace_attr,
+                    )
+                self._set_llm_output_tool_call_attributes(llm_span, tool_calls)
                 if thinking_content:
-                    think_attr = thinking_content[:4096] + "..." if len(thinking_content) > 4096 else thinking_content
+                    think_attr = self._truncate_for_span_attr(thinking_content)
                     llm_span.set_attribute(_ATTR_LLM_THINKING, think_attr)
+                    llm_span.add_event("llm.thinking", {"llm.thinking_content": think_attr})
                 llm_span.set_status(trace.Status(trace.StatusCode.OK))
 
             # Log thinking content (if any)
@@ -442,7 +476,6 @@ class CoreAgent:
                     agent_name=self.name,
                     thought=self._truncate_for_event(thought_text, 3000),
                     summary=self._truncate_for_event(content, 500),
-                    relevance=0.5,
                 )
 
             # Add tool calls if present
@@ -498,8 +531,14 @@ class CoreAgent:
                 if usage_limits and self.tool_call_count >= usage_limits.get("tools", float('inf')):
                     raise UsageLimitExceeded(f"Tool call limit reached: {usage_limits['tools']}")
 
-        # Extract structured output
-        if self.output_schema and self.instructor_client:
+        # Extract structured output when output_schema is a Pydantic BaseModel.
+        # Uses Instructor if available, otherwise falls back to manual JSON extraction.
+        _has_pydantic_schema = (
+            self.output_schema
+            and isinstance(self.output_schema, type)
+            and issubclass(self.output_schema, BaseModel)
+        )
+        if _has_pydantic_schema:
             output = await self._extract_structured(messages)
         else:
             # Return last assistant message content
@@ -526,12 +565,16 @@ class CoreAgent:
             out_val = output
         else:
             out_val = str(output)
-        out_attr = out_val[:4096] + "..." if len(out_val) > 4096 else out_val
-        parent_span.set_attribute(_TOOL_ATTR_OUTPUT, out_attr)
-        # Attach aggregated thinking content to the parent span
+        parent_trace = self._build_trace_output(out_val, thoughts)
+        if parent_trace:
+            parent_span.set_attribute(
+                _TOOL_ATTR_OUTPUT,
+                self._truncate_for_span_attr(parent_trace),
+            )
         if thoughts:
-            think_attr = thoughts[:4096] + "..." if len(thoughts) > 4096 else thoughts
+            think_attr = self._truncate_for_span_attr(thoughts)
             parent_span.set_attribute(_ATTR_LLM_THINKING, think_attr)
+            parent_span.add_event("llm.thinking", {"llm.thinking_content": think_attr})
         parent_span.set_status(trace.Status(trace.StatusCode.OK))
 
         return AgentResult(
@@ -1205,6 +1248,7 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
         kwargs = {
             "model": self.model,
             "messages": extraction_messages,
+            "response_format": {"type": "json_object"},
         }
         if self.api_base:
             kwargs["api_base"] = self.api_base
@@ -1311,6 +1355,103 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
             result = result[:max_chars] + "..."
 
         return result
+
+    @staticmethod
+    def _truncate_for_span_attr(text: str, max_len: int = 4096) -> str:
+        if len(text) <= max_len:
+            return text
+        return text[:max_len] + "..."
+
+    @staticmethod
+    def _get_attr_or_key(obj: Any, key: str, default: Any = None) -> Any:
+        if obj is None:
+            return default
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return getattr(obj, key, default)
+
+    @staticmethod
+    def _message_content_to_text(content: Any) -> str:
+        if content is None or content == "":
+            return ""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for block in content:
+                if isinstance(block, dict):
+                    if block.get("type") == "text" and isinstance(block.get("text"), str):
+                        parts.append(block["text"])
+                    elif "text" in block:
+                        parts.append(str(block["text"]))
+                elif isinstance(block, str):
+                    parts.append(block)
+            return "\n".join(p for p in parts if p)
+        return str(content)
+
+    def _set_llm_input_message_attributes(self, span: Any, messages: list[dict]) -> None:
+        """Flatten chat messages into OpenInference ``llm.input_messages.*`` attributes."""
+        for index, message in enumerate(messages):
+            prefix = f"{_LLM_INPUT_PREFIX}.{index}"
+            role = message.get("role")
+            if isinstance(role, str) and role:
+                span.set_attribute(f"{prefix}.{_LLM_MSG_ROLE}", role)
+            text = self._message_content_to_text(message.get("content", ""))
+            if text:
+                span.set_attribute(
+                    f"{prefix}.{_LLM_MSG_CONTENT}",
+                    self._truncate_for_span_attr(text),
+                )
+
+    def _set_llm_output_tool_call_attributes(self, span: Any, tool_calls: list[Any]) -> None:
+        """Flatten tool calls into OpenInference ``llm.output_messages.0.message.tool_calls.*``."""
+        base = f"{_LLM_OUTPUT_PREFIX}.0.{_LLM_MSG_TOOL_CALLS}"
+        for index, tool_call in enumerate(tool_calls):
+            p = f"{base}.{index}.tool_call"
+            tid = self._get_attr_or_key(tool_call, "id", "")
+            if isinstance(tid, str) and tid:
+                span.set_attribute(f"{p}.id", tid)
+            function = self._get_attr_or_key(tool_call, "function", None)
+            fname = self._get_attr_or_key(function, "name", "")
+            if isinstance(fname, str) and fname:
+                span.set_attribute(f"{p}.function.name", fname)
+            fargs = self._get_attr_or_key(function, "arguments", "")
+            if isinstance(fargs, str) and fargs:
+                span.set_attribute(
+                    f"{p}.function.arguments",
+                    self._truncate_for_span_attr(fargs),
+                )
+
+    @staticmethod
+    def _build_trace_output(final_text: str, thinking_text: str) -> str:
+        """Trace-visible text: thinking + final response (matches console-style sections)."""
+        if final_text and thinking_text:
+            return f"[Thinking]\n{thinking_text}\n\n[Response]\n{final_text}"
+        return thinking_text or final_text
+
+    @staticmethod
+    def _build_llm_trace_output(
+        content: str,
+        thinking_content: str,
+        tool_calls: list[Any],
+    ) -> str:
+        """Single-turn LLM trace payload; includes tool-call-only responses."""
+        base = CoreAgent._build_trace_output(content, thinking_content)
+        if base:
+            return base
+        if tool_calls:
+            names: list[str] = []
+            for tc in tool_calls:
+                fn = CoreAgent._get_attr_or_key(
+                    CoreAgent._get_attr_or_key(tc, "function", None),
+                    "name",
+                    "",
+                )
+                if isinstance(fn, str) and fn:
+                    names.append(fn)
+            if names:
+                return "[Tool calls] " + ", ".join(names)
+        return ""
 
     def _get_session_id(self, deps: Any) -> str:
         """Extract session_id from deps.

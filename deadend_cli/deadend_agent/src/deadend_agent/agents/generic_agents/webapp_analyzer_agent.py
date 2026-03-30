@@ -18,7 +18,7 @@ class WebAppAnalyzerAgent(AgentRunner):
         deps_type: Any | None,
     ):
         tools_metadata = {
-            "webapp_analyzer": render_tool_description("webapp_analyzer")
+            "webapp_analyzer": render_tool_description("webapp_analyzer"),
         }
 
         self.instructions = render_agent_instructions(
@@ -33,7 +33,7 @@ class WebAppAnalyzerAgent(AgentRunner):
             deps_type=deps_type,
             output_type=[AgentOutput, DeferredToolRequests],
             tools=[
-                Tool(webapp_analyzer)
+                Tool(webapp_analyzer),
             ]
         )
 

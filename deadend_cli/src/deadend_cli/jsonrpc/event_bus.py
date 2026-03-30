@@ -159,7 +159,6 @@ class EventBus:
         agent_name: str,
         thought: str,
         summary: Optional[str] = None,
-        relevance: float = 0.5,
     ) -> None:
         """Emit an AGENT_THOUGHT event."""
         event = AgentEvent.agent_thought(
@@ -167,7 +166,6 @@ class EventBus:
             agent_name=agent_name,
             thought=thought,
             summary=summary,
-            relevance=relevance,
         )
         self.publish_sync(event)
 

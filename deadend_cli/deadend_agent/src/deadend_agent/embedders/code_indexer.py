@@ -302,8 +302,9 @@ class SourceCodeIndexer:
         # Get the path to the data file within the package
         data_file = importlib.resources.files('deadend_agent').joinpath('data/vendor_specific_files.json')
 
-        with open(data_file, encoding="utf-8") as f:
-            patterns_json = f.read()
+        if isinstance(data_file, Path):
+            with open(data_file, encoding="utf-8") as f:
+                patterns_json = f.read()
 
         self.forbidden_patterns = json.loads(patterns_json)
 

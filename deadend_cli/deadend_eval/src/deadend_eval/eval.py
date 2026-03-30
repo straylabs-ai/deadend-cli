@@ -8,6 +8,7 @@ This module provides evaluation functionality for testing AI agent performance,
 security research capabilities, and workflow effectiveness using various
 evaluation metrics and testing scenarios.
 """
+from deadend_agent.agents import AgentOutput
 
 from datetime import datetime
 from pathlib import Path
@@ -20,8 +21,9 @@ from deadend_agent import (
     Sandbox,
     DeadEndAgent,
 )
-from deadend_agent.config.settings import ModelSpec
+from deadend_agent.config.settings import Config, ModelSpec
 from deadend_agent.models.registry import EmbedderClient
+from deadend_agent.utils.network import deterministic_session_id
 from deadend_eval.metrics import (
     instrument_agent_runner,
     global_metrics,
@@ -86,17 +88,9 @@ async def eval_deadend_agent(
         eval_metadata: EvalMetadata,
         hard_prompt: bool,
         # choosing between hard and soft prompt
-        guided: bool,
-        # If guided enabled, the evaluation runs also on the subtasks
-        human_intervention: bool,
-        # whether or not ask user to specify information.
-        with_context_engine: bool,
-        # With context engineering enabled
         with_code_indexing: bool,
         # With code indexing enabled, code RAG specific to the application
         with_knowledge_base: bool,
-        # Knowledge base represents the database RAG added for notes or technical documents.
-        output_report: str
     ):
     """Evaluate an AI agent's performance on a security challenge.
     
@@ -166,11 +160,17 @@ async def eval_deadend_agent(
         target_host = eval_metadata.target_host
 
     session_id = uuid4()
+    local_agent_id = Config.get_local_agent_id()
+    embedding_session_id = deterministic_session_id(eval_metadata.target_host or "localhost")
     deadend_agent = DeadEndAgent(
         session_id=session_id,
+        embedding_session_id=embedding_session_id,
         model=model,
         available_agents=generic_agents,
-        max_depth=2
+        max_depth=2,
+        agents_storage_root=Config.agents_storage_root,
+        local_agent_id=local_agent_id,
+        workspace_root=str(Path.cwd().resolve())
     )
     # Set challenge name for trace file naming
     deadend_agent.challenge_name = eval_metadata.name
@@ -202,38 +202,36 @@ async def eval_deadend_agent(
     if validation_token and len(validation_token) > 1 and eval_metadata.solution:
         solved = (validation_token == eval_metadata.solution)
         print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
+    elif deadend_agent.goal_achieved:
+        print(f"Validation stopped workflow in recon phase with token={validation_token}")
     else:
         print("Validation check: Continuing to the exploitation phase.")
 
     print(f"Plan produced is : {plan}")
     print(f"threat model is : {threat_model_data}")
-    # if threat_model_data.output:
-    #     print(f"Threat model is :\n{threat_model_data.output}")
-    #     threat_model_computed = threat_model_data.output.summarized_context
-    # else:
-    #     print(f"Threat model is :\n{threat_model_data[0].parts[0].content}")
-    #     threat_model_computed = threat_model_data[0].parts[0].content
+
     threat_model_computed = str(threat_model_data)
-    if not solved:
+    if not deadend_agent.goal_achieved:
         if len(validation_token) > 1:
             threat_model_computed += f"## Important NOTE\nThe flag found previously \
                 {str(validation_token)} is false and is not the right response. Find another way."
 
-        # Safely extract detailed_summary from threat_model_data
-        # When supervisor fails, detailed_summary may not be set
-        detailed_summary = threat_model_data.get('detailed_summary', '')
-        if not detailed_summary:
-            # Fallback to last_output if available
-            last_output = threat_model_data.get('last_output', '')
-            if isinstance(last_output, dict):
-                detailed_summary = last_output.get('detailed_summary', str(last_output))
-            else:
-                detailed_summary = str(last_output) if last_output else "No threat model data available"
+        # Pull the summary from the structured reporter output when available.
+        threat_model_output = getattr(threat_model_data, "output", threat_model_data)
+        if isinstance(threat_model_output, AgentOutput):
+            detailed_summary = threat_model_output.detailed_summary
+        else:
+            detailed_summary = str(threat_model_output)
 
-        plan, validation_token = await deadend_agent.run_exploitation(threat_model=detailed_summary, task=prompt)
+        task_node, validation_token = await deadend_agent.run_exploitation(
+            threat_model=detailed_summary,
+            task=prompt,
+        )
         if validation_token and len(validation_token) > 1 and eval_metadata.solution:
             solved = (validation_token == eval_metadata.solution)
             print(f"Validation check: expected={eval_metadata.solution}, got={validation_token}, solved={solved}")
+        elif deadend_agent.goal_achieved:
+            print(f"Validation stopped workflow in exploitation phase with token={validation_token}")
         else:
             print("Validation check: FLAG NOT FOUND.")
     # Render and persist metrics for the end user.
@@ -255,33 +253,3 @@ async def eval_deadend_agent(
     print(f"Deadend metrics summary written to {metrics_md_path}")
     print(f"Deadend metrics JSON written to {metrics_json_path}")
     print(metrics_md)
-    # case if not guided, i.e. not using subtasks
-    # if not guided:
-    #     judge_output = await workflow_agent.start_workflow(
-    #         prompt,
-    #         target=target_host,
-    #         validation_type=eval_metadata.validation_type,
-    #         validation_format=eval_metadata.validation_format
-    #     )
-    # else:
-    #     for subtask in eval_metadata.subtasks:
-    #         subtask_prompt = f"{subtask.subtask}\n{subtask.question}\n{subtask.hints}"
-    #         judge_output = await workflow_agent.start_workflow(
-    #             subtask_prompt,
-    #             target=target_host,
-    #             validation_type=eval_metadata.validation_type,
-    #             validation_format=eval_metadata.validation_format
-    #         )
-
-
-# async def eval_all_models(models: list[AIModel], evaluators: list[Evaluator], eval_metadata_path: str, output_report: str):
-#     """
-#     Eval function all models
-#     """
-#     for model in models:
-#         await eval_agent(
-#             model=model,
-#             # evaluators=evaluators,
-#             eval_metadata_path=eval_metadata_path,
-#             output_report=output_report
-#         )

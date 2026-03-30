@@ -114,8 +114,14 @@ class ShellDeps:
     
     Attributes:
         shell_runner: ShellRunner instance for command execution
+        session_id: Session identifier used by session-scoped tools such as AVFS
+        workspace_root: Optional host workspace mounted into AVFS for this session
     """
     shell_runner: ShellRunner
+    session_id: uuid.UUID
+    workspace_root: str | None = None
+    memory_workspace_root: str | None = None
+    memory_context: str = ""
 
 
 @dataclass
@@ -139,6 +145,8 @@ class RequesterDeps:
     target: str
     session_id: uuid.UUID
     embedding_session_id: uuid.UUID | None = None
+    memory_workspace_root: str | None = None
+    memory_context: str = ""
 
 @dataclass
 class WebappreconDeps:
@@ -162,6 +170,16 @@ class WebappreconDeps:
     shell_runner: ShellRunner
     session_id: uuid.UUID
     embedding_session_id: uuid.UUID | None = None
+    memory_workspace_root: str | None = None
+    memory_context: str = ""
+
+@dataclass
+class MemoryWorkspaceDeps:
+    """Dependencies shared by agents that need access to the memory workspace."""
+
+    session_id: str
+    memory_workspace_root: str | None = None
+    memory_context: str = ""
 
 @dataclass
 class RagDeps:

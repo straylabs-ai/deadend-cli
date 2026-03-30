@@ -8,12 +8,16 @@ from deadend_agent.agents import (
     RequesterAgent,
     ShellAgent,
     PythonInterpreterAgent, AgentOutput,
-    WebAppAnalyzerAgent
+    WebAppAnalyzerAgent,
+    MemoryAgent,
 )
 from deadend_agent.agents.components.planner import TaskNode
+from deadend_agent.agents.components.validation_strategies import ValidationGate, ValidationInput
+from deadend_agent.agents.reporter import ReporterAgent
 from deadend_agent.context import ContextEngine
 from deadend_agent.config.settings import ModelSpec
-from deadend_agent.utils.structures import WebappreconDeps, RequesterDeps, ShellDeps
+from deadend_agent.tools.avfs.write import write_text
+from deadend_agent.utils.structures import MemoryWorkspaceDeps, WebappreconDeps, RequesterDeps, ShellDeps
 
 
 class LogEvent(BaseModel):
@@ -28,8 +32,41 @@ class ResultEvent(BaseModel):
     confidence_score: float
     context: dict[str, Any]
 
+
+class ValidationStopEvent(BaseModel):
+    """Event emitted when validation confirms the root objective is solved."""
+
+    type: Literal["validation_stop"] = "validation_stop"
+    validation_token: str = ""
+    confidence_score: float
+    critique: str = ""
+    reporter_output: str = ""
+
 # Union type for all possible executor events
-ExecutorEvent = LogEvent | ResultEvent
+ExecutorEvent = LogEvent | ResultEvent | ValidationStopEvent
+
+
+def _memory_prompt_prefix(memory_context: str) -> str:
+    """Render persistent memory context as a prompt prefix for downstream agents."""
+    if not memory_context.strip():
+        return ""
+    return f"## Persistent Memory Context\n{memory_context.strip()}\n\n"
+
+
+def _build_memory_summary(agent_name: str, task: str, output: AgentOutput) -> str:
+    """Create a deterministic memory entry from structured agent output."""
+    summary = output.detailed_summary.strip() or "None"
+    proofs = output.proofs.strip() or "None"
+    thoughts = output.thoughts.strip() or "None"
+    return (
+        "## Task Summary\n"
+        f"- Agent: {agent_name}\n"
+        f"- Task: {task.strip()}\n"
+        f"- Confidence: {output.confidence_score:.2f}\n"
+        f"- Summary: {summary}\n"
+        f"- Proofs: {proofs}\n"
+        f"- Thoughts: {thoughts}\n\n"
+    )
 
 @dataclass
 class SupervisorDeps:
@@ -40,10 +77,14 @@ class SupervisorDeps:
     shell_deps: ShellDeps | None
     python_interpreter_agent: PythonInterpreterAgent
     webapp_analyzer_agent: WebAppAnalyzerAgent
+    memory_agent: MemoryAgent
+    memory_deps: MemoryWorkspaceDeps
     session_id: str
     message_history: list | None
     usage_limits: UsageLimits
     deferred_tool_results: DeferredToolResults | None
+    memory_context: str = ""
+    auth_session_key: str = ""
     context: ContextEngine | None = None  # Context engine for storing agent outputs
 
 class AgentExecutor:
@@ -63,7 +104,9 @@ class AgentExecutor:
         available_agents: dict[str, str] | None = None,
         agent_factory: Any | None = None,
         requires_approval: bool = False,
-        session_id: str | None = None
+        session_id: str | None = None,
+        validation_gate: ValidationGate | None = None,
+        reporter: ReporterAgent | None = None,
     ) -> None:
         """Initialize the AgentExecutor.
         
@@ -80,6 +123,10 @@ class AgentExecutor:
         self.requires_approval = requires_approval
         self.context = context
         self.session_id = session_id
+        self.validation_gate = validation_gate
+        self.reporter = reporter
+        self.memory_context = ""
+        self.auth_session_key = ""
 
         self.supervisor = SupervisorAgent(
             model=self.model,
@@ -106,124 +153,105 @@ class AgentExecutor:
         if webapprecon_deps is not None:
             self.webapprecon_deps = webapprecon_deps
 
-    # def _executor_message_yield(self, message) -> SupervisorOutput | AgentOutput | LogEvent | ResultEvent:
-    #     pass
+    def set_memory_context(self, memory_context: str) -> None:
+        """Register startup memory context for downstream agents."""
+        self.memory_context = memory_context
 
-    # async def execute(
-    #     self,
-    #     task_node: TaskNode,
-    #     agent_context: str = "",
-    #     usage: RunUsage = RunUsage(),
-    #     usage_limits: UsageLimits = UsageLimits(request_limit=None, tool_calls_limit=None),
-    #     deferred_tool_results: DeferredToolResults | None = None,
-    #     message_history: list | None = None
-    # ) -> AsyncGenerator[ExecutorEvent, None]:
-    #     """Execute a task node using the appropriate agent.
-        
-    #     The execution process:
-    #     1. Uses the router (if available) to determine which agent should handle the task
-    #     2. Attempts to get or create the selected specialized agent
-    #     3. Executes the task with the specialized agent or falls back to the generic runner
-    #     4. Extracts confidence score and updates context with execution results
-        
-    #     Args:
-    #         task_node: The TaskNode containing the task to execute
-    #         context: Current execution context (will be copied and updated)
-    #         deps: Optional dependencies to pass to the agent
-    #         usage: Usage tracking object
-    #         usage_limits: Limits for token usage
-    #         deferred_tool_results: Optional deferred tool results from previous runs
-    #         message_history: Previous conversation messages for context
-            
-    #     Yields:
-    #         LogEvent instances for streaming updates.
-    #         The final event is a ResultEvent instance.
-            
-    #     Note:
-    #         If routing fails or the selected agent cannot be created, execution falls back
-    #         to the generic runner. All routing and execution information is logged in the context.
-    #     """
-    #     context: dict[str, Any] = {"log": ""}
-    #     confidence_score: float | None = None
+    def set_auth_session_key(self, auth_session_key: str) -> None:
+        """Register the auth storage session key used by the python interpreter agent."""
+        self.auth_session_key = auth_session_key
 
-    #     def emit(message: str) -> LogEvent:
-    #         """Append a log entry to the context and return it for streaming."""
-    #         context["log"] += f"\n{message}"
-    #         return LogEvent(message=message)
+    def _build_validation_input(
+        self,
+        confidence_score: float,
+        result_context: dict[str, Any],
+    ) -> ValidationInput:
+        """Convert the latest supervisor result into structured validation input."""
+        return ValidationInput(
+            task_achieved=result_context.get("task_achieved", False),
+            detailed_summary=result_context.get("detailed_summary", ""),
+            proofs=result_context.get("proofs", ""),
+            confidence_score=confidence_score,
+        )
 
-    #     try:
-    #         yield emit(f"Current task: {task_node.task}\n")
+    async def _run_validation_and_report(
+        self,
+        validation_input: ValidationInput,
+    ) -> ValidationStopEvent | None:
+        """Validate the root goal and write the success report when solved.
 
-    #         routing_info = None
-    #         selected_agent: AgentRunner | None = None
-    #         if self.router:
-    #             try:
-    #                 router_result = await self.router.run(
-    #                     prompt=f"{agent_context}\nWhich agent should handle: {task_node.task}",
-    #                     deps=None,
-    #                     message_history=message_history or "",
-    #                     usage=usage,
-    #                     usage_limits=usage_limits,
-    #                     deferred_tool_results=None
-    #                 )
-    #                 routing_info = router_result.output
-    #                 if isinstance(routing_info, RouterOutput):
-    #                     yield emit(
-    #                         "Selected agent: "
-    #                         f"{routing_info.next_agent_name}\nReasoning: {routing_info.reasoning}"
-    #                     )
-    #                     selected_agent = self._get_agent(routing_info.next_agent_name)
-    #                     if selected_agent:
-    #                         yield emit(f"Using specialized agent: {routing_info.next_agent_name}")
-    #             except Exception as exc:
-    #                 yield emit(f"Routing failed: {exc}, using generic executor")
+        Validation is executed at the executor boundary so every supervisor
+        result is checked consistently, regardless of whether the caller is the
+        ADaPT planner or a direct top-level workflow entrypoint.
+        """
+        if self.validation_gate is None or self.reporter is None:
+            return None
+        if not self.context.final_goal:
+            return None
 
-    #         if isinstance(selected_agent, AgentRunner):
-    #             result = await self._run_agent(
-    #                 agent=selected_agent,
-    #                 prompt=agent_context+task_node.task,
-    #                 message_history=message_history,
-    #                 usage=usage,
-    #                 usage_limits=usage_limits,
-    #                 deferred_tool_results=deferred_tool_results
-    #             )
-    #             output = result.output
-    #             # print(f"test output : {output}")
-    #         else:
-    #             output = f"[AGENT RESPONSE] Error in agent running {selected_agent}"
+        verdict = await self.validation_gate.check(
+            output=validation_input,
+            root_goal=self.context.final_goal,
+            context=self.context.get_unified_context(max_tokens=8000),
+        )
+        if not verdict.stop:
+            return None
 
-    #         notes = ""
-    #         updated_state = {}
-    #         if isinstance(output, AgentOutput):
-    #             confidence_score = output.confidence_score
-    #             notes = output.notes
-    #             updated_state = output.updated_state or {}
-    #         else:
-    #             # Default confidence score when output is not an AgentOutput
-    #             confidence_score = 0.5
+        reporter_output = await self.reporter.summarize_and_write(
+            root_goal=self.context.final_goal,
+            verdict=verdict,
+            context=self.context.get_unified_context(max_tokens=100_000),
+            session_id=str(self.session_id),
+        )
+        return ValidationStopEvent(
+            validation_token=verdict.token,
+            confidence_score=verdict.confidence,
+            critique=verdict.critique,
+            reporter_output=reporter_output,
+        )
 
-    #         # yield emit(f"[EXECUTOR] Task: {task_node.task}\nNotes: {notes}\n{output}")
-    #         context.update(updated_state)
-    #         context["last_output"] = output.model_dump() if isinstance(output, AgentOutput) else str(output)
-    #         yield ResultEvent(
-    #             confidence_score=confidence_score,
-    #             context=context,
-    #         )
-    #         return
-    #     except UsageLimitExceeded as exc:
-    #         yield emit(f"[EXECUTOR] Usage limit reached: {exc}")
-    #         yield ResultEvent(
-    #             confidence_score=confidence_score or 0.5,
-    #             context=context,
-    #         )
-    #         return
-    #     except Exception as exc:
-    #         yield emit(f"[EXECUTOR] Error: {exc}")
-    #         yield ResultEvent(
-    #             confidence_score=confidence_score or 0.5,
-    #             context=context,
-    #         )
-    #         return
+    async def _refresh_memory_context_for_task(self, task_query: str) -> str:
+        """Retrieve task-specific memory immediately before supervisor execution."""
+        memory_workspace_root = (
+            self.requester_deps.memory_workspace_root
+            if self.requester_deps is not None
+            else (self.shell_deps.memory_workspace_root if self.shell_deps is not None else None)
+        )
+        if memory_workspace_root is None or self.session_id is None:
+            self.memory_context = ""
+            return self.memory_context
+
+        memory_agent = MemoryAgent(
+            model=self.model,
+            deps_type=MemoryWorkspaceDeps,
+        )
+        memory_deps = MemoryWorkspaceDeps(
+            session_id=self.session_id,
+            memory_workspace_root=memory_workspace_root,
+        )
+        result = await memory_agent.run(
+            prompt=(
+                f"Current task:\n{task_query}\n\n"
+                "Inspect the persistent memory workspace using AVFS tools with workspace=\"memory\". "
+                "Return only a concise task-relevant memory summary as plain text for the supervisor. "
+                "If memory is empty or not useful for this task, return a short plain-text statement saying that no relevant persisted memory is available."
+            ),
+            deps=memory_deps,
+            message_history=[],
+            usage=RunUsage(),
+            usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None),
+            deferred_tool_results=None,
+        )
+
+        output = getattr(result, "output", None)
+        self.memory_context = str(output).strip() if output is not None else ""
+        if self.shell_deps is not None:
+            self.shell_deps.memory_context = self.memory_context
+        if self.requester_deps is not None:
+            self.requester_deps.memory_context = self.memory_context
+        if self.webapprecon_deps is not None:
+            self.webapprecon_deps.memory_context = self.memory_context
+        return self.memory_context
 
     async def execute_supervisor(
         self,
@@ -256,7 +284,8 @@ class AgentExecutor:
             
         Yields:
             LogEvent instances for streaming updates.
-            The final event is a ResultEvent instance.
+            The final event is either a ResultEvent for continued execution or
+            a ValidationStopEvent when the root task has been solved.
         """
 
         context: dict[str, Any] = {"log": ""}
@@ -268,6 +297,7 @@ class AgentExecutor:
             return LogEvent(message=message)
 
         try:
+            await self._refresh_memory_context_for_task(task_node.task)
             yield emit(f"Current task: {task_node.task}\n")
             # Instantiate all generic agents
             requester_agent = RequesterAgent(
@@ -281,18 +311,31 @@ class AgentExecutor:
                 model=self.model,
                 deps_type=WebappreconDeps,
                 target_information=self.context.target,
-                requires_approval=self.requires_approval
+                requires_approval=self.requires_approval,
             ) if self.shell_deps is not None else None
 
             python_interpreter_agent = PythonInterpreterAgent(
                 model=self.model,
-                deps_type=str,
+                deps_type=MemoryWorkspaceDeps,
             )
 
             webapp_analyzer_agent = WebAppAnalyzerAgent(
                 model=self.model,
                 deps_type=RequesterDeps,
 
+            )
+            memory_deps = MemoryWorkspaceDeps(
+                session_id=self.session_id or "",
+                memory_workspace_root=(
+                    self.requester_deps.memory_workspace_root
+                    if self.requester_deps is not None
+                    else (self.shell_deps.memory_workspace_root if self.shell_deps is not None else None)
+                ),
+                memory_context=self.memory_context,
+            )
+            memory_agent = MemoryAgent(
+                model=self.model,
+                deps_type=MemoryWorkspaceDeps,
             )
 
             # Create supervisor dependencies
@@ -303,10 +346,14 @@ class AgentExecutor:
                 shell_deps=self.shell_deps,
                 python_interpreter_agent=python_interpreter_agent,
                 webapp_analyzer_agent=webapp_analyzer_agent,
+                memory_agent=memory_agent,
+                memory_deps=memory_deps,
                 session_id=self.session_id or "",
                 message_history=message_history,
                 usage_limits=usage_limits,
                 deferred_tool_results=deferred_tool_results,
+                memory_context=self.memory_context,
+                auth_session_key=self.auth_session_key,
                 context=self.context  # Pass context for storing agent outputs
             )
 
@@ -369,7 +416,6 @@ class AgentExecutor:
                         agent_name=agent_name,
                         thought=thoughts,
                         summary="",  # Let context auto-generate summary
-                        relevance=0.9
                     )
 
                 # Log the full agent response - NO TRUNCATION
@@ -380,16 +426,25 @@ class AgentExecutor:
                     skip_structured=False
                 )
 
+            def _persist_agent_summary(agent_name: str, task: str, output: AgentOutput) -> None:
+                """Persist a deterministic summary into the memory workspace."""
+                write_text(
+                    f"summaries/{agent_name}.md",
+                    _build_memory_summary(agent_name, task, output),
+                    session_id=self.session_id,
+                    workspace="memory",
+                    append=True,
+                )
+
             # Create tool functions using RunContext for agent delegation
             @supervisor.agent.tool
             async def call_requester_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the requester agent to perform HTTP request testing."""
-                print(f"input tool looking for the error : {prompt}")
-
                 if ctx.deps.requester_agent is None or ctx.deps.requester_deps is None:
                     return "Requester agent dependencies not configured."
+                memory_prefix = _memory_prompt_prefix(ctx.deps.memory_context)
                 result = await ctx.deps.requester_agent.run(
-                    prompt,
+                    f"{memory_prefix}{prompt}",
                     deps=ctx.deps.requester_deps,
                     message_history=ctx.deps.message_history,
                     usage=ctx.usage,
@@ -397,24 +452,27 @@ class AgentExecutor:
                     deferred_tool_results=ctx.deps.deferred_tool_results
                 )
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
-                    # Add output to context for future reference
                     _add_agent_output_to_context(
                         task=task_node.task,
                         context=ctx.deps.context,
                         agent_name="requester",
                         output=result.output
                     )
-                    return f"Requester agent result: {result.output.model_dump()}"
-                return str(result.output) if hasattr(result, 'output') else str(result)
+                    _persist_agent_summary("requester", prompt, result.output)
+                    result_str = f"Requester agent result: {result.output.model_dump()}"
+                else:
+                    result_str = str(result.output) if hasattr(result, 'output') else str(result)
+                emit(f"[requester] prompt={prompt[:200]} | result={result_str[:300]}")
+                return result_str
 
             @supervisor.agent.tool
             async def call_shell_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the shell agent to execute shell commands."""
-                print(f"input tool looking for the error : {prompt}")
                 if ctx.deps.shell_agent is None or ctx.deps.shell_deps is None:
                     return "Shell agent dependencies not configured."
+                memory_prefix = _memory_prompt_prefix(ctx.deps.memory_context)
                 result = await ctx.deps.shell_agent.run(
-                    prompt,
+                    f"{memory_prefix}{prompt}",
                     deps=ctx.deps.shell_deps,
                     message_history=ctx.deps.message_history,
                     usage=ctx.usage,
@@ -422,59 +480,79 @@ class AgentExecutor:
                     deferred_tool_results=ctx.deps.deferred_tool_results
                 )
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
-                    # Add output to context for future reference
                     _add_agent_output_to_context(
                         task=task_node.task,
                         context=ctx.deps.context,
                         agent_name="shell",
                         output=result.output
                     )
-                    return f"Shell agent result: {result.output.model_dump()}"
-                return str(result.output) if hasattr(result, 'output') else str(result)
+                    _persist_agent_summary("shell", prompt, result.output)
+                    result_str = f"Shell agent result: {result.output.model_dump()}"
+                else:
+                    result_str = str(result.output) if hasattr(result, 'output') else str(result)
+                emit(f"[shell] prompt={prompt[:200]} | result={result_str[:300]}")
+                return result_str
             
             @supervisor.agent.tool
             async def call_webapp_analyzer_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
-                print(f"input tool looking for the error : {prompt}")
-
-                print(ctx.deps.requester_deps)
+                """Call the webapp analyzer agent to analyze web application structure and behavior."""
+                memory_prefix = _memory_prompt_prefix(ctx.deps.memory_context)
                 result = await ctx.deps.webapp_analyzer_agent.run(
-                    prompt,
+                    f"{memory_prefix}{prompt}",
                     deps=ctx.deps.requester_deps,
                     message_history=ctx.deps.message_history,
                     usage=ctx.usage,
                     usage_limits=ctx.deps.usage_limits,
-                    deferred_tool_results=ctx.deps.deferred_tool_results 
+                    deferred_tool_results=ctx.deps.deferred_tool_results
                 )
-
-                return str(result.output.model_dump())
+                result_str = str(result.output.model_dump())
+                emit(f"[webapp_analyzer] prompt={prompt[:200]} | result={result_str[:300]}")
+                return result_str
 
             @supervisor.agent.tool
             async def call_python_interpreter_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the python interpreter agent to execute Python scripts."""
-                print(f"input tool looking for the error : {prompt}")
-
+                memory_prefix = _memory_prompt_prefix(ctx.deps.memory_context)
                 result = await ctx.deps.python_interpreter_agent.run(
-                    prompt,
-                    deps=ctx.deps.session_id,
-                    session_key=ctx.deps.session_id,
+                    f"{memory_prefix}{prompt}",
+                    deps=ctx.deps.memory_deps,
+                    session_key=ctx.deps.auth_session_key,
                     message_history=ctx.deps.message_history,
                     usage=ctx.usage,
                     usage_limits=ctx.deps.usage_limits,
                     deferred_tool_results=ctx.deps.deferred_tool_results
                 )
                 if hasattr(result, 'output') and isinstance(result.output, AgentOutput):
-                    # Add output to context for future reference
                     _add_agent_output_to_context(
                         task=task_node.task,
                         context=ctx.deps.context,
                         agent_name="python_interpreter",
                         output=result.output
-                    )                    
-                    return f"Python interpreter agent result: {result.output.model_dump()}"
-                return str(result.output) if hasattr(result, 'output') else str(result)
+                    )
+                    _persist_agent_summary("python_interpreter", prompt, result.output)
+                    result_str = f"Python interpreter agent result: {result.output.model_dump()}"
+                else:
+                    result_str = str(result.output) if hasattr(result, 'output') else str(result)
+                emit(f"[python_interpreter] prompt={prompt[:200]} | result={result_str[:300]}")
+                return result_str
+
+            @supervisor.agent.tool
+            async def call_memory_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
+                """Call the memory agent to inspect or update persistent notes."""
+                result = await ctx.deps.memory_agent.run(
+                    prompt,
+                    deps=ctx.deps.memory_deps,
+                    message_history=ctx.deps.message_history,
+                    usage=ctx.usage,
+                    usage_limits=ctx.deps.usage_limits,
+                    deferred_tool_results=ctx.deps.deferred_tool_results,
+                )
+                return str(result.output.model_dump()) if hasattr(result, "output") else str(result)
 
             # Execute task with supervisor
             supervisor_prompt = f"Your task is : {task_node.task}\n"
+            if supervisor_deps.memory_context:
+                supervisor_prompt += f"## Persistent Memory Context:\n{supervisor_deps.memory_context}\n"
             if agent_context:
                 supervisor_prompt += f"## Traces: \n{agent_context}\n"
 
@@ -503,6 +581,15 @@ class AgentExecutor:
                 context["detailed_summary"] = output_str
                 context["task_achieved"] = False
                 context["proofs"] = ""
+
+            validation_input = self._build_validation_input(
+                confidence_score=confidence_score,
+                result_context=context,
+            )
+            validation_event = await self._run_validation_and_report(validation_input)
+            if validation_event is not None:
+                yield validation_event
+                return
 
             yield ResultEvent(
                 confidence_score=confidence_score,

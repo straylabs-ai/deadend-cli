@@ -1,0 +1,21 @@
+## MEMORY SUMMARY
+
+At the end of your work, append a concise summary to the persistent memory workspace using `write_memory_file(...)`.
+For the memory workspace, use `write_memory_file` for writes and the dedicated memory tools for retrieval.
+
+Requirements:
+- Write only factual summaries derived from the work you actually performed.
+- Include what you tested, what worked, what failed, and the best next step.
+- Append to a stable file for your agent type so later runs can build on it.
+
+Recommended path:
+- `summaries/{{agent_name}}.md`
+
+Recommended format:
+```text
+## Task Summary
+- Objective: ...
+- Actions: ...
+- Findings: ...
+- Next step: ...
+```

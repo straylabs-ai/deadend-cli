@@ -86,14 +86,12 @@ class EventBusHooksAdapter:
         agent_name: str,
         thought: str,
         summary: Optional[str] = None,
-        relevance: float = 0.5,
     ) -> None:
         self._bus.emit_agent_thought(
             session_id=session_id,
             agent_name=agent_name,
             thought=thought,
             summary=summary,
-            relevance=relevance,
         )
 
     def emit_agent_routed(

@@ -109,7 +109,7 @@ function App({ cliArgs }: AppProps) {
 
         // Initialize all components at once using init_all
         setInitStatus("Initializing all components...");
-        // We can wait longer here for pgvector and the sandbox
+        // Allow time for sandboxes and Playwright during init_all
         const initResult = await client.initAll(300000);
 
         // Store component results for display
@@ -125,7 +125,7 @@ function App({ cliArgs }: AppProps) {
         }
 
         // Check for critical failures (all components required for task execution)
-        const criticalComponents = ["docker", "config", "model_registry", "pgvector", "shell_sandbox"];
+        const criticalComponents = ["docker", "config", "model_registry", "rag", "shell_sandbox"];
         const criticalFailures = initResult.failed_components.filter(
           (c) => criticalComponents.includes(c)
         );

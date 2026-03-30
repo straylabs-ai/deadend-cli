@@ -87,7 +87,7 @@ class RequesterAgent(AgentRunner):
             deps_type=deps_type,
             output_type=[RequesterOutput, DeferredToolRequests],
             tools=[
-                Tool(pw_send_payload, requires_approval=requires_approval)
+                Tool(pw_send_payload, requires_approval=requires_approval),
             ]
         )
 

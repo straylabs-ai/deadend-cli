@@ -48,7 +48,7 @@ class ComponentManager:
 
         # Component states
         self.docker_state = ComponentState(name="docker")
-        self.pgvector_state = ComponentState(name="pgvector")
+        self.rag_state = ComponentState(name="rag")
         self.config_state = ComponentState(name="config")
         self.model_registry_state = ComponentState(name="model_registry")
         self.python_sandbox_state = ComponentState(name="python_sandbox")
@@ -122,18 +122,18 @@ class ComponentManager:
         immediately.
         """
         logger.debug("Initializing RAG session manager...")
-        self.pgvector_state.status = ComponentStatus.INITIALIZING
+        self.rag_state.status = ComponentStatus.INITIALIZING
         try:
             storage_root = self.config.agents_storage_root if self.config else None
             self.rag_session_manager = init_rag_session_manager(
                 storage_root=storage_root
             )
 
-            self.pgvector_state.status = ComponentStatus.READY
-            self.pgvector_state.metadata["storage_root"] = str(
+            self.rag_state.status = ComponentStatus.READY
+            self.rag_state.metadata["storage_root"] = str(
                 self.rag_session_manager._root
             )
-            self.pgvector_state.last_check = datetime.now()
+            self.rag_state.last_check = datetime.now()
 
             logger.debug("RAG session manager initialized at %s", self.rag_session_manager._root)
             return InitResult(
@@ -145,8 +145,8 @@ class ComponentManager:
             )
         except Exception as e:
             logger.error("RAG initialization failed: %s", e)
-            self.pgvector_state.status = ComponentStatus.ERROR
-            self.pgvector_state.error_message = str(e)
+            self.rag_state.status = ComponentStatus.ERROR
+            self.rag_state.error_message = str(e)
             return InitResult(
                 success=False,
                 component="rag",
@@ -487,7 +487,7 @@ class ComponentManager:
                 )
 
             latency = (time.time() - start_time) * 1000
-            self.pgvector_state.last_check = datetime.now()
+            self.rag_state.last_check = datetime.now()
 
             return HealthResult(
                 component="rag",
@@ -497,7 +497,7 @@ class ComponentManager:
                 latency_ms=latency,
             )
         except Exception as e:
-            self.pgvector_state.status = ComponentStatus.UNHEALTHY
+            self.rag_state.status = ComponentStatus.UNHEALTHY
             return HealthResult(
                 component="rag",
                 healthy=False,
@@ -669,7 +669,7 @@ class ComponentManager:
             raise RuntimeError(
                 "Model registry not initialized. Call init_model_registry() first."
             )
-        logger.info("models : %s", str(self.model_registry._models))
+
         if not self.model_registry.has_any_model():
             raise RuntimeError(
                 "No LLM model configured. Run `deadend init` to initialize the model configuration."
