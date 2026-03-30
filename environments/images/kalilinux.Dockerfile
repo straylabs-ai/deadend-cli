@@ -31,8 +31,8 @@ RUN apt-get update --fix-missing && \
         amap apt-utils bsdmainutils cewl crackmapexec crunch \
         dnsenum dnsrecon dnsutils dos2unix enum4linux ftp hping3 \
         joomscan kpcli libffi-dev mimikatz nasm nbtscan onesixtyone \
-        oscanner passing-the-hash patator php powershell powersploit \
-        theharvester whois wpscan && \
+        oscanner passing-the-hash patator php\
+        theharvester wpscan && \
     pipx install semgrep && \
     apt-get autoremove -y && \
     apt-get clean && \
