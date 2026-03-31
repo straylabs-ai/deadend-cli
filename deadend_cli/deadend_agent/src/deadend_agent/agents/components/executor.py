@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import json
 from typing import Any, Literal, AsyncGenerator
 import asyncio
 from pydantic import BaseModel
@@ -67,6 +68,26 @@ def _build_memory_summary(agent_name: str, task: str, output: AgentOutput) -> st
         f"- Proofs: {proofs}\n"
         f"- Thoughts: {thoughts}\n\n"
     )
+
+
+def _format_tool_result_for_supervisor(agent_name: str, output: Any) -> str:
+    """Render tool/agent output in a stable format that preserves key details for downstream reasoning."""
+    if isinstance(output, AgentOutput):
+        return (
+            f"{agent_name} agent result\n"
+            f"confidence_score: {output.confidence_score:.2f}\n"
+            f"detailed_summary:\n{output.detailed_summary or 'None'}\n\n"
+            f"proofs:\n{output.proofs or 'None'}\n\n"
+            f"thoughts:\n{output.thoughts or 'None'}"
+        )
+
+    if isinstance(output, BaseModel):
+        return (
+            f"{agent_name} agent result\n"
+            f"{json.dumps(output.model_dump(), indent=2, ensure_ascii=False)}"
+        )
+
+    return f"{agent_name} agent result\n{str(output)}"
 
 @dataclass
 class SupervisorDeps:
@@ -523,9 +544,10 @@ class AgentExecutor:
                         output=result.output
                     )
                     _persist_agent_summary("requester", prompt, result.output)
-                    result_str = f"Requester agent result: {result.output.model_dump()}"
+                    result_str = _format_tool_result_for_supervisor("requester", result.output)
                 else:
-                    result_str = str(result.output) if hasattr(result, 'output') else str(result)
+                    result_output = result.output if hasattr(result, "output") else result
+                    result_str = _format_tool_result_for_supervisor("requester", result_output)
                 emit(f"[requester] prompt={prompt[:200]} | result={result_str[:300]}")
                 return result_str
 
@@ -551,9 +573,10 @@ class AgentExecutor:
                         output=result.output
                     )
                     _persist_agent_summary("shell", prompt, result.output)
-                    result_str = f"Shell agent result: {result.output.model_dump()}"
+                    result_str = _format_tool_result_for_supervisor("shell", result.output)
                 else:
-                    result_str = str(result.output) if hasattr(result, 'output') else str(result)
+                    result_output = result.output if hasattr(result, "output") else result
+                    result_str = _format_tool_result_for_supervisor("shell", result_output)
                 emit(f"[shell] prompt={prompt[:200]} | result={result_str[:300]}")
                 return result_str
             
@@ -569,7 +592,8 @@ class AgentExecutor:
                     usage_limits=ctx.deps.usage_limits,
                     deferred_tool_results=ctx.deps.deferred_tool_results
                 )
-                result_str = str(result.output.model_dump())
+                result_output = result.output if hasattr(result, "output") else result
+                result_str = _format_tool_result_for_supervisor("webapp_analyzer", result_output)
                 emit(f"[webapp_analyzer] prompt={prompt[:200]} | result={result_str[:300]}")
                 return result_str
 
@@ -594,9 +618,10 @@ class AgentExecutor:
                         output=result.output
                     )
                     _persist_agent_summary("python_interpreter", prompt, result.output)
-                    result_str = f"Python interpreter agent result: {result.output.model_dump()}"
+                    result_str = _format_tool_result_for_supervisor("python_interpreter", result.output)
                 else:
-                    result_str = str(result.output) if hasattr(result, 'output') else str(result)
+                    result_output = result.output if hasattr(result, "output") else result
+                    result_str = _format_tool_result_for_supervisor("python_interpreter", result_output)
                 emit(f"[python_interpreter] prompt={prompt[:200]} | result={result_str[:300]}")
                 return result_str
 

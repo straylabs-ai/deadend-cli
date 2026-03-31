@@ -137,6 +137,7 @@ class AgentResult(BaseModel):
     """
     output: Any = Field(..., description="Agent output")
     thoughts: str = Field(default="", description="Agent reasoning/thoughts")
+    raw_messages: list[dict] = Field(default_factory=list, description="Full conversation transcript including tool results")
     usage: TokenUsageInfo = Field(default_factory=TokenUsageInfo, description="Token usage")
     request_count: int = Field(default=0, description="LLM requests made")
     tool_call_count: int = Field(default=0, description="Tool calls executed")
@@ -606,6 +607,7 @@ class CoreAgent:
         return AgentResult(
             output=output,
             thoughts=thoughts,
+            raw_messages=messages.copy(),
             usage=TokenUsageInfo(
                 prompt_tokens=self.prompt_tokens,
                 completion_tokens=self.completion_tokens,

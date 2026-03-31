@@ -232,6 +232,9 @@ Your output MUST have these FOUR fields:
 - Commands executed and their purpose (nmap, ffuf, nikto, etc.)
 - What was discovered (ports, services, versions, endpoints)
 - What failed and why (timeout, filtered, no results)
+- All successful actions that materially advanced the task, even if the raw proof is elsewhere
+- Exact command, target, artifact, and preconditions needed for another agent to continue correctly
+- If a reproducible finding or exploit path emerges from the command output, summarize it explicitly
 - Next steps to try (ONLY on discovered targets, never guess)
 
 ### proofs (string)
