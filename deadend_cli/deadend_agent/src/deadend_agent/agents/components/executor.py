@@ -611,7 +611,12 @@ class AgentExecutor:
                     usage_limits=ctx.deps.usage_limits,
                     deferred_tool_results=ctx.deps.deferred_tool_results,
                 )
-                return str(result.output.model_dump()) if hasattr(result, "output") else str(result)
+                if not hasattr(result, "output"):
+                    return str(result)
+                output = result.output
+                if isinstance(output, BaseModel):
+                    return str(output.model_dump())
+                return str(output)
 
             # Execute task with supervisor
             supervisor_prompt = f"Your task is : {task_node.task}\n"
