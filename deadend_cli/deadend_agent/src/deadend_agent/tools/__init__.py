@@ -19,7 +19,6 @@ from .browser_automation import (
 
 from .python_interpreter import run_python_file, read_auth_storage
 from .webapp_code_rag import webapp_code_rag
-from .grep import grep_session_logs
 from .webapp_analyzer import webapp_analyzer
 from .tool_wrappers import with_tool_events, wrap_tool_with_events
 from .avfs import (
@@ -60,8 +59,6 @@ __all__ = [
     "pw_send_payload",
     "cleanup_playwright_sessions",
     "cleanup_playwright_session_for_target",
-    # Grep
-    "grep_session_logs",
     # web app analyzer
     "webapp_analyzer",
     # AVFS

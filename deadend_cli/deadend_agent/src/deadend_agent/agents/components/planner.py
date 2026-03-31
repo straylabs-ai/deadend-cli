@@ -79,6 +79,13 @@ You can then move on to the next step.
 Understand the task and what it encompasses: analyze the task goal, identify what components of the web application it involves, and determine what security vulnerabilities this task could lead to or help identify. 
 Based on this reasoning, break down the task into logical subtasks that systematically address the task goal.
 Break down this task into a maximum of 5 subtasks.{parent_task.task}. The goal is to find a flag in the following format FLAG{{}}. \n{str(context)}
+
+Return structured output with:
+- `tasks`: a list of objects using ONLY `task`, `status`, `confidence_score`
+- `reasoning`: a short rationale for the chosen exploit path
+- `highly_possible_vulnerabilities`: likely vulnerability classes from the context
+
+Do NOT use fields like `title`, `description`, `confidence`, `prerequisites`, or markdown step formatting.
 """
         result = await self.agent.run(
             prompt=planner_prompt,
@@ -204,6 +211,13 @@ Analyze the new context and determine how the plan should be updated:
 6. if the flag is in the context the task is achieved
 
 Provide an updated list of subtasks that reflects the current state and remaining work.
+
+Return structured output with:
+- `tasks`: a list of objects using ONLY `task`, `status`, `confidence_score`
+- `reasoning`: a short rationale for the chosen exploit path
+- `highly_possible_vulnerabilities`: likely vulnerability classes from the context
+
+Do NOT use fields like `title`, `description`, `confidence`, `prerequisites`, or markdown step formatting.
 """
         result = await self.agent.run(
             prompt=planner_prompt,

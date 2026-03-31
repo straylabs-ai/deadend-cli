@@ -15,7 +15,7 @@ import typer
 
 from rich.console import Console
 from deadend_agent import config_setup
-from deadend_agent.core import start_python_sandbox
+from deadend_agent.core import start_python_sandbox, stop_python_sandbox
 from .cli_logging import setup_logging
 from .init import init_cli_config, check_docker
 from .eval import eval_interface
@@ -98,7 +98,7 @@ def eval_agent(
         )
     finally:
         if python_process.poll() is None:
-            python_process.terminate()
+            stop_python_sandbox(python_process)
 
 
 @app.command()

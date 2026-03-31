@@ -12,7 +12,7 @@ injection containers, and task management structures.
 import uuid
 from typing import Dict
 from dataclasses import dataclass
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from deadend_agent.rag.sqlite_connector import SqliteRagConnector
 from deadend_agent.sandbox.sandbox import Sandbox
 from deadend_agent.models.registry import EmbedderClient
@@ -201,8 +201,9 @@ class RagDeps:
     session_id: uuid.UUID
     embedding_session_id: uuid.UUID | None = None
 
-@dataclass(frozen=True)
-class TaskPlanner:
+class TaskPlanner(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     confidence_score: float
     task: str
     status: str

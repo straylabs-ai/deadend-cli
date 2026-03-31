@@ -12,6 +12,7 @@ through various evaluation scenarios and metrics.
 import json
 from rich import print as console_printer
 from deadend_agent import Config, init_rag_session_manager, sandbox_setup, ModelRegistry
+from deadend_agent.tools.browser_automation import cleanup_playwright_sessions
 from deadend_eval.eval import EvalMetadata, eval_deadend_agent
 
 async def eval_interface(
@@ -86,20 +87,45 @@ async def eval_interface(
         raise SystemExit(1) from exc
 
     # adding automatic build and ask prompt
-    sandbox_id = sandbox_manager.create_sandbox(
-        image="xoxruns/sandboxed_kali",
-        volume_path=eval_metadata.assets_path
-    )
-    sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)
-    embedder_client = model_registry.get_embedder_model()
-    await eval_deadend_agent(
-        model=model_registry.get_model(provider=provider, model_name=model_name),
-        embedder_client=embedder_client,
-        code_indexer_db=rag_db,
-        sandbox=sandbox,
-        eval_metadata=eval_metadata,
-        with_code_indexing=True,
-        with_knowledge_base=True,
-        hard_prompt=False
-    )
+    sandbox_id = None
+    sandbox = None
 
+    try:
+        sandbox_id = sandbox_manager.create_sandbox(
+            image="xoxruns/sandboxed_kali",
+            volume_path=eval_metadata.assets_path
+        )
+        sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)
+        embedder_client = model_registry.get_embedder_model()
+        await eval_deadend_agent(
+            model=model_registry.get_model(provider=provider, model_name=model_name),
+            embedder_client=embedder_client,
+            code_indexer_db=rag_db,
+            sandbox=sandbox,
+            eval_metadata=eval_metadata,
+            with_code_indexing=True,
+            with_knowledge_base=True,
+            hard_prompt=False
+        )
+    finally:
+        # Eval-agent does not go through the normal ComponentManager shutdown path,
+        # so cleanup must happen explicitly here.
+        try:
+            await cleanup_playwright_sessions()
+        except Exception as exc:
+            console_printer(f"[yellow]Playwright cleanup failed: {exc}[/yellow]")
+
+        try:
+            await rag_manager.close_all()
+        except Exception as exc:
+            console_printer(f"[yellow]RAG cleanup failed: {exc}[/yellow]")
+
+        try:
+            if sandbox is not None:
+                sandbox.cleanup()
+            elif sandbox_id is not None:
+                managed_sandbox = sandbox_manager.get_sandbox(sandbox_id=sandbox_id)
+                if managed_sandbox is not None:
+                    managed_sandbox.cleanup()
+        except Exception as exc:
+            console_printer(f"[yellow]Sandbox cleanup failed: {exc}[/yellow]")
