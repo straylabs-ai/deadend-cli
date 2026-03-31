@@ -520,15 +520,20 @@ def main(
 
         available_agents = {
             "requester": (
-                "Agent specialized in fine-grained testing and sending raw request data. "
-                "Best for gathering auth tokens, testing individual endpoints, and precise "
-                "request manipulation."
+                "Agent specialized in quick targeted HTTP testing. "
+                "Best default for simple requests, auth checks, individual endpoints, "
+                "and lightweight payload validation."
             ),
             "python_interpreter": (
                 "Agent specialized in generating code and running it safely in a sandbox. "
-                "Best for fuzzing, parameter testing, and repetitive security testing operations."
+                "Best for fuzzing, repeated exploit attempts, sending many requests, "
+                "parameter testing, and stateful security testing operations."
             ),
-            "shell": "Agent providing access to a bash shell for running Linux commands.",
+            "shell": (
+                "Agent providing access to a bash shell for CLI tooling. "
+                "Use for curl when exact request control is required and for external "
+                "security tools such as ffuf, gobuster, sqlmap, or nmap."
+            ),
             "memory": "Agent specialized in reading and writing the persistent memory workspace under the agent cache.",
             "router_agent": "Router agent that selects the appropriate specialized agent.",
             "webapp_analyzer": (

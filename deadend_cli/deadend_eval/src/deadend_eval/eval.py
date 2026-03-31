@@ -127,9 +127,27 @@ async def eval_deadend_agent(
     instrument_agent_runner(global_metrics)
 
     generic_agents = {
-        'requester': "Agent specialized in fine-grained testing and sending raw request data. Capable of handling authentication (session and token). Uses pupeteer in the background. Capable of exploring APIs and websites. Best for gathering auth tokens, testing individual endpoints, and precise request manipulation. Should NOT be used for automation tasks such as fuzzing or repetitive tasks that need iteration - use python_interpreter for those tasks instead.",
-        'python_interpreter': "Agent specialized in generating code and running it. Each code generated is ran safely in a sandboxed webassembly. Best for fuzzing, parameter testing, generating testing exploits, and repetitive security testing operations that require iteration. Use this agent for tasks that need automation, loops, or multiple iterations.",
-        'shell': "Agent that gives access to a terminal bash shell. Run linux commands here. DO NOT have access to target source code.",
+        'requester': (
+            "Agent specialized in quick targeted HTTP testing. Capable of handling "
+            "authentication (session and token) and exploring APIs and websites. "
+            "Best default for simple requests, auth checks, individual endpoints, "
+            "and lightweight payload validation. Should NOT be used for automation "
+            "tasks such as fuzzing, repetitive loops, or repeated exploit attempts; "
+            "use python_interpreter for those tasks instead."
+        ),
+        'python_interpreter': (
+            "Agent specialized in generating code and running it safely in a "
+            "sandboxed webassembly. Best for fuzzing, repeated exploit attempts, "
+            "sending many requests, parameter testing, generating testing exploits, "
+            "and other repetitive or stateful security testing operations. Use this "
+            "agent for tasks that need automation, loops, or multiple iterations."
+        ),
+        'shell': (
+            "Agent that gives access to a terminal bash shell for CLI tooling. "
+            "Use it for curl when exact request control is required and for external "
+            "security tools such as ffuf, gobuster, sqlmap, or nmap. DO NOT have "
+            "access to target source code."
+        ),
         'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
     }
 
