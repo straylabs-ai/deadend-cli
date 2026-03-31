@@ -266,7 +266,7 @@ class Sandbox(BaseModel):
         # Debug: Check container state and responsiveness
         try:
             container_status = container.status
-            print("Container status: %s", container_status)
+            # print("Container status: %s", container_status)
 
             # Test basic container responsiveness with a simple command
             health_check = container.exec_run(["/bin/bash", "-c", "echo 'health_check'"])

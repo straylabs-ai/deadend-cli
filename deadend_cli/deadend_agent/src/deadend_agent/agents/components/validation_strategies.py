@@ -73,6 +73,9 @@ class ValidationInput(BaseModel):
     detailed_summary: str = ""
     proofs: str = ""
     confidence_score: float = 0.0
+    latest_response: str = ""
+    subagent_log: str = ""
+    supervisor_history: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +301,9 @@ class JudgeAgentStrategy:
             f"Summary: {output.detailed_summary}\n"
             f"Proofs: {output.proofs}\n"
             f"Confidence: {output.confidence_score}\n\n"
+            f"## Latest Supervisor Response\n{output.latest_response or 'N/A'}\n\n"
+            f"## Latest Subagent Execution Log\n{output.subagent_log or 'N/A'}\n\n"
+            f"## Prior Supervisor Context\n{output.supervisor_history or 'N/A'}\n\n"
             "# Execution Trace\n"
             f"{context}\n\n"
             "# Instructions\n"

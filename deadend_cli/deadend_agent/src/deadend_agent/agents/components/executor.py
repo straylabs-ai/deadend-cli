@@ -172,11 +172,75 @@ class AgentExecutor:
             detailed_summary=result_context.get("detailed_summary", ""),
             proofs=result_context.get("proofs", ""),
             confidence_score=confidence_score,
+            latest_response=str(result_context.get("supervisor_response", result_context.get("last_output", ""))),
+            subagent_log=result_context.get("log", ""),
+            supervisor_history=result_context.get("supervisor_history", ""),
+        )
+
+    def _build_validation_context(
+        self,
+        validation_input: ValidationInput,
+        max_tokens: int,
+    ) -> str:
+        """Build a reporter/validator context that preserves the latest iteration details."""
+        unified_context = self.context.get_unified_context(max_tokens=max_tokens)
+        sections = [unified_context]
+
+        latest_supervisor_response = validation_input.latest_response.strip()
+        if latest_supervisor_response:
+            sections.append(
+                "## Latest Supervisor Response\n"
+                f"{latest_supervisor_response}"
+            )
+
+        latest_subagent_log = validation_input.subagent_log.strip()
+        if latest_subagent_log:
+            sections.append(
+                "## Latest Subagent Execution Log\n"
+                f"{latest_subagent_log}"
+            )
+
+        supervisor_history = validation_input.supervisor_history.strip()
+        if supervisor_history:
+            sections.append(
+                "## Supervisor Input Context\n"
+                f"{supervisor_history}"
+            )
+
+        return "\n\n".join(section for section in sections if section.strip())
+
+    def _record_supervisor_result_for_validation_stop(
+        self,
+        task: str,
+        validation_input: ValidationInput,
+    ) -> None:
+        """Persist the latest supervisor synthesis before a validation-triggered exit."""
+        if validation_input.detailed_summary:
+            self.context.add_agent_response(
+                f"[Supervisor] {validation_input.detailed_summary}",
+                skip_structured=False,
+            )
+
+        if validation_input.proofs:
+            self.context.add_discovered_fact(
+                source_task=task,
+                category="proof",
+                key=f"proof_{task[:30]}",
+                value=validation_input.proofs,
+                confidence=validation_input.confidence_score,
+                actionable=not validation_input.task_achieved,
+            )
+
+        status_str = "ACHIEVED" if validation_input.task_achieved else "IN PROGRESS"
+        self.context.structured.append_to_log(
+            f"[Supervisor] Task: {status_str} | Confidence: {validation_input.confidence_score:.2f}"
         )
 
     async def _run_validation_and_report(
         self,
         validation_input: ValidationInput,
+        validation_context: str,
+        report_context: str,
     ) -> ValidationStopEvent | None:
         """Validate the root goal and write the success report when solved.
 
@@ -192,7 +256,7 @@ class AgentExecutor:
         verdict = await self.validation_gate.check(
             output=validation_input,
             root_goal=self.context.final_goal,
-            context=self.context.get_unified_context(max_tokens=8000),
+            context=validation_context,
         )
         if not verdict.stop:
             return None
@@ -200,7 +264,7 @@ class AgentExecutor:
         reporter_output = await self.reporter.summarize_and_write(
             root_goal=self.context.final_goal,
             verdict=verdict,
-            context=self.context.get_unified_context(max_tokens=100_000),
+            context=report_context,
             session_id=str(self.session_id),
         )
         return ValidationStopEvent(
@@ -567,12 +631,20 @@ class AgentExecutor:
 
             # Extract SupervisorOutput fields
             supervisor_output = result.output
+            context["supervisor_history"] = agent_context
             if isinstance(supervisor_output, SupervisorOutput):
                 confidence_score = supervisor_output.confidence_score
                 context["task_achieved"] = supervisor_output.task_achieved
                 context["detailed_summary"] = supervisor_output.detailed_summary
                 context["proofs"] = supervisor_output.proofs
                 context["last_output"] = supervisor_output.model_dump()
+                context["supervisor_response"] = (
+                    "Task achieved: "
+                    f"{supervisor_output.task_achieved}\n"
+                    f"Confidence: {supervisor_output.confidence_score:.2f}\n"
+                    f"Detailed summary:\n{supervisor_output.detailed_summary}\n\n"
+                    f"Proofs:\n{supervisor_output.proofs or 'None'}"
+                )
             else:
                 confidence_score = 0.5
                 # Ensure detailed_summary is set even for non-SupervisorOutput results
@@ -581,13 +653,30 @@ class AgentExecutor:
                 context["detailed_summary"] = output_str
                 context["task_achieved"] = False
                 context["proofs"] = ""
+                context["supervisor_response"] = output_str
 
             validation_input = self._build_validation_input(
                 confidence_score=confidence_score,
                 result_context=context,
             )
-            validation_event = await self._run_validation_and_report(validation_input)
+            validation_context = self._build_validation_context(
+                validation_input,
+                max_tokens=12_000,
+            )
+            report_context = self._build_validation_context(
+                validation_input,
+                max_tokens=100_000,
+            )
+            validation_event = await self._run_validation_and_report(
+                validation_input,
+                validation_context,
+                report_context,
+            )
             if validation_event is not None:
+                self._record_supervisor_result_for_validation_stop(
+                    task=task_node.task,
+                    validation_input=validation_input,
+                )
                 yield validation_event
                 return
 
