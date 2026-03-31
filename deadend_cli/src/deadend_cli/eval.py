@@ -9,11 +9,46 @@ testing AI agent performance, and assessing security research capabilities
 through various evaluation scenarios and metrics.
 """
 
+import asyncio
 import json
 from rich import print as console_printer
 from deadend_agent import Config, init_rag_session_manager, sandbox_setup, ModelRegistry
 from deadend_agent.tools.browser_automation import cleanup_playwright_sessions
 from deadend_eval.eval import EvalMetadata, eval_deadend_agent
+
+
+def _shutdown_telemetry() -> None:
+    """Flush and shutdown the global OpenTelemetry provider if available.
+
+    This is primarily needed for eval runs where Phoenix/OTLP exporters may still
+    be flushing HTTPS data while the process is exiting. Shutting the provider
+    down before the event loop is torn down avoids noisy SSL transport errors at
+    process exit.
+    """
+    try:
+        from opentelemetry import trace
+    except Exception:
+        return
+
+    try:
+        provider = trace.get_tracer_provider()
+    except Exception:
+        return
+
+    try:
+        if hasattr(provider, "force_flush"):
+            try:
+                provider.force_flush(timeout_millis=5000)
+            except TypeError:
+                provider.force_flush()
+    except Exception as exc:
+        console_printer(f"[yellow]Telemetry force_flush failed: {exc}[/yellow]")
+
+    try:
+        if hasattr(provider, "shutdown"):
+            provider.shutdown()
+    except Exception as exc:
+        console_printer(f"[yellow]Telemetry shutdown failed: {exc}[/yellow]")
 
 async def eval_interface(
         config: Config,
@@ -129,3 +164,11 @@ async def eval_interface(
                     managed_sandbox.cleanup()
         except Exception as exc:
             console_printer(f"[yellow]Sandbox cleanup failed: {exc}[/yellow]")
+
+        try:
+            _shutdown_telemetry()
+            # Give any provider shutdown callbacks a brief chance to finish
+            # before asyncio.run() closes the loop.
+            await asyncio.sleep(0.1)
+        except Exception as exc:
+            console_printer(f"[yellow]Telemetry cleanup failed: {exc}[/yellow]")

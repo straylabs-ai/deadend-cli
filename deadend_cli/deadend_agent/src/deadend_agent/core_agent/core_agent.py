@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import inspect
 import asyncio
+import os
 from typing import Callable, Type, Any, cast
 from rich.console import Console
 from rich.panel import Panel
@@ -151,6 +152,8 @@ class CoreAgent:
     - Direct use of libraries as intended
     """
 
+    _concurrency_semaphores: dict[str, asyncio.Semaphore] = {}
+
     def __init__(
         self,
         model: str,
@@ -185,7 +188,7 @@ class CoreAgent:
         self.api_key = api_key
         self.api_base = api_base
         self.tracer = trace.get_tracer(name)
-        
+        self.concurrent_limiter = self._get_concurrency_limiter()
 
         # Rate limiting - simple AsyncLimiter
         if AIOLIMITER_AVAILABLE:
@@ -216,6 +219,29 @@ class CoreAgent:
             self.instructor_client = None
             if output_schema and not INSTRUCTOR_AVAILABLE and _is_pydantic_schema:
                 logger.warning("instructor not available, structured output disabled")
+
+    def _get_concurrency_limiter(self) -> asyncio.Semaphore | None:
+        """Return a shared concurrency limiter for this backend/model.
+
+        Azure AI surfaces 429s such as "Server at maximum concurrent capacity (8)".
+        A small shared semaphore reduces burst concurrency across agent instances
+        before requests reach the provider.
+        """
+        raw_limit = os.getenv("DEADEND_LLM_MAX_CONCURRENCY", "6").strip()
+        try:
+            limit = int(raw_limit)
+        except ValueError:
+            limit = 6
+
+        if limit <= 0:
+            return None
+
+        limiter_key = f"{self.api_base or 'default'}|{self.model}"
+        limiter = self._concurrency_semaphores.get(limiter_key)
+        if limiter is None:
+            limiter = asyncio.Semaphore(limit)
+            self._concurrency_semaphores[limiter_key] = limiter
+        return limiter
 
     def tool(self, func: Callable) -> Callable:
         """Decorator to register a tool function.
@@ -768,8 +794,8 @@ class CoreAgent:
             )
 
         @retry(
-            stop=stop_after_attempt(0),
-            wait=wait_exponential(multiplier=2, min=2, max=60),
+            stop=stop_after_attempt(5),
+            wait=wait_exponential(multiplier=1, min=1, max=12),
             retry=retry_if_exception_type(retryable_exceptions),
             reraise=True,
             before_sleep=log_retry,
@@ -795,6 +821,9 @@ class CoreAgent:
                 # Use a placeholder - some local models don't require authentication
                 kwargs["api_key"] = "sk-dummy-key-for-local-model"
 
+            if self.concurrent_limiter is not None:
+                async with self.concurrent_limiter:
+                    return await acompletion(**kwargs)
             return await acompletion(**kwargs)
 
         try:
