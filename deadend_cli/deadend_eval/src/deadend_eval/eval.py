@@ -225,8 +225,8 @@ async def eval_deadend_agent(
     else:
         print("Validation check: Continuing to the exploitation phase.")
 
-    print(f"Plan produced is : {plan}")
-    print(f"threat model is : {threat_model_data}")
+    # print(f"Plan produced is : {plan}")
+    # print(f"threat model is : {threat_model_data}")
 
     threat_model_computed = str(threat_model_data)
     if not deadend_agent.goal_achieved:

@@ -116,8 +116,16 @@ if ! make -C "$BENCH_DIR" run 2>&1 | tee /tmp/run_output.log; then
         exit 1
     fi
 fi
-
-compose_json="$(cd "$BENCH_DIR" && run_with_network_prune docker compose ps --format json)"
+#
+# Some versions of docker compose print non‑JSON warnings (e.g. about the
+# deprecated "version" field) *before* the JSON lines. That breaks jq parsing
+# below with "jq: parse error: Invalid literal at line 1, column 6".
+# Filter to only keep lines that look like JSON objects/arrays.
+compose_json="$(
+    cd "$BENCH_DIR" && \
+    run_with_network_prune docker compose ps --format json | \
+    awk '/^[[:space:]]*[\{\[]/'
+)"
 
 host=""
 host_port=""

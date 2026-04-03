@@ -3,7 +3,7 @@
 [![Discord - Deadend CLI](https://img.shields.io/badge/Discord-Deadend%20CLI-5865F2?logo=discord&logoColor=white)](https://discord.gg/zwUVa3E7KT)
 
 **Autonomous pentesting agent using feedback-driven iteration**
-Achieves ~78% on XBOW benchmarks with fully local execution and model-agnostic architecture.
+Achieves **~80%** on the full XBOW validation benchmark with **Kimi K2.5** at **~US$122** total API cost for that end-to-end run, with a model-agnostic architecture that supports other deployable LLMs.
 
 
 ![Deadend CLI](./assets/demo_gif.gif)
@@ -54,7 +54,7 @@ Deadend CLI is an autonomous web application penetration testing agent that uses
 - ADaPT-based architecture with supervisor-subagent hierarchy
 - Confidence-based decision making (fail <20%, expand 20-60%, refine 60-80%, validate >80%)
 
-**Benchmark results:** 78% on XBOW validation suite (76/98 challenges), including blind SQL injection exploits where other agents achieved 0%.
+**Benchmark results:** **~80%** on the XBOW validation suite with **Kimi K2.5** at **~US$122** total cost for the full benchmark run, including blind SQL injection exploits where other agents achieved 0%.
 
 [Read the architecture breakdown in our technical article →](https://xoxruns.medium.com/feedback-driven-iteration-and-fully-local-webapp-pentesting-ai-agent-achieving-78-on-xbow-199ef719bf01)
 
@@ -75,16 +75,9 @@ The agent uses a two-phase approach (reconnaissance → exploitation) with a sup
 
 > **Note**: To visualize the benchmark results properly, install an ANSI colors extension (e.g., [ANSI Colors](https://marketplace.visualstudio.com/items?itemName=iliazeus.vscode-ansi) for VS Code) to render the rich output.
 
-Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026):
+Evaluated on XBOW's 104-challenge validation suite (black-box mode, January 2026).
 
-| Agent | Success Rate | Infrastructure | Blind SQLi |
-|-------|-------------|----------------|------------|
-| XBOW (proprietary) | 85% | Proprietary | ? |
-| Cyber-AutoAgent | 85% (This is the latest Cyber-Autoagent scoring for october 2025) <s>81%</s>| AWS Bedrock | 0% |
-| **Deadend CLI** | **78%** | **Fully local** | **33%** |
-| MAPTA | 76.9% | External APIs | 0% |
-
-**Models tested:** Claude Sonnet 4.5 (~78%), Kimi K2 Thinking (~69%)
+**Models latest results:** Kimi K2.5 (~80%, ~US$122 for the full 104-challenge XBOW validation run), **GLM-5 (Zhipu AI)**—also very strong in practice.
 
 Strong performance: XSS (91%), Business Logic (86%), SQL injection (83%), IDOR (80%)
 Perfect scores: GraphQL, SSRF, NoSQL injection, HTTP method tampering (100%)
@@ -105,12 +98,17 @@ The following models have been tested with Deadend CLI. Compatibility and perfor
 **Moonshot AI**
 - **Models**: `Kimi-K2-Thinking`, `Kimi-K2.5`
 - **Status**: Works excellently across all features
-- **Notes**: Reliable performance at every step of the workflow
+- **Notes**: Reliable performance at every step of the workflow. **Kimi K2.5** achieved **~80%** on the full XBOW validation benchmark at **~US$122** total cost for that run.
 
 **Anthropic**
 - **Models**: Claude Sonnet 4.5, Claude 3 Opus, Claude 3 Haiku
 - **Status**: Powerful models with excellent results
 - **Notes**: Properly extracts results and token usage information. Recommended for production use.
+
+**Zhipu AI**
+- **Models**: `GLM-5` (and related GLM series where supported)
+- **Status**: Works very well with Deadend CLI
+- **Notes**: **GLM-5** from Zhipu AI is **really good** for this workflow—among the standouts alongside Kimi and Claude for reasoning and tool use.
 
 **DeepSeek**
 - **Models**: DeepSeek models via various providers
@@ -122,7 +120,7 @@ The following models have been tested with Deadend CLI. Compatibility and perfor
 - **Status**: Under investigation
 - **Notes**: Some issues observed with tool execution via LiteLLM. Requires further investigation before definitive compatibility assessment.
 
-> **Tip**: For best results, we recommend using Moonshot AI (Kimi models) or Anthropic (Claude) models, which have been thoroughly tested and show excellent compatibility with all Deadend CLI features.
+> **Tip**: For best results, we recommend Moonshot AI (Kimi), Anthropic (Claude), or **Zhipu AI (GLM-5)**—all thoroughly exercised on Deadend CLI and strong across the workflow.
 
 ## 🔧 Custom Pentesting Tools
 
@@ -407,7 +405,7 @@ The CLI interface reads from `settings.json` to determine which model to use by 
 
 ### Stable (v0.1.0)
 - ✅ New architecture
-- ✅ XBOW benchmark evaluation (78%)
+- ✅ XBOW benchmark evaluation (~80% with Kimi K2.5, ~US$122 for the full suite)
 - ✅ Custom sandboxed tools
 - ✅ Multi-model support with liteLLM
 - ✅ Two-phase execution (recon + exploitation)
@@ -428,7 +426,7 @@ The CLI interface reads from `settings.json` to determine which model to use by 
 
 
 ### Future roadmap
-The current architecture proves competitive autonomous pentesting (78%) is achievable without cloud dependencies. Next challenges:
+The current architecture proves competitive autonomous pentesting is achievable on XBOW at **~80%** with **Kimi K2.5** (**~US$122** for the full validation run). Next challenges:
 
 - **Open-Source Models**: Achieve 75%+ with Llama/Qwen (eliminate proprietary dependencies)
 - **Hybrid Testing**: Add AST analysis for white-box code inspection

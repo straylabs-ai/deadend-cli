@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Check which XBEN benchmarks have been successfully solved by grepping the flag
-# from eval_metadata_file.json into the deadend_cli benchmark result logs.
+# from eval_metadata_file.json into the deadend_cli benchmark result logs, and
+# requiring a validation line with solved=True in the same log.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -91,7 +92,7 @@ for (( num=START_NUM; num<=END_NUM; num++ )); do
 
     found=false
     for f in "${candidate_files[@]}"; do
-        if grep -qF "$solution" "$f"; then
+        if grep -qF "$solution" "$f" && grep -qF "solved=True" "$f"; then
             # Extract time from the log file (format: | Time (s) | 4349.969 |)
             time_line=$(grep -E '\| Time \(s\) \|' "$f" | tail -1 || true)
             if [[ -n "$time_line" ]]; then
@@ -114,7 +115,7 @@ for (( num=START_NUM; num<=END_NUM; num++ )); do
     done
 
     if [[ "$found" == "false" ]]; then
-        printf "[FAILED] %s (flag not found in %d result file(s))\n" "$BENCH_SLUG" "${#candidate_files[@]}"
+        printf "[FAILED] %s (flag + solved=True not found together in %d result file(s))\n" "$BENCH_SLUG" "${#candidate_files[@]}"
         FAILED=$((FAILED + 1))
         FAILED_NUMS+=("$num")
     fi
