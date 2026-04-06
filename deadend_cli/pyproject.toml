@@ -14,7 +14,6 @@ dependencies = [
     "aiofiles>=24.1.0",
     "aiohttp>=3.12.14",
     "asgiref>=3.8.1",
-    "asyncpg>=0.30.0",
     "beautifulsoup4>=4.13.4",
     "cssbeautifier>=1.15.4",
     "docker>=7.1.0",
@@ -27,10 +26,7 @@ dependencies = [
     "nest-asyncio>=1.6.0",
     "numpy>=2.0.0,<2.3.0",
     "playwright>=1.56.0",
-    "prompt-toolkit>=3.0.51",
     "pydantic>=2.11.5",
-    "pydantic-ai>=1.9.1",
-    "pydantic-ai-slim[google,openai,openrouter]>=1.9.1",
     "pyyaml>=6.0.2",
     "readchar>=4.2.1",
     "rich>=14.0.0",
@@ -50,7 +46,7 @@ dependencies = [
     "python-frontmatter>=1.1.0",
     "pyoxidizer>=0.24.0",
     "openinference-instrumentation-instructor>=0.1.13",
-    "instructor>=1.13.0",
+    "instructor>=1.15.1",
     "arize-phoenix-client>=1.29.0",
     "arize-phoenix-otel>=0.14.0",
     "arize-phoenix-evals>=2.10.0",
@@ -158,4 +154,3 @@ deadend-agent = { workspace = true }
 deadend-prompts = { workspace = true }
 deadend-eval = { workspace = true }
 python-sandbox-client = { workspace = true }
-

@@ -81,6 +81,8 @@ class PlannerAgent(AgentRunner):
         usage,
         usage_limits,
         deferred_tool_results=None,
+        *args,
+        **kwargs
     ):
         """Execute the planner agent to generate security assessment tasks.
         
