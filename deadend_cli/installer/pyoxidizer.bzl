@@ -299,6 +299,7 @@ from deadend_cli.jsonrpc_server import main; main()
             "aiohttp==3.13.5",
             "aiolimiter==1.2.1",
             "asgiref==3.11.1",
+            "aiosqlite==0.22.1",
             "beautifulsoup4==4.14.3",
             "cssbeautifier==1.15.4",
             "docker==7.1.0",
