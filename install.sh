@@ -287,14 +287,67 @@ install() {
         exit 1
     fi
 
-    # Install ripgrep if bundled with the server package
-    if [ -f "${INSTALL_DIR}/bin/rg" ]; then
-        cp "${INSTALL_DIR}/bin/rg" "${CLI_BIN_DIR}/rg"
-        chmod +x "${CLI_BIN_DIR}/rg"
-        echo -e "${GREEN}ripgrep installed to ${CLI_BIN_DIR}/rg${NC}"
-    else
-        echo -e "${YELLOW}Warning: Bundled ripgrep binary not found in server package${NC}"
-    fi
+    # Install ripgrep via the host package manager when available
+    install_ripgrep() {
+        if command -v rg >/dev/null 2>&1; then
+            echo -e "${GREEN}ripgrep already available at $(command -v rg)${NC}"
+            return 0
+        fi
+
+        if [ ! -t 0 ]; then
+            echo -e "${YELLOW}Warning: ripgrep is not installed and this run is non-interactive${NC}"
+            if [ "$PLATFORM" = "macos" ]; then
+                echo -e "${YELLOW}Install it manually with: brew install ripgrep${NC}"
+            elif command -v apt-get >/dev/null 2>&1; then
+                echo -e "${YELLOW}Install it manually with: sudo apt-get install -y ripgrep${NC}"
+            else
+                echo -e "${YELLOW}Install ripgrep manually, then run the installer again if needed${NC}"
+            fi
+            return 1
+        fi
+
+        if [ "$PLATFORM" = "macos" ] && command -v brew >/dev/null 2>&1; then
+            echo ""
+            read -p "Install ripgrep with Homebrew? [Y/n] " -n 1 -r
+            echo
+            if [[ -z "$REPLY" || $REPLY =~ ^[Yy]$ ]]; then
+                if brew install ripgrep; then
+                    echo -e "${GREEN}ripgrep installed via Homebrew${NC}"
+                    return 0
+                fi
+                echo -e "${YELLOW}Warning: Homebrew install failed${NC}"
+            else
+                echo -e "${YELLOW}Skipped ripgrep installation. Install it with: brew install ripgrep${NC}"
+                return 1
+            fi
+        fi
+
+        if command -v apt-get >/dev/null 2>&1; then
+            echo ""
+            read -p "Install ripgrep with apt-get? [Y/n] " -n 1 -r
+            echo
+            if [[ -z "$REPLY" || $REPLY =~ ^[Yy]$ ]]; then
+                if sudo apt-get install -y ripgrep; then
+                    echo -e "${GREEN}ripgrep installed via apt-get${NC}"
+                    return 0
+                fi
+                echo -e "${YELLOW}Warning: apt-get install failed${NC}"
+            else
+                echo -e "${YELLOW}Skipped ripgrep installation. Install it with: sudo apt-get install -y ripgrep${NC}"
+                return 1
+            fi
+        fi
+
+        echo -e "${YELLOW}Warning: No supported automatic ripgrep installation method found${NC}"
+        if [ "$PLATFORM" = "macos" ]; then
+            echo -e "${YELLOW}Install it manually with: brew install ripgrep${NC}"
+        elif [ "$PLATFORM" = "linux" ]; then
+            echo -e "${YELLOW}Install it manually with your distro package manager${NC}"
+        fi
+        return 1
+    }
+
+    install_ripgrep || true
     
     # Check if CLI_BIN_DIR is in PATH
     if [[ ":$PATH:" != *":$CLI_BIN_DIR:"* ]]; then
@@ -325,13 +378,11 @@ install() {
             echo "You can now run: deadend"
         fi
     fi
-    if [ -f "${CLI_BIN_DIR}/rg" ]; then
+    if command -v rg >/dev/null 2>&1; then
         echo ""
         echo "ripgrep is available at:"
-        echo "  ${CLI_BIN_DIR}/rg"
-        if [[ ":$PATH:" == *":$CLI_BIN_DIR:"* ]]; then
-            echo "You can now run: rg"
-        fi
+        echo "  $(command -v rg)"
+        echo "You can now run: rg"
     fi
     echo ""
     echo "You can set DEADEND_RPC_BINARY environment variable to use a custom server path:"

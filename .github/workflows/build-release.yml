@@ -72,16 +72,6 @@ jobs:
           cp deadend.sh ${{ steps.build_dir.outputs.build_dir }}/deadend.sh
           chmod +x ${{ steps.build_dir.outputs.build_dir }}/deadend.sh
 
-      - name: Copy ripgrep binary
-        working-directory: deadend_cli/installer
-        shell: bash
-        run: |
-          RG_BIN="$(command -v rg)"
-          test -n "$RG_BIN"
-          mkdir -p ${{ steps.build_dir.outputs.build_dir }}/bin
-          cp "$RG_BIN" ${{ steps.build_dir.outputs.build_dir }}/bin/rg
-          chmod +x ${{ steps.build_dir.outputs.build_dir }}/bin/rg
-
       - name: Copy Python sandbox assets
         working-directory: deadend_cli/installer
         run: |
@@ -124,12 +114,6 @@ jobs:
           test -f ${{ steps.build_dir.outputs.build_dir }}/lib/python_sandbox_client/pool.py
           test -f ${{ steps.build_dir.outputs.build_dir }}/lib/python_sandbox_tool/main_stdio.ts
           test -f ${{ steps.build_dir.outputs.build_dir }}/lib/python_sandbox_tool/deno.json
-
-      - name: Verify ripgrep binary
-        working-directory: deadend_cli/installer
-        run: |
-          test -x ${{ steps.build_dir.outputs.build_dir }}/bin/rg
-          ${{ steps.build_dir.outputs.build_dir }}/bin/rg --version
 
       - name: Create package directory structure
         id: package
