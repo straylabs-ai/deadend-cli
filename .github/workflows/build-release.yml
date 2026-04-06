@@ -33,8 +33,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-        with:
-          submodules: recursive
+
+      - name: Checkout required submodule
+        run: |
+          git submodule sync -- deadend_cli/simple-python-interpreter-sandbox
+          git submodule update --init -- deadend_cli/simple-python-interpreter-sandbox
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
