@@ -10,7 +10,7 @@
 import { logger } from "./logger.ts";
 
 export interface CliSettings {
-  /** Default LLM provider (openai, anthropic, gemini, openrouter, local) */
+  /** Default LLM provider (openai, anthropic, gemini, bedrock, openrouter, local) */
   provider?: string;
   /** Default model name */
   model?: string;

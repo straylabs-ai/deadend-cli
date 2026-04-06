@@ -40,6 +40,7 @@ from deadend_agent.core_agent import (
 )
 from deadend_agent.rlm.memory import RLMFileMemory, SUPPORTED_EXTENSIONS
 from deadend_agent.tools.python_interpreter.python_interpreter import PythonInterpreter
+from deadend_agent.utils.provider_env import configure_litellm_provider_env
 
 try:
     from litellm import acompletion
@@ -675,6 +676,11 @@ class SandboxedRLMRunner:
         if not LITELLM_AVAILABLE or acompletion is None:
             raise RuntimeError("litellm is required to run SandboxedRLMRunner model calls")
 
+        configure_litellm_provider_env(
+            model=model,
+            api_key=api_key,
+            api_base=api_base,
+        )
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": messages,
