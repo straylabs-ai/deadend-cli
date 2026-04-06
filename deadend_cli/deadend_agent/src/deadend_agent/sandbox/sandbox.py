@@ -156,7 +156,8 @@ class Sandbox(BaseModel):
             - Volume mounts are read-only by default for security
             - Container status is automatically updated on success/failure
         """
-        self.fs_volume = volume_path
+        if volume_path:
+            self.fs_volume = volume_path
         try:
             self.status = SandboxStatus.RUNNING
             image = self._docker_client.images.get(container_image)
