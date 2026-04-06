@@ -354,6 +354,39 @@ Deadend CLI accepts Bedrock API keys in the normal `api_key` field for `bedrock:
 
 `base_url` is optional, but recommended because Deadend can infer `AWS_DEFAULT_REGION` from a standard Bedrock endpoint like `https://bedrock-runtime.us-east-1.amazonaws.com`. If you omit it, set `AWS_DEFAULT_REGION` yourself.
 
+#### AWS Bedrock Setup In The CLI
+
+If you are using the interactive setup wizard, enter the following values for the main model:
+
+1. `Provider`: `bedrock`
+2. `Model`: use a Bedrock inference profile ID such as `us.anthropic.claude-sonnet-4-6`
+3. `API key`: your Bedrock bearer token
+4. `Base URL`: `https://bedrock-runtime.us-east-1.amazonaws.com`
+
+For the embedding model, configure a separate provider. Bedrock chat support does not remove the requirement for an embedding model in Deadend.
+
+Known working example:
+
+1. `Embedding provider`: `openrouter`
+2. `Embedding model`: `qwen/qwen3-embedding-8b`
+3. `Embedding API key`: your OpenRouter key
+4. `Embedding base URL`: `https://openrouter.ai/api/v1`
+5. `Vector dimension`: `4096`
+
+If you prefer environment variables for the main model, set:
+
+```bash
+export AWS_BEARER_TOKEN_BEDROCK='<your bedrock api key>'
+export AWS_DEFAULT_REGION='us-east-1'
+export BEDROCK_MODEL='us.anthropic.claude-sonnet-4-6'
+```
+
+Important notes:
+
+- Use an inference profile ID like `us.anthropic.claude-sonnet-4-6`, not the base model ID `anthropic.claude-sonnet-4-6`, for models that do not support on-demand throughput.
+- If you change the Bedrock model after setup, also update `~/.cache/deadend/settings.json` so the default `model` matches the configured entry.
+- If Deadend fails with `Embedder client could not be initialized: None`, the embedding model is missing from `config.json` or does not include `type_model: "embeddings"`.
+
 ### CLI Interface Settings (`settings.json`)
 
 The CLI interface uses a separate `settings.json` file located at `~/.cache/deadend/settings.json` to store default preferences and UI settings. This file contains:
