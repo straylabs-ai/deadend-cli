@@ -290,7 +290,8 @@ from deadend_cli.jsonrpc_server import main; main()
     #exe.add_python_resources(exe.pip_install(["-r", "requirements.txt"]))
 
     # Install all external dependencies from pyproject.toml.
-    # Note: We exclude workspace packages (deadend-agent, deadend-prompts, deadend-eval)
+    # Note: We exclude workspace packages (deadend-agent, deadend-prompts,
+    # deadend-eval, python-sandbox-client)
     # as those are included via read_package_root below.
     exe.add_python_resources(
         exe.pip_install([
@@ -385,6 +386,16 @@ from deadend_cli.jsonrpc_server import main; main()
             # Contains the `deadend_eval` package.
             path = "../deadend_eval/src",
             packages = ["deadend_eval"],
+        )
+    )
+
+    exe.add_python_resources(
+        exe.read_package_root(
+            # Contains the `python_sandbox_client` package used by the Python
+            # interpreter tool. The worker TypeScript files are copied into the
+            # final install layout by the release workflow.
+            path = "../simple-python-interpreter-sandbox",
+            packages = ["python_sandbox_client"],
         )
     )
 

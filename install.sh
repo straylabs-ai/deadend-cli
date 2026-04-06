@@ -133,6 +133,7 @@ install() {
         echo -e "${YELLOW}Cleaning existing install...${NC}"
         rm -rf "$INSTALL_DIR"
         rm -f "$HOME/.local/bin/deadend"
+        rm -f "$HOME/.local/bin/rg"
         if [ -d "$HOME/.cache" ]; then
             rm -rf "${HOME}/.cache/deadend-install" 2>/dev/null || true
         fi
@@ -246,8 +247,8 @@ install() {
         exit 1
     fi
     
-    # Install CLI binary to PATH
-    echo -e "${YELLOW}Installing CLI binary...${NC}"
+    # Install user-facing binaries to PATH
+    echo -e "${YELLOW}Installing CLI tools...${NC}"
     
     # Determine the best location for the CLI binary
     if [ "$PLATFORM" == "linux" ]; then
@@ -285,6 +286,15 @@ install() {
         echo -e "${RED}Error: CLI package directory not found${NC}"
         exit 1
     fi
+
+    # Install ripgrep if bundled with the server package
+    if [ -f "${INSTALL_DIR}/bin/rg" ]; then
+        cp "${INSTALL_DIR}/bin/rg" "${CLI_BIN_DIR}/rg"
+        chmod +x "${CLI_BIN_DIR}/rg"
+        echo -e "${GREEN}ripgrep installed to ${CLI_BIN_DIR}/rg${NC}"
+    else
+        echo -e "${YELLOW}Warning: Bundled ripgrep binary not found in server package${NC}"
+    fi
     
     # Check if CLI_BIN_DIR is in PATH
     if [[ ":$PATH:" != *":$CLI_BIN_DIR:"* ]]; then
@@ -313,6 +323,14 @@ install() {
         if [[ ":$PATH:" == *":$CLI_BIN_DIR:"* ]]; then
             echo ""
             echo "You can now run: deadend"
+        fi
+    fi
+    if [ -f "${CLI_BIN_DIR}/rg" ]; then
+        echo ""
+        echo "ripgrep is available at:"
+        echo "  ${CLI_BIN_DIR}/rg"
+        if [[ ":$PATH:" == *":$CLI_BIN_DIR:"* ]]; then
+            echo "You can now run: rg"
         fi
     fi
     echo ""
