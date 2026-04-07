@@ -102,6 +102,18 @@ class EventHooks(Protocol):
         """Called when a tool call completes."""
         ...
 
+    def emit_task_created(
+        self,
+        session_id: str,
+        task: str,
+        task_id: str,
+        depth: int,
+        parent_task_id: Optional[str] = None,
+        initial_confidence: float = 0.0,
+    ) -> None:
+        """Called when a task is created."""
+        ...
+
     def emit_task_expanded(
         self,
         session_id: str,
@@ -110,6 +122,18 @@ class EventHooks(Protocol):
         subtasks: list[dict[str, Any]],
     ) -> None:
         """Called when a task is expanded into subtasks."""
+        ...
+
+    def emit_task_status_changed(
+        self,
+        session_id: str,
+        task: str,
+        task_id: str,
+        old_status: str,
+        new_status: str,
+        confidence_score: Optional[float] = None,
+    ) -> None:
+        """Called when a task status changes."""
         ...
 
     def emit_confidence_update(
@@ -180,7 +204,13 @@ class NullEventHooks:
     def emit_tool_call_end(self, *args, **kwargs) -> None:
         pass
 
+    def emit_task_created(self, *args, **kwargs) -> None:
+        pass
+
     def emit_task_expanded(self, *args, **kwargs) -> None:
+        pass
+
+    def emit_task_status_changed(self, *args, **kwargs) -> None:
         pass
 
     def emit_confidence_update(self, *args, **kwargs) -> None:

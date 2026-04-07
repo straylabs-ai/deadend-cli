@@ -179,7 +179,7 @@ class ToolCallStartData(BaseModel):
 
     tool_name: str
     tool_call_id: Optional[str] = None
-    args: str = ""  # Truncated args string (max 500 chars)
+    args: str = ""
 
 
 class ToolCallEndData(BaseModel):
@@ -188,7 +188,7 @@ class ToolCallEndData(BaseModel):
     tool_name: str
     tool_call_id: Optional[str] = None
     success: bool
-    result: str = ""  # Truncated result string (max 1000 chars)
+    result: str = ""
     error: Optional[str] = None
     duration_ms: Optional[float] = None
 
@@ -469,7 +469,7 @@ class AgentEvent(BaseModel):
             data=ToolCallStartData(
                 tool_name=tool_name,
                 tool_call_id=tool_call_id,
-                args=args[:500] if args else "",  # Truncate
+                args=args if args else "",
             ),
         )
 
@@ -494,7 +494,7 @@ class AgentEvent(BaseModel):
                 tool_name=tool_name,
                 tool_call_id=tool_call_id,
                 success=success,
-                result=result[:1000] if result else "",  # Truncate
+                result=result if result else "",
                 error=error,
                 duration_ms=duration_ms,
             ),
@@ -537,6 +537,30 @@ class AgentEvent(BaseModel):
         )
 
     @classmethod
+    def task_created(
+        cls,
+        session_id: str,
+        task: str,
+        task_id: str,
+        depth: int,
+        parent_task_id: Optional[str] = None,
+        initial_confidence: float = 0.0,
+    ) -> "AgentEvent":
+        """Create a TASK_CREATED event."""
+        return cls(
+            type=EventType.TASK_CREATED,
+            session_id=session_id,
+            task_id=task_id,
+            data=TaskCreatedData(
+                task=task,
+                task_id=task_id,
+                depth=depth,
+                parent_task_id=parent_task_id,
+                initial_confidence=initial_confidence,
+            ),
+        )
+
+    @classmethod
     def task_expanded(
         cls,
         session_id: str,
@@ -554,6 +578,30 @@ class AgentEvent(BaseModel):
                 parent_task_id=parent_task_id,
                 subtasks=subtasks,
                 subtask_count=len(subtasks),
+            ),
+        )
+
+    @classmethod
+    def task_status_changed(
+        cls,
+        session_id: str,
+        task: str,
+        task_id: str,
+        old_status: str,
+        new_status: str,
+        confidence_score: Optional[float] = None,
+    ) -> "AgentEvent":
+        """Create a TASK_STATUS_CHANGED event."""
+        return cls(
+            type=EventType.TASK_STATUS_CHANGED,
+            session_id=session_id,
+            task_id=task_id,
+            data=TaskStatusChangedData(
+                task=task,
+                task_id=task_id,
+                old_status=old_status,
+                new_status=new_status,
+                confidence_score=confidence_score,
             ),
         )
 

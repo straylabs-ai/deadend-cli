@@ -73,9 +73,14 @@ chunks.txt
 chunks_html.txt
 
 .logfire
-CLAUDE.md
 
 # benchmark runs
 **/run-*/
 
-.codex
+# AI tool configs (recursive)
+**/CLAUDE.md
+**/.cursor/
+**/.codex/
+
+# Internal docs
+docs/

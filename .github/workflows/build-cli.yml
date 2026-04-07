@@ -23,33 +23,38 @@ jobs:
           - os: ubuntu-latest
             platform: linux
             arch: x86_64
+            target: bun-linux-x64
             binary_name: deadend-server
           - os: macos-latest
             platform: macos
             arch: x86_64
+            target: bun-darwin-x64
             binary_name: deadend-server
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          deno-version: v2.x
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: cli/deadend
+        run: bun install --frozen-lockfile
 
       - name: Build CLI binary
-        working-directory: cli/deadend_cli
+        working-directory: cli/deadend
         run: |
-          deno compile \
-            --allow-all \
-            --target ${{ matrix.arch }}-${{ matrix.platform == 'linux' && 'unknown-linux-gnu' || 'apple-darwin' }} \
-            --output ${{ matrix.binary_name }} \
-            main.tsx
+          bun build --compile \
+            --target=${{ matrix.target }} \
+            --outfile ${{ matrix.binary_name }} \
+            index.ts
 
       - name: Create package directory
         id: package
-        working-directory: cli/deadend_cli
+        working-directory: cli/deadend
         run: |
           PACKAGE_NAME="deadend-cli-${{ matrix.platform }}-${{ matrix.arch }}"
           mkdir -p "$PACKAGE_NAME"
@@ -58,12 +63,12 @@ jobs:
           echo "binary=${{ matrix.binary_name }}" >> $GITHUB_OUTPUT
 
       - name: Create archive
-        working-directory: cli/deadend_cli
+        working-directory: cli/deadend
         run: |
           tar -czf "${{ steps.package.outputs.name }}.tar.gz" "${{ steps.package.outputs.name }}"
 
       - name: Create checksum
-        working-directory: cli/deadend_cli
+        working-directory: cli/deadend
         run: |
           if command -v sha256sum >/dev/null 2>&1; then
             sha256sum "${{ steps.package.outputs.name }}.tar.gz" > "${{ steps.package.outputs.name }}.tar.gz.sha256"
@@ -76,8 +81,8 @@ jobs:
         with:
           name: deadend-cli-${{ matrix.platform }}-${{ matrix.arch }}
           path: |
-            cli/deadend_cli/${{ steps.package.outputs.name }}.tar.gz
-            cli/deadend_cli/${{ steps.package.outputs.name }}.tar.gz.sha256
+            cli/deadend/${{ steps.package.outputs.name }}.tar.gz
+            cli/deadend/${{ steps.package.outputs.name }}.tar.gz.sha256
           retention-days: 30
 
   release:
@@ -88,7 +93,7 @@ jobs:
     permissions:
       contents: write
       id-token: write
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -117,22 +122,23 @@ jobs:
           name: CLI Release ${{ steps.version.outputs.version }}
           body: |
             ## Deadend CLI ${{ steps.version.outputs.version }}
-            
+
             ### What's changed ?
+            - [x] Rewrote CLI from Deno/React to Bun/OpenTUI
             - [x] Adding LLM error handling in the CLI.
             - [x] Adding interruption feature to stop the agent at any time.
             - [x] Handling and verify Ollama cloud models.
 
             ### Downloads
-            
+
             **Linux (x86_64):**
             - `deadend-cli-linux-x86_64.tar.gz`
-            
+
             **macOS (x86_64):**
             - `deadend-cli-macos-x86_64.tar.gz`
-            
+
             ### Installation
-            
+
             Download and run the install script:
             ```bash
             curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash -s -- --version ${{ steps.version.outputs.version }}

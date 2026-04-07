@@ -190,13 +190,13 @@ cd deadend-cli
 uv sync
 ```
 
-**Run CLI with Deno**
+**Run CLI**
 
-To run the CLI interface directly with Deno for development:
+To run the maintained CLI for development:
 
 ```bash
-cd cli/deadend_cli
-deno task dev
+cd cli/deadend
+bun run dev
 ```
 
 ---

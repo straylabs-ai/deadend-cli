@@ -11,6 +11,7 @@ from deadend_agent.config.settings import Config, ModelSpec
 from deadend_agent.models.registry import EmbedderClient
 from deadend_agent.embedders.code_indexer import SourceCodeIndexer
 from deadend_agent.context import ContextEngine
+from deadend_agent.hooks import get_event_hooks
 from deadend_agent.rag.sqlite_connector import SqliteRagConnector
 from deadend_agent.sandbox.sandbox import Sandbox
 from deadend_agent.agents.reporter import ReporterAgent, ReporterDeps
@@ -172,6 +173,39 @@ class DeadEndAgent:
             status="completed",
             parent=None,
             children=[],
+        )
+
+    def _emit_task_created(self, node: TaskNode, task_label: str | None = None) -> None:
+        get_event_hooks().emit_task_created(
+            session_id=str(self.session_id),
+            task=task_label or node.task,
+            task_id=node.task_id,
+            depth=node.depth,
+            parent_task_id=node.parent_task_id,
+            initial_confidence=node.confidence_score,
+        )
+
+    def _set_task_status(
+        self,
+        node: TaskNode,
+        new_status: str,
+        confidence_score: float | None = None,
+        task_label: str | None = None,
+    ) -> None:
+        old_status = node.status
+        old_confidence = node.confidence_score
+        if confidence_score is not None:
+            node.confidence_score = confidence_score
+        node.status = new_status
+        if old_status == new_status and node.confidence_score == old_confidence:
+            return
+        get_event_hooks().emit_task_status_changed(
+            session_id=str(self.session_id),
+            task=task_label or node.task,
+            task_id=node.task_id,
+            old_status=old_status,
+            new_status=new_status,
+            confidence_score=node.confidence_score,
         )
 
     def _record_validation_stop(self, event: ValidationStopEvent) -> WorkflowStopResult:
@@ -545,6 +579,7 @@ Critical rules:
             parent=None,
             children=[]
         )
+        self._emit_task_created(task_root, task_label=task)
 
         self.context.set_root_task(task)
 
@@ -638,9 +673,8 @@ IMPORTANT:
         )
         plan: TaskNode | None = None
 
-        # Build task with unified context from reconnaissance
-        # The previous_context contains confirmed exploits and discoveries that should inform exploitation
-        task_exploit = f"""
+        # Build planner context from reconnaissance while keeping the root task label short.
+        exploit_context = f"""
 ### Primary objective
 {task}
 
@@ -655,7 +689,7 @@ The flag that you need to find has the following format : FLAG{{}}.
 """
         traces: list[str | dict[str, Any]] = []
 
-        async for event in self.adapt_agent.run(task=task_exploit):
+        async for event in self.adapt_agent.run(task=task, context=exploit_context):
             # interrupt signal
             if self.interrupted:
                 return
@@ -711,13 +745,13 @@ The flag that you need to find has the following format : FLAG{{}}.
             max_depth=self.max_depth,
         )
         plan: TaskNode | None = None
-        task_exploit = f"""
+        exploit_context = f"""
 You final goal is to find a flag that corresponds to the following task : {task}
 The flag that you need to find has the following format : FLAG{{}}.
 The threat model has been done :
 {threat_model}
 """
-        async for event in self.adapt_agent.run(task=task_exploit):
+        async for event in self.adapt_agent.run(task=task, context=exploit_context):
             # interrupt signal
             if self.interrupted:
                 return
@@ -837,32 +871,41 @@ Your goal is to achieve the following task: {task}
             parent=None,
             children=[]
         )
+        self._emit_task_created(task_root, task_label=task)
 
         self.context.set_root_task(task)
 
         target_context =f"Target : {self.context.target}"
         context = {}
         confidence_score = 0.0 
-         # Run the supervisor directly
-        async for event in self.executor.execute_supervisor(
-            task_node=task_root,
-            agent_context=target_context,
-            usage=RunUsage(),
-            usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
-        ):
-            if isinstance(event, ValidationStopEvent):
-                stop_result = self._record_validation_stop(event)
-                task_root.confidence_score = event.confidence_score
-                task_root.status = "completed"
-                yield stop_result.reporter_output
-                return
-            if isinstance(event, ResultEvent):
-                confidence_score = event.confidence_score
-                context = event.context
-                yield event.context
+        self._set_task_status(task_root, "in_progress", task_label=task)
+        try:
+             # Run the supervisor directly
+            async for event in self.executor.execute_supervisor(
+                task_node=task_root,
+                agent_context=target_context,
+                usage=RunUsage(),
+                usage_limits=UsageLimits(request_limit=None, tool_calls_limit=None)
+            ):
+                if isinstance(event, ValidationStopEvent):
+                    stop_result = self._record_validation_stop(event)
+                    self._set_task_status(task_root, "completed", event.confidence_score, task_label=task)
+                    yield stop_result.reporter_output
+                    return
+                if isinstance(event, ResultEvent):
+                    confidence_score = event.confidence_score
+                    context = event.context
+                    yield event.context
+        except Exception:
+            self._set_task_status(
+                task_root,
+                "failed",
+                confidence_score or task_root.confidence_score,
+                task_label=task,
+            )
+            raise
 
-        task_root.confidence_score = confidence_score
-        task_root.status = "completed"
+        self._set_task_status(task_root, "completed", confidence_score, task_label=task)
 
         reporter_agent = ReporterAgent(
             model=self.model,
