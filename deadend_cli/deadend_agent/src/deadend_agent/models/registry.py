@@ -16,6 +16,7 @@ from litellm import aembedding, EmbeddingResponse
 from pydantic import BaseModel
 from deadend_agent.config.settings import Config, ModelSpec, EmbeddingSpec, ProvidersList
 from deadend_agent.logging import logger
+from deadend_agent.utils.provider_env import configure_litellm_provider_env
 
 class EmbedderClient:
     """Client for generating embeddings using various embedding API providers.
@@ -67,6 +68,11 @@ class EmbedderClient:
             ValueError: If the embedding call fails or returns an unexpected structure.
         """
         try:
+            configure_litellm_provider_env(
+                model=self.model,
+                api_key=self.api_key,
+                api_base=self.base_url,
+            )
             # Delegate embedding generation to LiteLLM's async embedding helper.
             #
             # NOTE:

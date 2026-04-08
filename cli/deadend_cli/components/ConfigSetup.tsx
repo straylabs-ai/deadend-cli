@@ -7,7 +7,7 @@ interface ConfigSetupProps {
   onComplete: () => void;
 }
 
-type ModelProvider = "openai" | "anthropic" | "gemini" | "openrouter" | "local";
+type ModelProvider = "openai" | "anthropic" | "gemini" | "bedrock" | "openrouter" | "local";
 
 interface ModelConfig {
   provider: ModelProvider;
@@ -26,7 +26,7 @@ export function ConfigSetup({ onComplete }: ConfigSetupProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const modelProviders: ModelProvider[] = ["openai", "anthropic", "gemini", "openrouter", "local"];
+  const modelProviders: ModelProvider[] = ["openai", "anthropic", "gemini", "bedrock", "openrouter", "local"];
 
   const toggleModel = useCallback((provider: ModelProvider) => {
     setSelectedModels((prev) => {
@@ -334,4 +334,3 @@ max_history = 100
     </Box>
   );
 }
-

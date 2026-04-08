@@ -38,6 +38,7 @@ from litellm.exceptions import (
     ContentPolicyViolationError,
 )
 from deadend_agent.logging import get_module_logger
+from deadend_agent.utils.provider_env import configure_litellm_provider_env
 from . import (
     UsageLimitExceeded,
     LLMError,
@@ -803,6 +804,11 @@ class CoreAgent:
             before_sleep=log_retry,
         )
         async def _call():
+            configure_litellm_provider_env(
+                model=self.model,
+                api_key=self.api_key,
+                api_base=self.api_base,
+            )
             kwargs = {
                 "model": self.model,
                 "messages": messages,
@@ -1151,6 +1157,11 @@ class CoreAgent:
         # First try Instructor if available
         if self.instructor_client:
             try:
+                configure_litellm_provider_env(
+                    model=self.model,
+                    api_key=self.api_key,
+                    api_base=self.api_base,
+                )
                 kwargs = {
                     "model": self.model,
                     "messages": messages,
@@ -1276,6 +1287,11 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
         extraction_messages = messages.copy()
         extraction_messages.append({"role": "user", "content": json_prompt})
 
+        configure_litellm_provider_env(
+            model=self.model,
+            api_key=self.api_key,
+            api_base=self.api_base,
+        )
         kwargs = {
             "model": self.model,
             "messages": extraction_messages,

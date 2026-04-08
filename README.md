@@ -245,7 +245,7 @@ When defining a model, use the following schema. The key format `<provider>:<mod
 
 ```json
 "<provider>:<model_name>": {
-  "provider": "<provider>",        // Provider name (e.g., openai, anthropic, ollama)
+  "provider": "<provider>",        // Provider name (e.g., openai, anthropic, bedrock, ollama)
   "model_name": "<model_name>",    // Model identifier (e.g., claude-sonnet-4-5, gpt-4)
   "api_key": "<api_key>",          // API key (optional if ENV var is set, but recommended to add here)
   "base_url": "<base_url>",        // Base URL for custom gateways or providers (e.g., Ollama)
@@ -312,6 +312,7 @@ Models are specified using the format `<provider>:<model_name>` in both `config.
 **Examples:**
 - `anthropic:claude-sonnet-4-5` - Anthropic's Claude Sonnet 4.5
 - `openai:gpt-4` - OpenAI's GPT-4
+- `bedrock:us.anthropic.claude-3-5-haiku-20241022-v1:0` - Anthropic Claude via Amazon Bedrock
 - `openrouter:qwen/qwen3-embedding-8b` - Qwen embedding model via OpenRouter
 - `ollama:llama3` - Llama 3 via local Ollama instance
 
@@ -322,6 +323,7 @@ Deadend CLI supports all providers compatible with LiteLLM. For a complete list 
 **Popular providers include:**
 - **OpenAI**: `openai:gpt-4`, `openai:gpt-3.5-turbo`, `openai:gpt-4o`, etc.
 - **Anthropic**: `anthropic:claude-3-opus`, `anthropic:claude-sonnet-4-5`, `anthropic:claude-3-haiku`, etc.
+- **AWS Bedrock**: `bedrock:us.anthropic.claude-3-5-haiku-20241022-v1:0`, `bedrock:amazon.nova-lite-v1:0`, etc.
 - **Ollama**: `ollama:llama3`, `ollama:mistral`, `ollama:codellama`, etc. (requires `base_url` in config)
 - **OpenRouter**: `openrouter:meta-llama/llama-3-70b-instruct`, `openrouter:google/gemini-pro`, etc.
 - **HuggingFace**: `huggingface/meta-llama/Llama-2-7b-chat-hf` (requires `base_url`)
@@ -332,6 +334,58 @@ Deadend CLI supports all providers compatible with LiteLLM. For a complete list 
 - `ollama:nomic-embed-text`
 
 > **Note**: Some providers may require additional configuration such as `base_url` or specific API key formats. Refer to the [LiteLLM Provider Documentation](https://docs.litellm.ai/docs/providers) for provider-specific setup instructions.
+
+#### AWS Bedrock Bearer Auth
+
+Deadend CLI accepts Bedrock API keys in the normal `api_key` field for `bedrock:*` models and maps them to the AWS bearer token flow at runtime.
+
+```json
+{
+  "bedrock:us.anthropic.claude-3-5-haiku-20241022-v1:0": {
+    "provider": "bedrock",
+    "model_name": "us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    "api_key": "<your bedrock api key>",
+    "base_url": "https://bedrock-runtime.us-east-1.amazonaws.com",
+    "type_model": null,
+    "vec_dim": null
+  }
+}
+```
+
+`base_url` is optional, but recommended because Deadend can infer `AWS_DEFAULT_REGION` from a standard Bedrock endpoint like `https://bedrock-runtime.us-east-1.amazonaws.com`. If you omit it, set `AWS_DEFAULT_REGION` yourself.
+
+#### AWS Bedrock Setup In The CLI
+
+If you are using the interactive setup wizard, enter the following values for the main model:
+
+1. `Provider`: `bedrock`
+2. `Model`: use a Bedrock inference profile ID such as `us.anthropic.claude-sonnet-4-6`
+3. `API key`: your Bedrock bearer token
+4. `Base URL`: `https://bedrock-runtime.us-east-1.amazonaws.com`
+
+For the embedding model, configure a separate provider. Bedrock chat support does not remove the requirement for an embedding model in Deadend.
+
+Known working example:
+
+1. `Embedding provider`: `openrouter`
+2. `Embedding model`: `qwen/qwen3-embedding-8b`
+3. `Embedding API key`: your OpenRouter key
+4. `Embedding base URL`: `https://openrouter.ai/api/v1`
+5. `Vector dimension`: `4096`
+
+If you prefer environment variables for the main model, set:
+
+```bash
+export AWS_BEARER_TOKEN_BEDROCK='<your bedrock api key>'
+export AWS_DEFAULT_REGION='us-east-1'
+export BEDROCK_MODEL='us.anthropic.claude-sonnet-4-6'
+```
+
+Important notes:
+
+- Use an inference profile ID like `us.anthropic.claude-sonnet-4-6`, not the base model ID `anthropic.claude-sonnet-4-6`, for models that do not support on-demand throughput.
+- If you change the Bedrock model after setup, also update `~/.cache/deadend/settings.json` so the default `model` matches the configured entry.
+- If Deadend fails with `Embedder client could not be initialized: None`, the embedding model is missing from `config.json` or does not include `type_model: "embeddings"`.
 
 ### CLI Interface Settings (`settings.json`)
 

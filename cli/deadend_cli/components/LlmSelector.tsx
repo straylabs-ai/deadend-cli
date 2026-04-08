@@ -126,6 +126,7 @@ export function LlmSelector({ rpcClient, onComplete, onCancel }: LlmSelectorProp
         openai: { apiKey: "OPENAI_API_KEY", model: "OPENAI_MODEL" },
         anthropic: { apiKey: "ANTHROPIC_API_KEY", model: "ANTHROPIC_MODEL" },
         gemini: { apiKey: "GEMINI_API_KEY", model: "GEMINI_MODEL" },
+        bedrock: { apiKey: "AWS_BEARER_TOKEN_BEDROCK", model: "BEDROCK_MODEL" },
         openrouter: { apiKey: "OPEN_ROUTER_API_KEY", model: "OPEN_ROUTER_MODEL" },
         local: { apiKey: "LOCAL_API_KEY", model: "LOCAL_MODEL", baseUrl: "LOCAL_BASE_URL" },
       };

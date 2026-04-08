@@ -174,6 +174,7 @@ class Config:
     - OpenAI: Uses OPENAI_API_KEY and OPENAI_MODEL
     - Anthropic: Uses ANTHROPIC_API_KEY and ANTHROPIC_MODEL
     - Google Gemini: Uses GEMINI_API_KEY and GEMINI_MODEL
+    - AWS Bedrock: Uses AWS_BEARER_TOKEN_BEDROCK and BEDROCK_MODEL
     - OpenRouter: Uses OPEN_ROUTER_API_KEY and OPEN_ROUTER_MODEL (supports multiple providers)
     - Local/Self-hosted: Uses LOCAL_API_KEY, LOCAL_MODEL, and LOCAL_BASE_URL
     
@@ -193,6 +194,8 @@ class Config:
     anthropic_model_name : str | None = _cfg("ANTHROPIC_MODEL")
     gemini_api_key: str | None = _cfg("GEMINI_API_KEY")
     gemini_model_name : str | None = _cfg("GEMINI_MODEL", "gemini-2.5-pro")
+    bedrock_api_key: str | None = _cfg("AWS_BEARER_TOKEN_BEDROCK")
+    bedrock_model_name: str | None = _cfg("BEDROCK_MODEL")
     open_router_key: str | None = _cfg("OPEN_ROUTER_API_KEY")
     open_router_model: str | None = _cfg("OPEN_ROUTER_MODEL", "anthropic/claude-4.5-opus")
     local_model: str | None = _cfg("LOCAL_MODEL", "Kimi-K2-Thinking")
