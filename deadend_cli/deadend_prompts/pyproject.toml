@@ -4,7 +4,7 @@ dynamic = ["version"]
 description = "Prompts for the agents."
 readme = "README.md"
 authors = [
-    { name = "Yassine Bargach", email = "bargach.y@gmail.com" }
+    { name = "Yassine Bargach", email = "yassine@straylabs.ai" }
 ]
 requires-python = ">=3.10"
 dependencies = [

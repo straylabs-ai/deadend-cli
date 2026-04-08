@@ -34,6 +34,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Checkout required submodule
+        run: |
+          git submodule sync -- deadend_cli/simple-python-interpreter-sandbox
+          git submodule update --init -- deadend_cli/simple-python-interpreter-sandbox
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -46,8 +51,7 @@ jobs:
       - name: Install dependencies
         working-directory: deadend_cli
         run: |
-          uv add pyoxidizer
-          uv sync
+          uv sync --locked
 
       - name: Build with PyOxidizer
         working-directory: deadend_cli/installer
@@ -70,6 +74,15 @@ jobs:
         run: |
           cp deadend.sh ${{ steps.build_dir.outputs.build_dir }}/deadend.sh
           chmod +x ${{ steps.build_dir.outputs.build_dir }}/deadend.sh
+
+      - name: Copy Python sandbox assets
+        working-directory: deadend_cli/installer
+        run: |
+          mkdir -p ${{ steps.build_dir.outputs.build_dir }}/lib
+          cp -R ../simple-python-interpreter-sandbox/python_sandbox_client \
+            ${{ steps.build_dir.outputs.build_dir }}/lib/python_sandbox_client
+          cp -R ../simple-python-interpreter-sandbox/python_sandbox_tool \
+            ${{ steps.build_dir.outputs.build_dir }}/lib/python_sandbox_tool
 
       - name: Fix permissions
         working-directory: deadend_cli/installer
@@ -97,6 +110,13 @@ jobs:
           echo ""
           echo "Checking directory structure:"
           find "$BROWSER_PATH" -type d -name "*chrome*" -o -name "*chromium*" | head -10 || echo "No browser directories found"
+
+      - name: Verify Python sandbox assets
+        working-directory: deadend_cli/installer
+        run: |
+          test -f ${{ steps.build_dir.outputs.build_dir }}/lib/python_sandbox_client/pool.py
+          test -f ${{ steps.build_dir.outputs.build_dir }}/lib/python_sandbox_tool/main_stdio.ts
+          test -f ${{ steps.build_dir.outputs.build_dir }}/lib/python_sandbox_tool/deno.json
 
       - name: Create package directory structure
         id: package

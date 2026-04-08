@@ -290,56 +290,54 @@ from deadend_cli.jsonrpc_server import main; main()
     #exe.add_python_resources(exe.pip_install(["-r", "requirements.txt"]))
 
     # Install all external dependencies from pyproject.toml.
-    # Note: We exclude workspace packages (deadend-agent, deadend-prompts, deadend-eval)
+    # Note: We exclude workspace packages (deadend-agent, deadend-prompts,
+    # deadend-eval, python-sandbox-client)
     # as those are included via read_package_root below.
     exe.add_python_resources(
         exe.pip_install([
-            "aiofiles>=24.1.0",
-            "aiohttp>=3.12.14",
-            "aiolimiter>=1.2.0",
-            "asgiref>=3.8.1",
-            "asyncpg>=0.30.0",
-            "beautifulsoup4>=4.13.4",
-            "cssbeautifier>=1.15.4",
-            "docker>=7.1.0",
-            "dotenv>=0.9.9",
-            "google-genai>=1.18.0",
-            "httptools>=0.6.4",
-            "instructor>=1.8.0",
-            "jsbeautifier>=1.15.4",
-            "litellm>=1.55.0",
-            "logfire>=4.3.3",
+            "aiofiles==25.1.0",
+            "aiohttp==3.13.5",
+            "aiolimiter==1.2.1",
+            "asgiref==3.11.1",
+            "aiosqlite==0.22.1",
+            "beautifulsoup4==4.14.3",
+            "cssbeautifier==1.15.4",
+            "docker==7.1.0",
+            "dotenv==0.9.9",
+            "google-genai==1.70.0",
+            "httptools==0.7.1",
+            "instructor==1.15.1",
+            "jsbeautifier==1.15.4",
+            "litellm==1.83.0",
             # Note: "logging" is Python's built-in module, no need to install from PyPI
-            "lxml>=6.0.0",
-            "nest-asyncio>=1.6.0",
-            "numpy>=2.0.0,<2.3.0",
-            "opentelemetry-api>=1.39.1",
-            "opentelemetry-exporter-otlp>=1.39.1",
-            "opentelemetry-sdk>=1.39.1",
-            "playwright>=1.56.0",
-            "prompt-toolkit>=3.0.51",
-            "pydantic>=2.11.5",
-            "pydantic-ai>=1.35.0",
-            "pydantic-ai-slim[google,openrouter]>=1.35.0",
-            "pyyaml>=6.0.2",
-            "readchar>=4.2.1",
-            "rich>=14.0.0",
-            "semantic-text-splitter>=0.27.0",
-            "sqlalchemy>=2.0.41",
-            "tenacity>=9.1.2",
-            "tiktoken>=0.9.0",
-            "toml>=0.10.2",
-            "toml-rs>=0.2.2",
-            "tree-sitter-css>=0.23.2",
-            "tree-sitter-html>=0.23.2",
-            "tree-sitter-javascript>=0.23.1",
-            "tree-sitter-markdown>=0.5.1",
-            "tree-sitter-typescript>=0.23.2",
-            "typer>=0.15.4",
-            "zaproxy>=0.4.0",
-            "jinja2>=3.1.6",
-            "typing-extensions>=4.15.0",
-            "python-frontmatter>=1.1.0",
+            "lxml==6.0.2",
+            "nest-asyncio==1.6.0",
+            "numpy==2.2.6",
+            "opentelemetry-api==1.39.1",
+            "opentelemetry-exporter-otlp==1.39.1",
+            "opentelemetry-sdk==1.39.1",
+            "playwright==1.58.0",
+            "pydantic==2.12.5",
+            "pydantic-ai==1.77.0",
+            "pydantic-ai-slim[google,openrouter]==1.77.0",
+            "pyyaml==6.0.3",
+            "readchar==4.2.1",
+            "rich==14.3.3",
+            "semantic-text-splitter==0.29.0",
+            "sqlalchemy==2.0.49",
+            "tenacity==9.1.4",
+            "tiktoken==0.12.0",
+            "toml==0.10.2",
+            "toml-rs==0.3.8",
+            "tree-sitter-css==0.25.0",
+            "tree-sitter-html==0.23.2",
+            "tree-sitter-javascript==0.25.0",
+            "tree-sitter-markdown==0.5.1",
+            "tree-sitter-typescript==0.23.2",
+            "typer==0.24.1",
+            "jinja2==3.1.6",
+            "typing-extensions==4.15.0",
+            "python-frontmatter==1.1.0",
         ])
     )
 
@@ -385,6 +383,16 @@ from deadend_cli.jsonrpc_server import main; main()
             # Contains the `deadend_eval` package.
             path = "../deadend_eval/src",
             packages = ["deadend_eval"],
+        )
+    )
+
+    exe.add_python_resources(
+        exe.read_package_root(
+            # Contains the `python_sandbox_client` package used by the Python
+            # interpreter tool. The worker TypeScript files are copied into the
+            # final install layout by the release workflow.
+            path = "../simple-python-interpreter-sandbox",
+            packages = ["python_sandbox_client"],
         )
     )
 

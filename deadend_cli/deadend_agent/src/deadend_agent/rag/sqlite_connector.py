@@ -13,9 +13,7 @@ scale of a few thousand vectors per target.
 
 from __future__ import annotations
 
-import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
 from pathlib import Path
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
