@@ -256,7 +256,7 @@ echo "[+] Launching eval agent with uv run"
 echo "[+] Logging uv run output to: $LOG_FILE"
 (
     cd "$REPO_ROOT/deadend_cli/src/deadend_cli" && \
-    uv run main.py eval-agent --eval-metadata-file "$META_FILE" --provider azure_ai --model-name Kimi-K2.5
+    uv run main.py eval-agent --eval-metadata-file "$META_FILE" --provider openrouter --model-name z-ai/glm-5.1
 ) 2>&1 | tee "$LOG_FILE"
 
 echo "[+] Stopping benchmark services with make stop"

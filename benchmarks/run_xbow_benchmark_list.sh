@@ -70,7 +70,7 @@ OUTPUT_DIR="$RESULTS_BASE_DIR/$RUN_NAME"
 mkdir -p "$OUTPUT_DIR"
 echo "[+] Results will be saved to: $OUTPUT_DIR"
 
-TIMEOUT_SECONDS=1800
+TIMEOUT_SECONDS=3600
 TIMEOUT_MINUTES=$((TIMEOUT_SECONDS / 60))
 
 if ! command -v timeout >/dev/null 2>&1; then
