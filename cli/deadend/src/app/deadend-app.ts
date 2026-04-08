@@ -186,9 +186,7 @@ export class DeadendApp {
   private readonly rawInputHandler = (sequence: string): boolean => {
     if (sequence === "\u0003") {
       void this.shutdown().finally(() => {
-        if (!this.renderer.isDestroyed) {
-          this.renderer.destroy();
-        }
+        this.destroyAndExit();
       });
       return true;
     }
@@ -244,6 +242,13 @@ export class DeadendApp {
 
     this.shutdownPromise = this.performShutdown();
     await this.shutdownPromise;
+  }
+
+  destroyAndExit(): void {
+    if (!this.renderer.isDestroyed) {
+      this.renderer.destroy();
+    }
+    console.log("\n  Leaving the deadend. Stay sharp out there.\n");
   }
 
   private async performShutdown(): Promise<void> {
@@ -489,13 +494,19 @@ export class DeadendApp {
     const suggestionsBox = new BoxRenderable(this.renderer, {
       width: "100%",
       flexDirection: "column",
-      marginBottom: 1,
+      flexShrink: 0,
       visible: false,
+      border: true,
+      borderStyle: "rounded",
+      borderColor: theme.inputBorder,
+      backgroundColor: theme.notificationBackground,
+      padding: 1,
     });
 
     const composer = new BoxRenderable(this.renderer, {
       width: "100%",
       flexDirection: "column",
+      flexShrink: 0,
       border: true,
       borderStyle: "rounded",
       borderColor: theme.inputBorder,
@@ -590,8 +601,8 @@ export class DeadendApp {
     contentRow.add(taskPopup);
 
     this.root.add(contentRow);
-    this.root.add(suggestionsBox);
     this.root.add(composer);
+    this.root.add(suggestionsBox);
 
     this.chatView = {
       transcript,
@@ -1060,28 +1071,16 @@ export class DeadendApp {
     this.chatView.suggestionsBox.add(
       new TextRenderable(this.renderer, {
         content: "Commands",
-        fg: theme.textPrimary,
-      }),
-    );
-    this.chatView.suggestionsBox.add(
-      new TextRenderable(this.renderer, {
-        content: "",
+        fg: theme.accent,
       }),
     );
 
     for (const suggestion of suggestions) {
       this.chatView.suggestionsBox.add(
         new TextRenderable(this.renderer, {
-          content: `/${suggestion.name} : ${suggestion.description}`,
-          fg: suggestion.name === "target" || suggestion.name === "report"
-            ? theme.accent
-            : theme.statusInfo,
+          content: `/${suggestion.name.padEnd(14)} ${suggestion.description}`,
+          fg: theme.statusInfo,
           wrapMode: "word",
-        }),
-      );
-      this.chatView.suggestionsBox.add(
-        new TextRenderable(this.renderer, {
-          content: "",
         }),
       );
     }
@@ -1285,7 +1284,7 @@ export class DeadendApp {
       case "quit":
       case "q":
         await this.shutdown();
-        this.renderer.destroy();
+        this.destroyAndExit();
         return;
       case "target":
         await this.handleTargetCommand(args);
@@ -2013,7 +2012,7 @@ export class DeadendApp {
 
       if (isPlainCtrlCQuit(key)) {
         await this.shutdown();
-        this.renderer.destroy();
+        this.destroyAndExit();
       }
 
       return;

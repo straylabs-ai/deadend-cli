@@ -17,7 +17,7 @@ export async function startApp(): Promise<void> {
   });
 
   const app = new DeadendApp(renderer, args, rpcLaunchConfig);
-  registerShutdown(renderer, app);
+  registerShutdown(app);
 
   await app.start();
 }
@@ -34,15 +34,10 @@ function parseCliArgs() {
   }
 }
 
-function registerShutdown(
-  renderer: Awaited<ReturnType<typeof createCliRenderer>>,
-  app: DeadendApp,
-): void {
+function registerShutdown(app: DeadendApp): void {
   const shutdown = () => {
     void app.shutdown().finally(() => {
-      if (!renderer.isDestroyed) {
-        renderer.destroy();
-      }
+      app.destroyAndExit();
     });
   };
 
