@@ -77,5 +77,7 @@ CLAUDE.md
 
 # benchmark runs
 **/run-*/
+**/docs/
+docs/
 
 .codex
