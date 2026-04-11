@@ -73,11 +73,17 @@ chunks.txt
 chunks_html.txt
 
 .logfire
-CLAUDE.md
 
 # benchmark runs
 **/run-*/
 **/docs/
 docs/
 
-.codex
+# AI tool configs (recursive)
+**/CLAUDE.md
+**/.cursor/
+# Match .codex file or dir anywhere; trailing slash alone would miss a file named `.codex`.
+**/.codex
+
+# Internal docs
+docs/

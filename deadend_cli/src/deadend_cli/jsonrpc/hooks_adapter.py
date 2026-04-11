@@ -148,6 +148,24 @@ class EventBusHooksAdapter:
             duration_ms=duration_ms,
         )
 
+    def emit_task_created(
+        self,
+        session_id: str,
+        task: str,
+        task_id: str,
+        depth: int,
+        parent_task_id: Optional[str] = None,
+        initial_confidence: float = 0.0,
+    ) -> None:
+        self._bus.emit_task_created(
+            session_id=session_id,
+            task=task,
+            task_id=task_id,
+            depth=depth,
+            parent_task_id=parent_task_id,
+            initial_confidence=initial_confidence,
+        )
+
     def emit_task_expanded(
         self,
         session_id: str,
@@ -160,6 +178,24 @@ class EventBusHooksAdapter:
             parent_task=parent_task,
             parent_task_id=parent_task_id,
             subtasks=subtasks,
+        )
+
+    def emit_task_status_changed(
+        self,
+        session_id: str,
+        task: str,
+        task_id: str,
+        old_status: str,
+        new_status: str,
+        confidence_score: Optional[float] = None,
+    ) -> None:
+        self._bus.emit_task_status_changed(
+            session_id=session_id,
+            task=task,
+            task_id=task_id,
+            old_status=old_status,
+            new_status=new_status,
+            confidence_score=confidence_score,
         )
 
     def emit_confidence_update(

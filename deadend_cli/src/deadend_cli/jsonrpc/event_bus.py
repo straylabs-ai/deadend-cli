@@ -55,6 +55,13 @@ class EventBus:
         except asyncio.QueueFull:
             pass  # Drop event to avoid blocking agents
 
+        for callback in list(self._subscribers):
+            try:
+                await callback(event)
+            except Exception:
+                # Subscriber failures must not break event streaming.
+                pass
+
     def publish_sync(self, event: AgentEvent) -> None:
         """Synchronous publish - schedules async publish as task."""
         try:
@@ -229,6 +236,26 @@ class EventBus:
         )
         self.publish_sync(event)
 
+    def emit_task_created(
+        self,
+        session_id: str,
+        task: str,
+        task_id: str,
+        depth: int,
+        parent_task_id: Optional[str] = None,
+        initial_confidence: float = 0.0,
+    ) -> None:
+        """Emit a TASK_CREATED event."""
+        event = AgentEvent.task_created(
+            session_id=session_id,
+            task=task,
+            task_id=task_id,
+            depth=depth,
+            parent_task_id=parent_task_id,
+            initial_confidence=initial_confidence,
+        )
+        self.publish_sync(event)
+
     def emit_task_expanded(
         self,
         session_id: str,
@@ -242,6 +269,26 @@ class EventBus:
             parent_task=parent_task,
             parent_task_id=parent_task_id,
             subtasks=subtasks,
+        )
+        self.publish_sync(event)
+
+    def emit_task_status_changed(
+        self,
+        session_id: str,
+        task: str,
+        task_id: str,
+        old_status: str,
+        new_status: str,
+        confidence_score: Optional[float] = None,
+    ) -> None:
+        """Emit a TASK_STATUS_CHANGED event."""
+        event = AgentEvent.task_status_changed(
+            session_id=session_id,
+            task=task,
+            task_id=task_id,
+            old_status=old_status,
+            new_status=new_status,
+            confidence_score=confidence_score,
         )
         self.publish_sync(event)
 

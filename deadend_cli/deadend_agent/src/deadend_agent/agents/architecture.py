@@ -12,6 +12,7 @@ from deadend_agent.agents.components.executor import (
 )
 from deadend_agent.agents.components.planner import Planner, TaskNode
 from deadend_agent.context import ContextEngine
+from deadend_agent.hooks import get_event_hooks
 from deadend_agent.logging import logger
 from deadend_agent.utils.structures import TaskPlanner
 
@@ -83,6 +84,59 @@ class ADaPTAgent:
         # Key: task hash, Value: dict with attempt count and best confidence.
         self._attempted_tasks: dict[int, dict[str, Any]] = {}
 
+    def _session_id(self) -> str:
+        return str(getattr(self.context, "session_id", "unknown"))
+
+    def _emit_task_created(self, node: TaskNode) -> None:
+        get_event_hooks().emit_task_created(
+            session_id=self._session_id(),
+            task=node.task,
+            task_id=node.task_id,
+            depth=node.depth,
+            parent_task_id=node.parent_task_id,
+            initial_confidence=node.confidence_score,
+        )
+
+    def _emit_task_expanded(self, parent: TaskNode, subtasks: list[TaskNode]) -> None:
+        get_event_hooks().emit_task_expanded(
+            session_id=self._session_id(),
+            parent_task=parent.task,
+            parent_task_id=parent.task_id,
+            subtasks=[
+                {
+                    "task": subtask.task,
+                    "task_id": subtask.task_id,
+                    "depth": subtask.depth,
+                    "status": subtask.status,
+                    "confidence_score": subtask.confidence_score,
+                    "parent_task_id": subtask.parent_task_id,
+                }
+                for subtask in subtasks
+            ],
+        )
+
+    def _set_task_status(
+        self,
+        node: TaskNode,
+        new_status: str,
+        confidence_score: float | None = None,
+    ) -> None:
+        old_status = node.status
+        old_confidence = node.confidence_score
+        if confidence_score is not None:
+            node.confidence_score = confidence_score
+        node.status = new_status
+        if old_status == new_status and node.confidence_score == old_confidence:
+            return
+        get_event_hooks().emit_task_status_changed(
+            session_id=self._session_id(),
+            task=node.task,
+            task_id=node.task_id,
+            old_status=old_status,
+            new_status=new_status,
+            confidence_score=node.confidence_score,
+        )
+
     async def _solve(
         self,
         node: TaskNode,
@@ -107,8 +161,7 @@ class ADaPTAgent:
 
         # --- Guard: max depth ---
         if depth > self.max_depth:
-            node.status = "aborted:max_depth"
-            node.confidence_score = 0.5
+            self._set_task_status(node, "aborted:max_depth", 0.5)
             yield emit(f"[ADAPT] Aborted task '{node.task}' at depth {depth} (max_depth={self.max_depth})")
             return
 
@@ -120,19 +173,18 @@ class ADaPTAgent:
         task_record = self._attempted_tasks[task_hash]
 
         if task_record["best_confidence"] >= self.VALIDATE_THRESHOLD:
-            node.status = "completed"
-            node.confidence_score = task_record["best_confidence"]
+            self._set_task_status(node, "completed", task_record["best_confidence"])
             yield emit(f"[SKIP] Task already completed with {task_record['best_confidence']:.2f} confidence")
             return
 
         if task_record["attempts"] >= self.MAX_TASK_ATTEMPTS:
-            node.status = "failed:max_attempts"
-            node.confidence_score = task_record["best_confidence"]
+            self._set_task_status(node, "failed:max_attempts", task_record["best_confidence"])
             yield emit(f"[FAIL] Task exceeded max attempts ({self.MAX_TASK_ATTEMPTS}): '{node.task[:50]}...'")
             return
 
         task_record["attempts"] += 1
         self.context.clear_current_task_log()
+        self._set_task_status(node, "in_progress")
 
         should_exit = exit_loop
 
@@ -174,8 +226,7 @@ class ADaPTAgent:
                     proofs = new_context.get("proofs", "")
 
                     if task_achieved:
-                        node.status = "completed"
-                        node.confidence_score = confidence_score
+                        self._set_task_status(node, "completed", confidence_score)
                         self.context.mark_task_completed(node.task, confidence_score)
                         yield emit(f"[SUPERVISOR] Task achieved: {node.task[:50]}...")
 
@@ -201,8 +252,7 @@ class ADaPTAgent:
                     break
 
                 elif isinstance(event, ValidationStopEvent):
-                    node.status = "completed"
-                    node.confidence_score = event.confidence_score
+                    self._set_task_status(node, "completed", event.confidence_score)
                     self.context.mark_task_completed(node.task, event.confidence_score)
                     yield emit(
                         f"[VALIDATION] Root goal achieved (confidence={event.confidence_score:.2f})"
@@ -257,7 +307,7 @@ class ADaPTAgent:
             )
 
             if decision == "fail":
-                node.status = "failed"
+                self._set_task_status(node, "failed", confidence_score)
                 self.context.update_task_status(node.task, "failed", confidence_score)
                 yield emit(f"[POLICY] Task '{node.task[:50]}...' failed with confidence {confidence_score:.2f}")
                 return
@@ -265,8 +315,7 @@ class ADaPTAgent:
             elif decision == "validate":
                 # High subtask confidence — mark subtask done, loop will
                 # re-check root goal on next iteration if there's more work.
-                node.status = "completed"
-                node.confidence_score = confidence_score
+                self._set_task_status(node, "completed", confidence_score)
                 self.context.mark_task_completed(node.task, confidence_score)
                 yield emit(f"[POLICY] Subtask validated: '{node.task[:50]}...'")
                 return
@@ -301,9 +350,12 @@ class ADaPTAgent:
                     status=node.status,
                 )
                 self.context.add_tasks(parent_task=parent_planner, tasks=planner_subtasks)
+                for subtask in subtasks:
+                    self._emit_task_created(subtask)
+                self._emit_task_expanded(node, subtasks)
 
                 if not subtasks:
-                    node.status = "refine"
+                    self._set_task_status(node, "refine")
                     yield emit(f"[PLANNER] No subtasks generated for '{node.task}', requesting refinement")
                     if node.parent:
                         async for chunk in self._solve(node.parent, depth=node.depth, exit_loop=exit_loop):
@@ -376,6 +428,10 @@ class ADaPTAgent:
                     self.context.add_tasks(parent_task=parent_planner, tasks=planner_subtasks)
                 else:
                     self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
+                for updated_task in updated_tasks:
+                    self._emit_task_created(updated_task)
+                if parent_task:
+                    self._emit_task_expanded(parent_task, updated_tasks)
 
                 yield emit(
                     f"[PLANNER] Updated plan for tasks "
@@ -438,6 +494,7 @@ class ADaPTAgent:
             parent=None,
             children=[],
         )
+        self._emit_task_created(root)
 
         subtasks, website_info, exploit_info = await self.planner.expand(
             root,
@@ -494,6 +551,9 @@ class ADaPTAgent:
             for s in subtasks
         ]
         self.context.add_tasks(parent_task=None, tasks=planner_subtasks)
+        for subtask in subtasks:
+            self._emit_task_created(subtask)
+        self._emit_task_expanded(root, subtasks)
 
         exit_loop_triggered = False
         for subtask in subtasks:

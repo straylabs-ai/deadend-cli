@@ -9,7 +9,7 @@ from pathlib import Path
 from importlib.resources import files
 import shutil
 import os
-from dataclasses import asdict, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass
 from pydantic import TypeAdapter
 import typer
 import uuid
@@ -27,6 +27,208 @@ from deadend_cli.component_manager import ComponentManager
 from deadend_cli.jsonrpc.rpc_server import RPCServer
 from deadend_cli.jsonrpc.event_bus import EventBus
 from deadend_cli.jsonrpc.hooks_adapter import EventBusHooksAdapter
+
+
+@dataclass
+class TrackedTask:
+    task_id: str
+    task: str
+    status: str
+    depth: int
+    parent_task_id: str | None = None
+    confidence_score: float | None = None
+    updated_index: int = 0
+
+
+@dataclass
+class AgentTaskSnapshot:
+    agent_id: str
+    session_id: str
+    target: str | None = None
+    root_task_id: str | None = None
+    current_task_id: str | None = None
+    tasks: dict[str, TrackedTask] = field(default_factory=dict)
+    update_index: int = 0
+
+
+class TaskRegistry:
+    """Keeps a live task snapshot per RPC agent for frontend polling."""
+
+    def __init__(self) -> None:
+        self._agents: dict[str, AgentTaskSnapshot] = {}
+        self._session_to_agent: dict[str, str] = {}
+
+    def register_agent(self, agent_id: str, session_id: str, target: str | None = None) -> None:
+        self._session_to_agent[session_id] = agent_id
+        self._agents[agent_id] = AgentTaskSnapshot(
+            agent_id=agent_id,
+            session_id=session_id,
+            target=target,
+        )
+
+    def unregister_agent(self, agent_id: str) -> None:
+        snapshot = self._agents.pop(agent_id, None)
+        if snapshot is not None:
+            self._session_to_agent.pop(snapshot.session_id, None)
+
+    def reset_agent(self, agent_id: str) -> None:
+        snapshot = self._agents.get(agent_id)
+        if snapshot is None:
+            return
+        snapshot.root_task_id = None
+        snapshot.current_task_id = None
+        snapshot.tasks = {}
+        snapshot.update_index = 0
+
+    async def handle_event(self, event: Any) -> None:
+        session_id = str(getattr(event, "session_id", ""))
+        agent_id = self._session_to_agent.get(session_id)
+        if not agent_id:
+            return
+
+        event_type = getattr(getattr(event, "type", None), "value", getattr(event, "type", None))
+        data = getattr(event, "data", None)
+        if data is None:
+            return
+
+        if event_type == "task_created":
+            self.record_task_created(
+                agent_id=agent_id,
+                task_id=str(getattr(data, "task_id")),
+                task=str(getattr(data, "task")),
+                depth=int(getattr(data, "depth")),
+                parent_task_id=getattr(data, "parent_task_id", None),
+                initial_confidence=float(getattr(data, "initial_confidence", 0.0)),
+            )
+        elif event_type == "task_status_changed":
+            self.record_task_status_changed(
+                agent_id=agent_id,
+                task_id=str(getattr(data, "task_id")),
+                task=str(getattr(data, "task")),
+                old_status=str(getattr(data, "old_status")),
+                new_status=str(getattr(data, "new_status")),
+                confidence_score=getattr(data, "confidence_score", None),
+            )
+        elif event_type == "task_expanded":
+            for subtask in list(getattr(data, "subtasks", []) or []):
+                if not isinstance(subtask, dict):
+                    continue
+                parent_task_id = subtask.get("parent_task_id")
+                if parent_task_id is None:
+                    parent_task_id = getattr(data, "parent_task_id", None)
+                self.record_task_created(
+                    agent_id=agent_id,
+                    task_id=str(subtask.get("task_id")),
+                    task=str(subtask.get("task")),
+                    depth=int(subtask.get("depth", 0)),
+                    parent_task_id=None if parent_task_id is None else str(parent_task_id),
+                    initial_confidence=float(subtask.get("confidence_score", 0.0) or 0.0),
+                )
+
+    def record_task_created(
+        self,
+        agent_id: str,
+        task_id: str,
+        task: str,
+        depth: int,
+        parent_task_id: str | None = None,
+        initial_confidence: float | None = None,
+    ) -> None:
+        snapshot = self._agents.get(agent_id)
+        if snapshot is None:
+            return
+
+        snapshot.update_index += 1
+        existing = snapshot.tasks.get(task_id)
+        status = existing.status if existing is not None else "pending"
+        confidence_score = existing.confidence_score if existing is not None else initial_confidence
+        snapshot.tasks[task_id] = TrackedTask(
+            task_id=task_id,
+            task=task,
+            status=status,
+            depth=depth,
+            parent_task_id=parent_task_id,
+            confidence_score=confidence_score,
+            updated_index=snapshot.update_index,
+        )
+        if depth == 0 and snapshot.root_task_id is None:
+            snapshot.root_task_id = task_id
+
+    def record_task_status_changed(
+        self,
+        agent_id: str,
+        task_id: str,
+        task: str,
+        old_status: str,
+        new_status: str,
+        confidence_score: float | None = None,
+    ) -> None:
+        del old_status
+        snapshot = self._agents.get(agent_id)
+        if snapshot is None:
+            return
+
+        existing = snapshot.tasks.get(task_id)
+        if existing is None:
+            self.record_task_created(
+                agent_id=agent_id,
+                task_id=task_id,
+                task=task,
+                depth=0,
+                parent_task_id=None,
+                initial_confidence=confidence_score,
+            )
+            existing = snapshot.tasks.get(task_id)
+            if existing is None:
+                return
+
+        snapshot.update_index += 1
+        existing.task = task
+        existing.status = new_status
+        if confidence_score is not None:
+            existing.confidence_score = float(confidence_score)
+        existing.updated_index = snapshot.update_index
+
+        if new_status == "in_progress":
+            snapshot.current_task_id = task_id
+        elif snapshot.current_task_id == task_id and new_status != "in_progress":
+            in_progress = [
+                candidate for candidate in snapshot.tasks.values()
+                if candidate.status == "in_progress"
+            ]
+            snapshot.current_task_id = (
+                max(in_progress, key=lambda item: item.updated_index).task_id
+                if in_progress else None
+            )
+
+    def get_snapshot(self, agent_id: str) -> dict[str, Any] | None:
+        snapshot = self._agents.get(agent_id)
+        if snapshot is None:
+            return None
+
+        tasks = sorted(
+            snapshot.tasks.values(),
+            key=lambda task: (task.depth, task.updated_index, task.task_id),
+        )
+        return {
+            "agent_id": snapshot.agent_id,
+            "session_id": snapshot.session_id,
+            "target": snapshot.target,
+            "root_task_id": snapshot.root_task_id,
+            "current_task_id": snapshot.current_task_id,
+            "tasks": [
+                {
+                    "task_id": task.task_id,
+                    "parent_task_id": task.parent_task_id,
+                    "task": task.task,
+                    "status": task.status,
+                    "depth": task.depth,
+                    "confidence_score": task.confidence_score,
+                    "is_current": task.task_id == snapshot.current_task_id,
+                }
+                for task in tasks
+            ],
+        }
 
 
 def _phoenix_otel_enabled() -> bool:
@@ -56,6 +258,8 @@ def main(
     component_manager = ComponentManager()
 
     event_bus = EventBus()
+    task_registry = TaskRegistry()
+    event_bus.subscribe_callback(task_registry.handle_event)
     # Event Bus and hooks
     hooks_adapter = EventBusHooksAdapter(event_bus=event_bus)
 
@@ -113,6 +317,7 @@ def main(
     server.add_dependency("component_manager", component_manager)
     server.add_dependency("event_bus", event_bus)
     server.add_dependency("deadend_agent_refs", deadend_agent_refs)
+    server.add_dependency("task_registry", task_registry)
 
     # Register shutdown callback for graceful cleanup
     async def shutdown_callback():
@@ -198,15 +403,15 @@ def main(
         result = await component_manager.init_model_registry()
         return result.model_dump()
 
-    @server.add_method("init_python_sandbox")
-    async def init_python_sandbox(
-        _request_id: Any,
-        _params: Dict[str, Any],
-        component_manager: ComponentManager
-    ) -> Dict[str, Any]:
-        """Initialize Python sandbox."""
-        result = await component_manager.init_python_sandbox()
-        return result.model_dump()
+    # @server.add_method("init_python_sandbox")
+    # async def init_python_sandbox(
+    #     _request_id: Any,
+    #     _params: Dict[str, Any],
+    #     component_manager: ComponentManager
+    # ) -> Dict[str, Any]:
+    #     """Initialize Python sandbox."""
+    #     result = await component_manager.init_python_sandbox()
+    #     return result.model_dump()
 
     @server.add_method("init_shell_sandbox")
     async def init_shell_sandbox(
@@ -300,6 +505,31 @@ def main(
     ) -> Dict[str, Any]:
         async for event in event_bus.subscribe():
             yield event.model_dump()
+
+    @server.add_method("get_agent_tasks")
+    async def get_agent_tasks(
+        _request_id: Any,
+        params: Dict[str, Any],
+        task_registry: TaskRegistry,
+    ) -> Dict[str, Any]:
+        agent_id = params.get("agent_id")
+        if not agent_id:
+            return {
+                "status": "failed",
+                "reason": "Must supply an agent_id",
+            }
+
+        snapshot = task_registry.get_snapshot(str(agent_id))
+        if snapshot is None:
+            return {
+                "status": "failed",
+                "reason": f"Agent with id {agent_id} not found",
+            }
+
+        return {
+            "status": "ok",
+            **snapshot,
+        }
 
     @server.add_method("interrupt")
     async def handle_interrupt(
@@ -482,6 +712,113 @@ def main(
 
 
     # ==========================================
+    # Validation config methods
+    # ==========================================
+
+    @server.add_method("get_validation_config")
+    async def get_validation_config(
+        _request_id: Any,
+        params: Dict[str, Any],
+        **_kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Read the current validation config from disk."""
+        from deadend_agent.agents.components.validation_strategies import (
+            load_validation_config,
+            PRESETS,
+        )
+
+        config = load_validation_config()
+        strategy_names = [s.name for s in config.strategies]
+
+        # Detect which preset matches, if any.
+        matched_preset: str | None = None
+        for preset_name, preset_strategies in PRESETS.items():
+            if strategy_names == preset_strategies:
+                matched_preset = preset_name
+                break
+
+        return {
+            "status": "ok",
+            "validation_format": config.validation_format,
+            "validation_type": config.validation_type,
+            "strategies": [s.model_dump() for s in config.strategies],
+            "preset": matched_preset,
+            "available_presets": list(PRESETS.keys()),
+        }
+
+    @server.add_method("set_validation_config")
+    async def set_validation_config(
+        _request_id: Any,
+        params: Dict[str, Any],
+        **_kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Write a new validation config to disk.
+
+        Accepts either a ``preset`` name (flag, judge, ctf, recon) or a full
+        config with ``validation_format``, ``validation_type``, and
+        ``strategies``.
+        """
+        import yaml as _yaml
+        from deadend_agent.agents.components.validation_strategies import (
+            DEFAULT_CONFIG_PATH,
+            PRESETS,
+            ValidationConfig,
+            StrategyConfig,
+        )
+
+        preset = params.get("preset")
+        if preset:
+            if preset not in PRESETS:
+                return {
+                    "status": "failed",
+                    "reason": f"Unknown preset '{preset}'. Available: {list(PRESETS.keys())}",
+                }
+            strategy_names = PRESETS[preset]
+            v_format = params.get("validation_format")
+            v_type = params.get("validation_type")
+            pattern = params.get("pattern")
+
+            strategies: list[Dict[str, Any]] = []
+            for name in strategy_names:
+                entry: Dict[str, Any] = {"name": name}
+                if name == "flag" and pattern:
+                    entry["pattern"] = pattern
+                if name == "judge":
+                    if v_format:
+                        entry["validation_format"] = v_format
+                strategies.append(entry)
+
+            config_dict: Dict[str, Any] = {"strategies": strategies}
+            if v_format is not None:
+                config_dict["validation_format"] = v_format
+            if v_type is not None:
+                config_dict["validation_type"] = v_type
+        else:
+            config_dict = {
+                k: v for k, v in params.items()
+                if k in ("validation_format", "validation_type", "strategies")
+            }
+
+        # Validate through pydantic before writing.
+        try:
+            parsed = ValidationConfig(**config_dict)
+        except Exception as exc:
+            return {"status": "failed", "reason": str(exc)}
+
+        DEFAULT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        DEFAULT_CONFIG_PATH.write_text(
+            _yaml.dump(parsed.model_dump(exclude_none=True), default_flow_style=False),
+            encoding="utf-8",
+        )
+
+        return {
+            "status": "ok",
+            "validation_format": parsed.validation_format,
+            "validation_type": parsed.validation_type,
+            "strategies": [s.model_dump() for s in parsed.strategies],
+        }
+
+    # ==========================================
     # Agent methods methods
     # ==========================================
     @server.add_method("instantiate_agent")
@@ -489,7 +826,8 @@ def main(
         _request_id: Any,
         params: Dict[str, Any],
         component_manager: ComponentManager,
-        deadend_agent_refs: Dict[str, DeadEndAgent]
+        deadend_agent_refs: Dict[str, DeadEndAgent],
+        task_registry: TaskRegistry,
     ) -> Dict[str, Any]:
         # Validate parameters first
         target = params.get("target")
@@ -578,6 +916,11 @@ def main(
         deadend_agent.set_approval_callback(approval_callback)
         deadend_agent.target = target
         deadend_agent_refs.update({str(agent_id): deadend_agent})
+        task_registry.register_agent(
+            agent_id=str(agent_id),
+            session_id=str(runtime_session_id),
+            target=target,
+        )
 
         try:
             deadend_agent.prepare_dependencies(
@@ -590,6 +933,7 @@ def main(
             logger.error("Failed to prepare dependencies: %s", e)
             # Clean up the agent reference if preparation fails
             deadend_agent_refs.pop(str(agent_id), None)
+            task_registry.unregister_agent(str(agent_id))
             return {
                 "status": "failed",
                 "reason": f"Failed to prepare agent dependencies: {str(e)}"
@@ -718,7 +1062,8 @@ def main(
     async def run_agent_recursive(
         _request_id: Any,
         params: Dict[str, Any],
-        deadend_agent_refs: Dict[str, DeadEndAgent]
+        deadend_agent_refs: Dict[str, DeadEndAgent],
+        task_registry: TaskRegistry,
     ):
         try:
             # Validate parameters first before yielding any phase
@@ -756,6 +1101,7 @@ def main(
                 return
 
             # Reset workflow state
+            task_registry.reset_agent(str(agent_id))
             deadend_agent.reset_workflow_state()
 
             # Now start the recon phase
@@ -777,6 +1123,8 @@ def main(
                 "phase": "exploit",
                 "data": {"message": "Starting testing and exploit"},
             }
+
+            task_registry.reset_agent(str(agent_id))
 
             async for item in deadend_agent.start_testing_stream(
                 task=prompt,
@@ -803,7 +1151,8 @@ def main(
     async def run_agent_supervisor(
         _request_id: Any,
         params: Dict[str, Any],
-        deadend_agent_refs: Dict[str, DeadEndAgent]
+        deadend_agent_refs: Dict[str, DeadEndAgent],
+        task_registry: TaskRegistry,
     ):
         try:
             agent_id = params.get("agent_id")
@@ -844,6 +1193,7 @@ def main(
             }
             supervising_text = ""
             # Reset workflow state
+            task_registry.reset_agent(str(agent_id))
             deadend_agent.reset_workflow_state()
             async for item in deadend_agent.start_supervisor(task=prompt):
                 supervising_text += object_to_string(item)

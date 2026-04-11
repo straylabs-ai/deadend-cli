@@ -83,7 +83,12 @@ def main():
 
     # copy reusable creds to cache
     try:
-        source_creds = files("deadend_cli").joinpath("data", "memory", "reusable_credentials.json")
+        source_creds = (
+            files("deadend_cli")
+            .joinpath("data")
+            .joinpath("memory")
+            .joinpath("reusable_credentials.json")
+        )
         path_creds = Path(str(source_creds))
     except (ImportError, FileNotFoundError):
         print("not found.")

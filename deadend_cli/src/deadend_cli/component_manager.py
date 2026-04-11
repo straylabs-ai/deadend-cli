@@ -15,8 +15,6 @@ from deadend_agent.core import (
     init_rag_session_manager,
     sandbox_setup,
     setup_model_registry,
-    start_python_sandbox,
-    stop_python_sandbox,
     Config,
 )
 from deadend_agent.rag.session_manager import RagSessionManager
@@ -56,8 +54,8 @@ class ComponentManager:
         self.playwright_state = ComponentState(name="playwright")
 
         # Component instances
-        self.config: Config | None = None
-        self.model_registry: ModelRegistry = None
+        self.config: Config
+        self.model_registry: ModelRegistry | None = None
         self.rag_session_manager: RagSessionManager | None = None
         self.python_sandbox_process: Optional[subprocess.Popen] = None
         self.sandbox_manager: Any = None
@@ -236,42 +234,6 @@ class ComponentManager:
                 message=f"Model registry initialization failed: {e}",
             )
 
-    async def init_python_sandbox(self) -> InitResult:
-        """Download (if needed) and start Python sandbox."""
-        logger.debug("Initializing Python sandbox...")
-        self.python_sandbox_state.status = ComponentStatus.INITIALIZING
-        try:
-            logger.debug("Starting Python sandbox process...")
-            self.python_sandbox_process = start_python_sandbox()
-
-            await asyncio.sleep(1)
-            if self.python_sandbox_process.poll() is not None:
-                raise RuntimeError("Python sandbox process terminated unexpectedly")
-
-            self.python_sandbox_state.status = ComponentStatus.READY
-            self.python_sandbox_state.metadata["pid"] = self.python_sandbox_process.pid
-            self.python_sandbox_state.metadata["port"] = 45555
-            self.python_sandbox_state.last_check = datetime.now()
-
-            logger.debug("Python sandbox started, PID: %s", self.python_sandbox_process.pid)
-            return InitResult(
-                success=True,
-                component="python_sandbox",
-                status=ComponentStatus.READY,
-                message="Python sandbox started",
-                details={"pid": self.python_sandbox_process.pid, "port": 45555},
-            )
-        except Exception as e:
-            logger.error("Python sandbox initialization failed: %s", e)
-            self.python_sandbox_state.status = ComponentStatus.ERROR
-            self.python_sandbox_state.error_message = str(e)
-            return InitResult(
-                success=False,
-                component="python_sandbox",
-                status=ComponentStatus.ERROR,
-                message=f"Python sandbox initialization failed: {e}",
-            )
-
     async def init_shell_sandbox(self) -> InitResult:
         """Pull Kali image and prepare shell sandbox."""
         logger.debug("Initializing shell sandbox...")
@@ -402,13 +364,13 @@ class ComponentManager:
             failed.append("model_registry")
             logger.warning("Model registry initialization failed")
 
-        # 5. Python sandbox - standalone
-        logger.info("Step 5/7: Starting Python sandbox...")
-        python_sandbox_result = await self.init_python_sandbox()
-        results.append(python_sandbox_result)
-        if not python_sandbox_result.success:
-            failed.append("python_sandbox")
-            logger.warning("Python sandbox initialization failed")
+        # # 5. Python sandbox - standalone
+        # logger.info("Step 5/7: Starting Python sandbox...")
+        # python_sandbox_result = await self.init_python_sandbox()
+        # results.append(python_sandbox_result)
+        # if not python_sandbox_result.success:
+        #     failed.append("python_sandbox")
+        #     logger.warning("Python sandbox initialization failed")
 
         # 6. Shell sandbox - needs Docker
         logger.info("Step 6/7: Preparing shell sandbox...")
@@ -855,15 +817,6 @@ class ComponentManager:
                 results["playwright"] = True
             except Exception:
                 results["playwright"] = False
-
-        # Stop Python sandbox
-        if self.python_sandbox_process and self.python_sandbox_process.poll() is None:
-            try:
-                stop_python_sandbox(process=self.python_sandbox_process)
-                self.python_sandbox_state.status = ComponentStatus.STOPPED
-                results["python_sandbox"] = True
-            except Exception:
-                results["python_sandbox"] = False
 
         # Stop shell sandboxes
         if self.sandbox_manager:

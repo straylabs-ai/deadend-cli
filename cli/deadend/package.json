@@ -1,0 +1,20 @@
+{
+  "name": "deadend",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun --watch index.ts --dev",
+    "debug": "DEBUG=true bun --watch index.ts --debug",
+    "start": "bun run index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@opentui/core": "^0.1.97"
+  }
+}

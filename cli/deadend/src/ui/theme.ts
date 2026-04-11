@@ -1,0 +1,18 @@
+export const theme = {
+  accent: "#FF5533",
+  textPrimary: "white",
+  textSecondary: "gray",
+  textMuted: "#777777",
+  statusSuccess: "#64CF64",
+  statusWarning: "#FEE19C",
+  statusError: "#F1689F",
+  statusInfo: "#8C8CF9",
+  routing: "#DAA520",
+  inputBorder: "gray",
+  inputPrompt: "#FF5533",
+  inputModeYolo: "red",
+  inputModeSupervisor: "#DAA520",
+  userBackground: "#2d2d2d",
+  userForeground: "white",
+  notificationBackground: "#111111",
+} as const;

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import Any
+from uuid import uuid4
 from pydantic import BaseModel, Field
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.utils.structures import PlannerOutput
@@ -23,6 +24,8 @@ class TaskNode(BaseModel):
         children: List of child task nodes (subtasks)
     """
     task: str
+    task_id: str = Field(default_factory=lambda: str(uuid4()))
+    parent_task_id: str | None = None
     status: str
     confidence_score: float
     depth: int
@@ -36,6 +39,7 @@ class TaskNode(BaseModel):
             child: The child TaskNode to add. The child's parent will be set to this node.
         """
         child.parent = self
+        child.parent_task_id = self.task_id
         self.children.append(child)
 
 class Planner:
@@ -112,6 +116,7 @@ Do NOT use fields like `title`, `description`, `confidence`, `prerequisites`, or
                 for task_plan in result.output.tasks:
                     new_task = TaskNode(
                         task=task_plan.task,
+                        parent_task_id=parent_task.task_id,
                         depth=parent_task.depth+1,
                         confidence_score=task_plan.confidence_score,
                         status="pending",
@@ -128,6 +133,7 @@ Do NOT use fields like `title`, `description`, `confidence`, `prerequisites`, or
                 for task_plan in result.output.tasks:
                     new_task = TaskNode(
                         task=task_plan.task,
+                        parent_task_id=parent_task.task_id,
                         depth=parent_task.depth+1,
                         confidence_score=task_plan.confidence_score,
                         status="pending",
@@ -186,6 +192,8 @@ Do NOT use fields like `title`, `description`, `confidence`, `prerequisites`, or
             existing_tasks = parent_task.children.copy() if parent_task.children else []
             task_depth = parent_task.depth + 1
 
+        existing_task_ids = {existing.task: existing.task_id for existing in existing_tasks}
+
         # Format existing tasks for the prompt
         existing_tasks_summary = "\n".join([
             f"- {task.task} [Status: {task.status}, Confidence: {task.confidence_score:.2f}]"
@@ -241,6 +249,8 @@ Do NOT use fields like `title`, `description`, `confidence`, `prerequisites`, or
             for task_plan in result.output.tasks:
                 new_task = TaskNode(
                     task=task_plan.task,
+                    task_id=existing_task_ids.get(task_plan.task, str(uuid4())),
+                    parent_task_id=parent_task.task_id if parent_task else None,
                     depth=task_depth,
                     confidence_score=task_plan.confidence_score,
                     status=task_plan.status,
@@ -256,6 +266,8 @@ Do NOT use fields like `title`, `description`, `confidence`, `prerequisites`, or
             for task_plan in result.output.tasks:
                 new_task = TaskNode(
                     task=task_plan.task,
+                    task_id=existing_task_ids.get(task_plan.task, str(uuid4())),
+                    parent_task_id=parent_task.task_id if parent_task else None,
                     depth=task_depth,
                     confidence_score=task_plan.confidence_score,
                     status=task_plan.status,

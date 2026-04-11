@@ -15,7 +15,6 @@ import typer
 
 from rich.console import Console
 from deadend_agent import config_setup
-from deadend_agent.core import start_python_sandbox, stop_python_sandbox
 from .cli_logging import setup_logging
 from .init import init_cli_config, check_docker
 from .eval import eval_interface
@@ -84,8 +83,6 @@ def eval_agent(
     log_level_name = str(config.log_level or "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
     setup_logging(level=log_level)
-    python_process = start_python_sandbox()
-    console.print(f"Python sandbox started: {python_process}")
     # start eval
     try:
         asyncio.run(
@@ -97,8 +94,7 @@ def eval_agent(
             )
         )
     finally:
-        if python_process.poll() is None:
-            stop_python_sandbox(python_process)
+        pass
 
 
 @app.command()

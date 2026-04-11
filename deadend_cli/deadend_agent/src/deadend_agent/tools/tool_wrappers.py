@@ -103,14 +103,6 @@ def _get_agent_name_from_context(ctx: Any) -> str:
     return "unknown"
 
 
-def _truncate_str(value: Any, max_length: int = 500) -> str:
-    """Truncate a value to a maximum length for event data."""
-    s = str(value)
-    if len(s) > max_length:
-        return s[:max_length] + "..."
-    return s
-
-
 def _serialize_result_for_event(result: Any) -> str:
     """Serialize tool result for event payload (same idea as core_agent._serialize_tool_result).
 
@@ -149,7 +141,7 @@ def with_tool_events(
     """Decorator to wrap a tool function with event emission.
 
     Emits TOOL_CALL_START before the tool executes and TOOL_CALL_END after,
-    capturing execution time, success/failure status, and truncated args/result.
+    capturing execution time and success/failure status.
 
     When approval mode is enabled (via enable_approval_mode()), all tools
     will request user approval before executing.
@@ -186,9 +178,9 @@ def with_tool_events(
             agent_name = _get_agent_name_from_context(ctx)
 
             # Build args string for event (exclude ctx)
-            args_str = _truncate_str(kwargs) if kwargs else ""
+            args_str = str(kwargs) if kwargs else ""
             if len(args) > 1:
-                args_str = _truncate_str(args[1:]) + " " + args_str
+                args_str = str(args[1:]) + " " + args_str
 
             # Emit start event
             hooks.emit_tool_call_start(
@@ -211,7 +203,7 @@ def with_tool_events(
                     agent_name=agent_name,
                     tool_name=name,
                     success=True,
-                    result=_truncate_str(result_str, 1000),
+                    result=result_str,
                     tool_call_id=tool_call_id,
                     duration_ms=duration_ms,
                 )
@@ -243,9 +235,9 @@ def with_tool_events(
             agent_name = _get_agent_name_from_context(ctx)
 
             # Build args string for event (exclude ctx)
-            args_str = _truncate_str(kwargs) if kwargs else ""
+            args_str = str(kwargs) if kwargs else ""
             if len(args) > 1:
-                args_str = _truncate_str(args[1:]) + " " + args_str
+                args_str = str(args[1:]) + " " + args_str
 
             # Handle approval workflow if approval mode is enabled
             effective_kwargs = dict(kwargs)
@@ -292,7 +284,7 @@ def with_tool_events(
                     agent_name=agent_name,
                     tool_name=name,
                     success=True,
-                    result=_truncate_str(result_str, 1000),
+                    result=result_str,
                     tool_call_id=tool_call_id,
                     duration_ms=duration_ms,
                 )
