@@ -17,6 +17,8 @@ dependencies = [
     "docker>=7.1.0",
     "dotenv>=0.9.9",
     "google-genai>=1.18.0",
+    # pydantic_ai imports griffe's public API; griffelib alone only provides a stub `griffe` tree.
+    "griffe>=1.15.0,<2",
     "httptools>=0.6.4",
     "instructor>=1.15.1",
     "jsbeautifier>=1.15.4",
@@ -31,7 +33,8 @@ dependencies = [
     "playwright>=1.56.0",
     "python-sandbox-client",
     "pydantic>=2.11.5",
-    "pydantic-ai>=1.35.0",
+    "pydantic-settings>=2.6.0",
+    # `pydantic-ai` meta pulls all extras (e.g. mistral); mistralai 2.x breaks instructor imports.
     "pydantic-ai-slim[google,openrouter]>=1.35.0",
     "pyyaml>=6.0.2",
     "readchar>=4.2.1",

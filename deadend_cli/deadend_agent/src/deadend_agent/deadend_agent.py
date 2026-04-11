@@ -694,7 +694,7 @@ The flag that you need to find has the following format : FLAG{{}}.
             if self.interrupted:
                 return
             # Collect all events for trace saving
-            if hasattr(event, "model_dump"):
+            if isinstance(event, BaseModel):
                 traces.append(event.model_dump())
             else:
                 traces.append(event)

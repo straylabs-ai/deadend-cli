@@ -403,15 +403,15 @@ def main(
         result = await component_manager.init_model_registry()
         return result.model_dump()
 
-    @server.add_method("init_python_sandbox")
-    async def init_python_sandbox(
-        _request_id: Any,
-        _params: Dict[str, Any],
-        component_manager: ComponentManager
-    ) -> Dict[str, Any]:
-        """Initialize Python sandbox."""
-        result = await component_manager.init_python_sandbox()
-        return result.model_dump()
+    # @server.add_method("init_python_sandbox")
+    # async def init_python_sandbox(
+    #     _request_id: Any,
+    #     _params: Dict[str, Any],
+    #     component_manager: ComponentManager
+    # ) -> Dict[str, Any]:
+    #     """Initialize Python sandbox."""
+    #     result = await component_manager.init_python_sandbox()
+    #     return result.model_dump()
 
     @server.add_method("init_shell_sandbox")
     async def init_shell_sandbox(

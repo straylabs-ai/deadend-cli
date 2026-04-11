@@ -9,7 +9,7 @@ agent code while routing execution to the stdio worker pool implementation from
 ``python_sandbox_client``.
 """
 from pathlib import Path
-from typing import Any
+
 
 from python_sandbox_client import SandboxPool
 

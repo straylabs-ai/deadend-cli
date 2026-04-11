@@ -150,7 +150,7 @@ class RPCClient:
                 self.process.terminate()
                 try:
                     await asyncio.wait_for(self.process.wait(), timeout=5.0)
-                except asyncio.TimeoutExpired:
+                except asyncio.TimeoutError:
                     self.process.kill()
                     await self.process.wait()
         except (ProcessLookupError, OSError):
@@ -191,7 +191,8 @@ async def rpc_server_process(tmp_path):
     if process.returncode is not None:
         # Process has exited, read stderr to see what went wrong
         try:
-            stderr_data = await asyncio.wait_for(process.stderr.read(), timeout=0.5)
+            if process.stderr:
+                stderr_data = await asyncio.wait_for(process.stderr.read(), timeout=0.5)
             stderr_output = stderr_data.decode("utf-8", errors="ignore")
         except (asyncio.TimeoutError, OSError):
             stderr_output = "Could not read stderr"
@@ -209,7 +210,7 @@ async def rpc_server_process(tmp_path):
             process.terminate()
             try:
                 await asyncio.wait_for(process.wait(), timeout=5.0)
-            except asyncio.TimeoutExpired:
+            except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
     except (ProcessLookupError, OSError):
@@ -718,19 +719,6 @@ class TestRPCServerInitialization:  # noqa: F811
         """Test init_model_registry method."""
         await rpc_client.send_request("init_model_registry")
         response = await rpc_client.read_response(timeout=30.0)
-
-        assert response["jsonrpc"] == "2.0"
-        assert "result" in response
-        result = response["result"]
-        assert "component" in result or "status" in result or "success" in result
-
-    @pytest.mark.asyncio
-    @pytest.mark.slow
-    @pytest.mark.docker
-    async def test_init_python_sandbox(self, rpc_client):
-        """Test init_python_sandbox method (requires Docker)."""
-        await rpc_client.send_request("init_python_sandbox")
-        response = await rpc_client.read_response(timeout=60.0)
 
         assert response["jsonrpc"] == "2.0"
         assert "result" in response
