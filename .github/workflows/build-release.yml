@@ -139,9 +139,78 @@ jobs:
           path: deadend_cli/installer/${{ steps.package.outputs.name }}.${{ matrix.archive_ext }}
           retention-days: 30
 
+  build-cli:
+    name: Build CLI for ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
+            target: bun-linux-x64
+          - os: macos-latest
+            platform: macos
+            arch: aarch64
+            target: bun-darwin-arm64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: cli/deadend
+        run: bun install --frozen-lockfile
+
+      - name: Build CLI binary
+        working-directory: cli/deadend
+        run: |
+          bun build --compile \
+            --target=${{ matrix.target }} \
+            --outfile deadend-cli \
+            index.ts
+
+      - name: Create package directory
+        id: package
+        working-directory: cli/deadend
+        run: |
+          PACKAGE_NAME="deadend-cli-${{ matrix.platform }}-${{ matrix.arch }}"
+          mkdir -p "$PACKAGE_NAME"
+          cp deadend-cli "$PACKAGE_NAME/"
+          echo "name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Create archive
+        working-directory: cli/deadend
+        run: |
+          tar -czf "${{ steps.package.outputs.name }}.tar.gz" "${{ steps.package.outputs.name }}"
+
+      - name: Create checksum
+        working-directory: cli/deadend
+        run: |
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${{ steps.package.outputs.name }}.tar.gz" > "${{ steps.package.outputs.name }}.tar.gz.sha256"
+          else
+            shasum -a 256 "${{ steps.package.outputs.name }}.tar.gz" > "${{ steps.package.outputs.name }}.tar.gz.sha256"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deadend-cli-${{ matrix.platform }}-${{ matrix.arch }}
+          path: |
+            cli/deadend/${{ steps.package.outputs.name }}.tar.gz
+            cli/deadend/${{ steps.package.outputs.name }}.tar.gz.sha256
+          retention-days: 30
+
   release:
     name: Create Release
-    needs: [build-server]
+    needs: [build-server, build-cli]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     permissions:

@@ -80,7 +80,8 @@ chunks_html.txt
 # AI tool configs (recursive)
 **/CLAUDE.md
 **/.cursor/
-**/.codex/
+# Match .codex file or dir anywhere; trailing slash alone would miss a file named `.codex`.
+**/.codex
 
 # Internal docs
 docs/

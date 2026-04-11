@@ -1005,7 +1005,7 @@ export class DeadendApp {
     this.chatView.transcript.add(createBanner(this.renderer));
     this.chatView.transcript.add(
       new TextRenderable(this.renderer, {
-        content: "deadend CLI v0.1.4 · straylabs.ai",
+        content: "deadend CLI v0.1.5 · straylabs.ai",
         fg: theme.textSecondary,
       }),
     );
