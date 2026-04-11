@@ -76,6 +76,8 @@ chunks_html.txt
 
 # benchmark runs
 **/run-*/
+**/docs/
+docs/
 
 # AI tool configs (recursive)
 **/CLAUDE.md
