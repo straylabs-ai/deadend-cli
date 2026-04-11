@@ -271,7 +271,29 @@ jobs:
           tag_name: ${{ steps.version.outputs.version }}
           name: Release ${{ steps.version.outputs.version }}
           body: |
-            ## Deadend CLI ${{ steps.version.outputs.version }} Stable version;
+            ## Deadend CLI ${{ steps.version.outputs.version }} version
+
+            ### What's new
+            I had enough of ink. I'm sorry, too much annoying. OpenTUI is way better to implement and less buggy (should have done the whole project in Rust and ratatui since the beginning :') )
+            The overview of the new cool features :
+            - We can now switch between different types of validations (flag, judge, recon). 
+            - Report is generated at recon end and when a vulnerability is discovered. Or when asking for a report.
+            - Ctrl+O to expand the tools results.
+            - Ctrl+T to view the tasks. 
+            - Agentic virtual filesystem for agent memory
+            
+            ### Installation
+            
+            Download and run the install script:
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ steps.version.outputs.version }}/install.sh | bash -s -- --version ${{ steps.version.outputs.version }}
+            ```
+            
+            Or manually extract and install:
+            ```bash
+            tar -xzf deadend-<platform>-<arch>.tar.gz
+            cd deadend-<platform>-<arch>
+            sudo cp -r * /usr/local/
             
             ### Server Downloads (RPC Server)
             
@@ -288,19 +310,7 @@ jobs:
             
             **macOS (ARM64):**
             - `deadend-cli-macos-aarch64.tar.gz`
-            
-            ### Installation
-            
-            Download and run the install script:
-            ```bash
-            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/${{ steps.version.outputs.version }}/install.sh | bash -s -- --version ${{ steps.version.outputs.version }}
-            ```
-            
-            Or manually extract and install:
-            ```bash
-            tar -xzf deadend-<platform>-<arch>.tar.gz
-            cd deadend-<platform>-<arch>
-            sudo cp -r * /usr/local/
+
 
             Hope you enjoy the new release, let me know if this works for macos and linux
             ```
