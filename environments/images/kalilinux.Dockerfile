@@ -2,7 +2,9 @@
 # Matches linux/amd64 and linux/arm64 from buildx (golang image is multi-arch).
 FROM golang:tip-trixie AS go-tools
 RUN go install github.com/ffuf/ffuf@latest && \
-    go install github.com/OJ/gobuster/v3@latest
+    go install github.com/OJ/gobuster/v3@latest && \
+    go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest && \
+    go install github.com/projectdiscovery/vulnx/v2/cmd/vulnx@latest
 
 FROM kalilinux/kali-rolling
 
@@ -11,7 +13,9 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-COPY --from=go-tools /go/bin/ffuf /go/bin/gobuster /usr/local/bin/
+COPY --from=go-tools /go/bin/ffuf \
+    /go/bin/dnsx /go/bin/vulnx \
+    /go/bin/gobuster /usr/local/bin/
 
 RUN apt-get update --fix-missing && \
     apt-get install -y --no-install-recommends \
@@ -24,11 +28,11 @@ RUN apt-get update --fix-missing && \
         # Python environment
         python3 python3-pip python3-setuptools python3-dev python3-venv pipx \
         # Security tools
-        nmap masscan nikto dirb sqlmap hydra john hashcat \
+        nmap masscan nikto dirb sqlmap hydra john hashcat whatweb \
         # Seclists
         seclists \
         # Additional security tools
-        amap apt-utils bsdmainutils cewl crackmapexec crunch \
+        amap apt-utils bsdmainutils cewl crackmapexec \
         dnsenum dnsrecon dnsutils dos2unix enum4linux ftp hping3 \
         joomscan kpcli libffi-dev mimikatz nasm nbtscan onesixtyone \
         oscanner passing-the-hash patator php\
