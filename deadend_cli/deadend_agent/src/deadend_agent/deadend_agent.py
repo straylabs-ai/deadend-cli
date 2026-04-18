@@ -99,12 +99,14 @@ class DeadEndAgent:
         workspace_root: str | None = None,
         agents_storage_root: str | None = None,
         local_agent_id: UUID | None = None,
+        proxy_url: str | None = None,
     ):
         self.session_id = session_id
         self.embedding_session_id = embedding_session_id or session_id
         self.max_depth = max_depth
         self.model = model
         self.available_agents = available_agents
+        self.proxy_url = proxy_url
 
         # Load validation config from YAML (falls back to defaults).
         self.validation_config = load_validation_config(validation_config_path)
@@ -394,6 +396,7 @@ class DeadEndAgent:
             rag=rag_connector,
             target=target_host,
             session_id=self.session_id,
+            proxy_url=self.proxy_url,
             embedding_session_id=self.embedding_session_id,
             memory_workspace_root=self.memory_workspace_root,
             memory_context=self.memory_context,

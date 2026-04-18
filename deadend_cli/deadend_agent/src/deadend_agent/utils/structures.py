@@ -144,6 +144,7 @@ class RequesterDeps:
     rag: SqliteRagConnector
     target: str
     session_id: uuid.UUID
+    proxy_url: str | None = None
     embedding_session_id: uuid.UUID | None = None
     memory_workspace_root: str | None = None
     memory_context: str = ""

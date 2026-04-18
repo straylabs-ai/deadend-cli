@@ -1468,6 +1468,7 @@ export class DeadendApp {
         this.currentModel.provider,
         this.currentModel.model ?? undefined,
         this.resolveWorkspaceRoot(),
+        this.args.proxy,
       );
       if (result.status !== "ok" || !result.agent_id) {
         throw new Error(`Failed to instantiate agent: ${result.reason ?? "Unknown error"}`);

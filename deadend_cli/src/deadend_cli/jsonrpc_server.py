@@ -841,6 +841,7 @@ def main(
         provider = params.get("provider")
         model_name = params.get("model_name")
         workspace_root = params.get("workspace_root")
+        proxy_url = params.get("proxy_url")
 
         # Get the model spec (will use current provider/model if not specified)
         logger.info("model and provider %s %s", provider, model_name)
@@ -889,6 +890,7 @@ def main(
             workspace_root=workspace_root,
             agents_storage_root=component_manager.config.agents_storage_root,
             local_agent_id=component_manager.config.get_local_agent_id(),
+            proxy_url=proxy_url,
         )
         async def approval_callback() -> str:
             return "yes"

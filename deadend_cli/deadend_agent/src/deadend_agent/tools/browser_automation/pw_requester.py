@@ -228,9 +228,13 @@ class PlaywrightRequester:
             await self.playwright.stop()
         self._initialized = False
 
-    async def send_raw_data(self, host: str, port: int, target_host: str,
-                          request_data: str, is_tls: bool = False,
-                          via_proxy: bool = False) -> AsyncGenerator[Union[str, bytes], None]:
+    async def send_raw_data(
+        self,
+        host: str,
+        port: int,
+        request_data: str,
+        is_tls: bool = False,
+    ) -> AsyncGenerator[Union[str, bytes], None]:
         """
         Send raw HTTP request data to a target host.
         
@@ -239,12 +243,10 @@ class PlaywrightRequester:
         and session management.
         
         Args:
-            host (str): Host to connect to (proxy host if via_proxy=True)
+            host (str): Target host
             port (int): Port to connect to
-            target_host (str): Target host for the actual request
             request_data (str): Raw HTTP request string
             is_tls (bool): Whether to use TLS encryption
-            via_proxy (bool): Whether to route through a proxy
             
         Returns:
             Union[str, bytes]: Raw HTTP response or error message
@@ -283,11 +285,7 @@ class PlaywrightRequester:
 
 
         protocol = "https" if is_tls else "http"
-        # TODO: still not tested
-        if via_proxy:
-            target_url = f"{protocol}://{target_host}{parsed_request['path']}"
-        else:
-            target_url = f"{protocol}://{host}:{port}{parsed_request['path']}"
+        target_url = f"{protocol}://{host}:{port}{parsed_request['path']}"
         # get local storage headers to see if there is any needed headers to be added
         # to the request
         if self.session_id:

@@ -65,12 +65,14 @@ export class DeadendRpcClient {
     provider?: string,
     modelName?: string,
     workspaceRoot?: string,
+    proxyUrl?: string,
   ): Promise<InstantiateAgentResult> {
     return await this.client.call("instantiate_agent", {
       target,
       ...(provider ? { provider } : {}),
       ...(modelName ? { model_name: modelName } : {}),
       ...(workspaceRoot ? { workspace_root: workspaceRoot } : {}),
+      ...(proxyUrl ? { proxy_url: proxyUrl } : {}),
     });
   }
 
