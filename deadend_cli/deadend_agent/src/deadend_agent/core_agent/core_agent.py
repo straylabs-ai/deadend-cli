@@ -662,7 +662,7 @@ class CoreAgent:
             schema = {
                 "type": "function",
                 "function": {
-                    "name": func.__name__,
+                    "name": getattr(func, "__name__", None),
                     "description": (func.__doc__ or "").strip(),
                     "parameters": self._extract_params(func),
                 }
@@ -1129,7 +1129,7 @@ class CoreAgent:
             Tool function, or None if not found
         """
         for func in self.tools:
-            if func.__name__ == tool_name:
+            if getattr(func, "__name__", None) == tool_name:
                 return func
         return None
 
@@ -1264,7 +1264,8 @@ class CoreAgent:
                 break  # Only check the last assistant message
 
         # If no JSON found in existing messages, ask LLM explicitly
-        schema_json = self.output_schema.model_json_schema()
+        if isinstance(self.output_schema, BaseModel):
+            schema_json = self.output_schema.model_json_schema()
         json_prompt = f"""Based on the conversation above, provide your response as a JSON object matching this schema:
 
 ```json
@@ -1346,7 +1347,8 @@ Output ONLY valid JSON, no other text. The JSON must match the schema exactly.""
 
         try:
             data = json.loads(json_str)
-            return self.output_schema.model_validate(data)
+            if isinstance(self.output_schema, BaseModel):
+                return self.output_schema.model_validate(data)
         except (json.JSONDecodeError, Exception):
             return None
 

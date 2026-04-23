@@ -257,7 +257,7 @@ class ADaPTAgent:
                     yield emit(
                         f"[VALIDATION] Root goal achieved (confidence={event.confidence_score:.2f})"
                     )
-                    yield event
+                    yield event.model_dump()
                     yield {"exit_loop": True}
                     return
 

@@ -1120,15 +1120,14 @@ class ContextEngine:
 
             reporter_agent = ReporterAgent(
                 model=self.model,
-                deps_type=None,
-                tools=[],
                 validation_format="New context with the relevant information",
                 validation_type="Summarize context",
             )
             # ReporterAgent.summarize_context will update workflow_context via
             # ContextEngine.set_new_workflow, so no direct assignment is needed.
-            result = await reporter_agent.summarize_context(self)
-            self.workflow_context = result.output
+            if self.session_id:
+                result = await reporter_agent.summarize_context(context_engine=self, session_id=str(self.session_id))
+            self.workflow_context = result
         return token_count
 
 #     def add_next_agent(self, router_output: "RouterOutput") -> None:

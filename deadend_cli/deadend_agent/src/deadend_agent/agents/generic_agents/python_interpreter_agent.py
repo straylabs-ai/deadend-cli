@@ -103,7 +103,8 @@ class PythonInterpreterAgent(AgentRunner):
         Returns:
             AgentRunResult containing the PythonInterpreterOutput with execution results.
         """
-        auth_info = await read_auth_storage(ctx=session_key)
+        if session_key:
+            auth_info = await read_auth_storage(ctx=session_key)
         prompt_with_auth = f"""\
 # Authentication, cookies and other information retrieved from previous tasks
 {str(auth_info)}

@@ -11,7 +11,6 @@ from deadend_prompts import render_agent_instructions, render_tool_description
 
 
 class WebAppAnalyzerAgent(AgentRunner):
-
     def __init__(
         self,
         model: ModelSpec,

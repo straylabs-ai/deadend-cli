@@ -10,8 +10,6 @@ reasoning for the success or failure of security testing objectives.
 """
 
 from pydantic import BaseModel
-from typing import Dict
-
 from deadend_prompts import render_agent_instructions
 from .factory import AgentRunner
 
