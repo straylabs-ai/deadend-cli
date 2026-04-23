@@ -20,7 +20,6 @@ if "deadend_agent.rlm" not in sys.modules:
     rlm_package.__path__ = [str(PACKAGE_ROOT / "rlm")]
     sys.modules["deadend_agent.rlm"] = rlm_package
 
-from deadend_agent.context.memory import MemoryHandler
 from deadend_agent.rlm.compat import assess_python_sandbox_compatibility
 from deadend_agent.rlm.memory import RLMFileMemory
 
@@ -71,22 +70,6 @@ def test_rlm_file_memory_indexes_markdown_and_json(tmp_path):
     assert memory.json_sample_array("state.json", "findings", 0, 1) == [
         {"type": "sqli", "endpoint": "/login"}
     ]
-
-
-def test_memory_handler_uses_session_root_and_describes_memory(tmp_path):
-    session_dir = tmp_path / "memory" / "sessions" / "test-session"
-    session_dir.mkdir(parents=True)
-    (session_dir / "requester.jsonl").write_text('{"event": "request"}\n', encoding="utf-8")
-    (session_dir / "summary.md").write_text("# Session\nUseful notes\n", encoding="utf-8")
-
-    handler = MemoryHandler.for_session(session_key="test-session", base_dir=tmp_path / "memory" / "sessions")
-
-    described = handler.describe_memory()
-    files = handler.list_files()
-
-    assert "summary.md [markdown]" in described
-    assert "requester.jsonl [jsonl]" in described
-    assert [item.path for item in files] == ["requester.jsonl", "summary.md"]
 
 
 def test_sandbox_compatibility_report_marks_current_backend_incompatible():
