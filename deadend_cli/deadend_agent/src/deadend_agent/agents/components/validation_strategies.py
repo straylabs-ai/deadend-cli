@@ -263,7 +263,7 @@ class JudgeAgentStrategy:
             "judge",
             tools={},
             validation_type=validation_type or "flag",
-            validation_format=validation_format or "FLAG{{}}",
+            validation_format=validation_format,
         )
 
         self._output_model = _JudgeOutput

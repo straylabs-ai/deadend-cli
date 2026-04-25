@@ -11,7 +11,6 @@ sandboxed WebAssembly-based Python interpreter environment.
 from typing import Any
 from pydantic_ai import Tool, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
-# from deadend_agent.context import MemoryHandler
 from deadend_agent.config.settings import ModelSpec
 from deadend_agent.agents.factory import AgentRunner, AgentOutput
 from deadend_agent.tools import read_auth_storage, run_python_file
@@ -111,8 +110,6 @@ class PythonInterpreterAgent(AgentRunner):
 # Objective and context
 {prompt}
 """
-        print(f"deps are : {deps}")
-        print(f"prompt python_interpreter: {prompt_with_auth}")
         agent_response = await super(PythonInterpreterAgent, self).run(
             prompt_with_auth,
             deps,

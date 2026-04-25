@@ -924,9 +924,7 @@ class ContextEngine:
 
         for idx, (task_planner, children) in enumerate(self.tasks.items(), 1):
             task_desc = task_planner.task.strip()  # Full task, no truncation
-
-            # Status indicator for quick scanning
-            status_icon = {
+            status_icons = {
                 'pending': '○',
                 'in_progress': '◐',
                 'completed': '✓',
@@ -936,7 +934,9 @@ class ContextEngine:
                 'failed-validation': '✗',
                 'aborted:max_depth': '⊘',
                 'failed:max_attempts': '⊘',
-            }.get(task_planner.status, '?')
+            }
+            # Status indicator for quick scanning
+            status_icon = status_icons.get(task_planner.status, '?')
 
             tasks_lines += f"{idx}. {status_icon} {task_desc}\n"
             tasks_lines += f"   Status: {task_planner.status} | Confidence: {task_planner.confidence_score:.2f}\n"
@@ -947,29 +947,13 @@ class ContextEngine:
                     tasks_lines += f"   Subtasks ({len(children)}):\n"
                     for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
                         child_desc = child_planner.task.strip()  # Full task, no truncation
-                        child_icon = {
-                            'pending': '○',
-                            'in_progress': '◐',
-                            'completed': '✓',
-                            'success': '✓',
-                            'validated': '✓',
-                            'failed': '✗',
-                            'failed-validation': '✗',
-                        }.get(child_planner.status, '?')
+                        child_icon = status_icons.get(child_planner.status, '?')
                         tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
                 elif isinstance(children, list) and children:
                     tasks_lines += f"   Subtasks ({len(children)}):\n"
                     for sub_idx, child_planner in enumerate(children, 1):
                         child_desc = child_planner.task.strip()  # Full task, no truncation
-                        child_icon = {
-                            'pending': '○',
-                            'in_progress': '◐',
-                            'completed': '✓',
-                            'success': '✓',
-                            'validated': '✓',
-                            'failed': '✗',
-                            'failed-validation': '✗',
-                        }.get(child_planner.status, '?')
+                        child_icon = status_icons.get(child_planner.status, '?')
                         tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
             tasks_lines += "\n"
 
@@ -1130,36 +1114,6 @@ class ContextEngine:
             self.workflow_context = result
         return token_count
 
-#     def add_next_agent(self, router_output: "RouterOutput") -> None:
-#         """Add router output information and set the next agent.
-        
-#         Args:
-#             router_output (RouterOutput): The output from the router agent
-#                                          containing the next agent name and
-#                                          routing information.
-        
-#         Updates the next_agent attribute and adds the router output
-#         to the workflow context. Also saves to text file.
-#         """
-#         self.next_agent = router_output.next_agent_name
-#         self.workflow_context  += f"""\n
-# [router agent]
-# {str(router_output)}
-# """
-#         self._append_to_context_file("[ai agent]", f"Router agent: {str(router_output)}")
-#     def add_not_found_agent(self, agent_name: str) -> None:
-#         """Add information about a not found agent to the workflow context.
-        
-#         Args:
-#             agent_name (str): The name of the agent that was not found.
-        
-#         Adds a message to the workflow context indicating that the
-#         specified agent was not found. Also saves to text file.
-#         """
-#         self.workflow_context += f"""
-# [agent not found {agent_name}]\n
-# """
-#         self._append_to_context_file("[ai agent]", f"Not found agent name: {agent_name}")
     def add_agent_response(
         self,
         response: str,
