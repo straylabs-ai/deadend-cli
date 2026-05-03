@@ -1,10 +1,12 @@
 import json
 import re
+import time
+from email.utils import parsedate_to_datetime
 from typing import AsyncGenerator, Dict, Union, Any, List
 from urllib.parse import urlparse, parse_qs
 from anyio import Path
-from playwright.async_api import APIRequestContext, async_playwright
-from playwright._impl._api_structures import OriginState
+from playwright.async_api import APIRequestContext, Browser, BrowserContext, async_playwright, Playwright, Page
+from playwright._impl._api_structures import OriginState, SetCookieParam
 from .http_parser import analyze_http_request_text
 from deadend_agent.logging import logger
 
@@ -54,14 +56,14 @@ class PlaywrightRequester:
         """
         self.verify_ssl = verify_ssl
         self.proxy_url = proxy_url
-        self.playwright = None
-        self.browser = None
-        self.context = None
+        self.playwright: Playwright | None = None
+        self.browser: Browser | None = None
+        self.context: BrowserContext | None = None
         self.request_context: APIRequestContext | None = None
         self._initialized = False
         self.session_id = session_id
         # Fix: Add persistent page for localStorage operations
-        self._persistent_page = None
+        self._persistent_page: Page | None = None
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -80,19 +82,19 @@ class PlaywrightRequester:
         self.playwright = await async_playwright().start()
 
         # Configure browser launch options
-        browser_options = {
+        browser_options: dict[str, Any] = {
             'headless': True,
-                'args': [
-                    '--disable-web-security', # Disable web security for cross-origin access
-                    '--disable-features=VizDisplayCompositor',  # Disable some security features
-                    '--allow-running-insecure-content', # Allow insecure content
-                    '--disable-blink-features=AutomationControlled',  # Hide automation
-                    '--no-sandbox',
-                    '--disable-dev-shm-usage', 
-                ]
+            'args': [
+                '--disable-web-security', # Disable web security for cross-origin access
+                '--disable-features=VizDisplayCompositor',  # Disable some security features
+                '--allow-running-insecure-content', # Allow insecure content
+                '--disable-blink-features=AutomationControlled',  # Hide automation
+                '--no-sandbox',
+                '--disable-dev-shm-usage', 
+            ]
         }
-        self.browser = await self.playwright.chromium.launch(**browser_options)
         
+        self.browser = await self.playwright.chromium.launch(**browser_options)
         # Load existing storage state (including cookies) if session_id is provided
         storage_path = None
         if self.session_id:
@@ -107,7 +109,7 @@ class PlaywrightRequester:
                 storage_path = None
 
         # Configure browser context options
-        context_options = {
+        context_options:dict[str, Any] = {
             'ignore_https_errors': not self.verify_ssl,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         }
@@ -159,7 +161,7 @@ class PlaywrightRequester:
         
         Fix: Use a persistent page instead of creating new pages for each operation.
         """
-        if not self._persistent_page:
+        if not self._persistent_page and self.context:
             self._persistent_page = await self.context.new_page()
 
         if domain:
@@ -168,10 +170,12 @@ class PlaywrightRequester:
                 domain = f"http://{domain}"
 
             # Navigate to domain if not already there
-            current_url = self._persistent_page.url
+            if self._persistent_page:
+                current_url = self._persistent_page.url
             if not current_url.startswith(domain):
                 try:
-                    await self._persistent_page.goto(domain)
+                    if self._persistent_page:
+                        await self._persistent_page.goto(domain)
                 except Exception as e:
                     logger.warning("Could not navigate to %s: %s", domain, e)
                     return None
@@ -321,7 +325,8 @@ class PlaywrightRequester:
         # Verify cookies are available from context (for debugging)
         if self.session_id:
             try:
-                context_cookies = await self.context.cookies()
+                if self.context:
+                    context_cookies = await self.context.cookies()
                 if context_cookies:
                     # Filter cookies for the current domain
                     parsed_url = urlparse(target_url)
@@ -555,7 +560,7 @@ class PlaywrightRequester:
         # which automatically includes cookies from the browser context.
         # Cookies are loaded from storage on initialization via storage_state option.
         
-        request_options = {
+        request_options: dict[str, Any] = {
             'headers': headers,
             'max_redirects': max_redirects if follow_redirects else 0,
             'timeout': 120_000,  # ms; allow slow redirect chains
@@ -585,19 +590,7 @@ class PlaywrightRequester:
             except Exception as e:
                 logger.error("HTTP %s request failed for %s: %s", method_upper, url, e)
                 raise
-        else:
-            # Fallback for non-APIRequestContext
-            method_upper = method.upper()
-            try:
-                return await self.request_context.fetch(
-                    url_or_request=url,
-                    method=method_upper,
-                    **request_options
-                )
-            except Exception as e:
-                logger.error("HTTP %s request failed for %s: %s", method_upper, url, e)
-                raise
-
+    
     async def _format_response(self, response: Any) -> str:
         """
         Format Playwright response into HTTP response string.
@@ -848,12 +841,12 @@ class PlaywrightRequester:
                             if cookie_name.strip() in cookie_names_before:
                                 continue
 
-                            # Extract cookie attributes
-                            cookie_attrs = {
+                            # Extract cookie attributes (Playwright SetCookieParam)
+                            cookie_params: SetCookieParam = {
                                 'name': cookie_name.strip(),
                                 'value': cookie_value.strip(),
                                 'domain': domain,
-                                'path': '/'
+                                'path': '/',
                             }
 
                             # Parse additional attributes
@@ -863,32 +856,44 @@ class PlaywrightRequester:
                                     attr_name, attr_value = part.split('=', 1)
                                     attr_name = attr_name.lower()
                                     if attr_name == 'domain':
-                                        cookie_attrs['domain'] = attr_value.strip()
+                                        cookie_params['domain'] = attr_value.strip()
                                     elif attr_name == 'path':
-                                        cookie_attrs['path'] = attr_value.strip()
+                                        cookie_params['path'] = attr_value.strip()
                                     elif attr_name == 'expires':
-                                        cookie_attrs['expires'] = attr_value.strip()
+                                        try:
+                                            dt = parsedate_to_datetime(attr_value.strip())
+                                            if dt is not None:
+                                                cookie_params['expires'] = dt.timestamp()
+                                        except (TypeError, ValueError):
+                                            pass
                                     elif attr_name == 'max-age':
                                         try:
-                                            cookie_attrs['maxAge'] = int(attr_value.strip())
+                                            cookie_params['expires'] = time.time() + int(
+                                                attr_value.strip()
+                                            )
                                         except ValueError:
                                             pass
+                                    elif attr_name == 'samesite':
+                                        ssv = attr_value.strip().lower()
+                                        if ssv == 'lax':
+                                            cookie_params['sameSite'] = 'Lax'
+                                        elif ssv == 'strict':
+                                            cookie_params['sameSite'] = 'Strict'
+                                        elif ssv == 'none':
+                                            cookie_params['sameSite'] = 'None'
                                 else:
                                     # Boolean attributes
                                     part_lower = part.lower()
                                     if part_lower == 'httponly':
-                                        cookie_attrs['httpOnly'] = True
+                                        cookie_params['httpOnly'] = True
                                     elif part_lower == 'secure':
-                                        cookie_attrs['secure'] = True
-                                    elif part_lower in ('samesite', 'samesite=lax', 'samesite=strict', 'samesite=none'):
-                                        if '=' in part_lower:
-                                            cookie_attrs['sameSite'] = part_lower.split('=')[1].capitalize()
-                                        else:
-                                            cookie_attrs['sameSite'] = 'Lax'
+                                        cookie_params['secure'] = True
+                                    elif part_lower == 'samesite':
+                                        cookie_params['sameSite'] = 'Lax'
                             
                             # Add cookie to context
                             try:
-                                await self.context.add_cookies([cookie_attrs])
+                                await self.context.add_cookies([cookie_params])
                                 cookies_extracted += 1
                             except Exception as e:
                                 logger.warning("Could not add cookie %s: %s", cookie_name, e)

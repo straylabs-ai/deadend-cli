@@ -1,23 +1,8 @@
+
 from typing import Dict, Any
 import json
 from pathlib import Path
-from pydantic import BaseModel
 from deadend_agent.logging import logger
-
-
-class AuthInfo(BaseModel):
-    """AuthInfo structure for agentic usage with playwright"""
-    session_id: str
-    username: str
-    password: str
-    token: str
-    cookies: list[str]
-
-    def save_session(self):
-        pass
-
-    def load_session(self):
-        pass
 
 
 def load_reusable_credentials() -> Dict[str, Any]:
@@ -50,7 +35,7 @@ def replace_credential_placeholders(request_data: str, account_index: int = 0) -
         str: Request data with placeholders replaced by actual credential values
     """
     credentials = load_reusable_credentials()
-    accounts = credentials.get("accounts", [])
+    accounts: Any = credentials.get("accounts", [])
 
     if not accounts or account_index >= len(accounts):
         logger.warning("No account found at index %d", account_index)
@@ -67,13 +52,14 @@ def replace_credential_placeholders(request_data: str, account_index: int = 0) -
     # replacing the dummy username with the username
     replaced_data = replaced_data.replace(
         account.get("dummy_username"),
-        # "<dummy_username>",
         account.get("username")
     )
     # replacing the dummy password with the password
     replaced_data = replaced_data.replace(
         account.get("dummy_password"),
-        # "<dummy_password>",
         account.get("password")
     )
     return replaced_data
+
+
+
