@@ -48,7 +48,7 @@ class Resource:
     mime_type: str | None = None
     from_cache: bool = False
     failed: bool = False
-    timing: Dict | None = None
+    timing: dict | None = None
     local_path: str | None = None
 
 class WebResourceExtractor:

@@ -333,7 +333,7 @@ class ComponentManager:
         failed: list[str] = []
 
         # 1. Docker - foundation for containers
-        logger.info("Step 1/7: Initializing Docker...")
+        logger.info("Step 1/6: Initializing Docker...")
         docker_result = await self.init_docker()
         results.append(docker_result)
         if not docker_result.success:
@@ -341,7 +341,7 @@ class ComponentManager:
             logger.warning("Docker initialization failed, some components may not work")
 
         # 2. Config - needed for model registry
-        logger.info("Step 2/7: Loading configuration...")
+        logger.info("Step 2/6: Loading configuration...")
         config_result = await self.init_config()
         results.append(config_result)
         if not config_result.success:
@@ -349,7 +349,7 @@ class ComponentManager:
             logger.warning("Config loading failed")
 
         # 3. RAG (SQLite session manager — no Docker needed)
-        logger.info("Step 3/7: Initializing RAG session manager...")
+        logger.info("Step 3/6: Initializing RAG session manager...")
         rag_result = await self.init_rag()
         results.append(rag_result)
         if not rag_result.success:
@@ -357,23 +357,14 @@ class ComponentManager:
             logger.warning("RAG initialization failed")
 
         # 4. Model registry - needs Config
-        logger.info("Step 4/7: Initializing model registry...")
+        logger.info("Step 4/6: Initializing model registry...")
         model_registry_result = await self.init_model_registry()
         results.append(model_registry_result)
         if not model_registry_result.success:
             failed.append("model_registry")
             logger.warning("Model registry initialization failed")
 
-        # # 5. Python sandbox - standalone
-        # logger.info("Step 5/7: Starting Python sandbox...")
-        # python_sandbox_result = await self.init_python_sandbox()
-        # results.append(python_sandbox_result)
-        # if not python_sandbox_result.success:
-        #     failed.append("python_sandbox")
-        #     logger.warning("Python sandbox initialization failed")
-
-        # 6. Shell sandbox - needs Docker
-        logger.info("Step 6/7: Preparing shell sandbox...")
+        logger.info("Step 5/6: Preparing shell sandbox...")
         shell_sandbox_result = await self.init_shell_sandbox()
         results.append(shell_sandbox_result)
         if not shell_sandbox_result.success:
@@ -381,7 +372,7 @@ class ComponentManager:
             logger.warning("Shell sandbox initialization failed")
 
         # 7. Playwright - standalone
-        logger.info("Step 7/7: Initializing Playwright browser...")
+        logger.info("Step 6/6: Initializing Playwright browser...")
         playwright_result = await self.init_playwright()
         results.append(playwright_result)
         if not playwright_result.success:
@@ -602,7 +593,8 @@ class ComponentManager:
                     message=str(result),
                 ))
             else:
-                components.append(result)
+                if isinstance(result, HealthResult):
+                    components.append(result)
 
         return AllHealthResult(
             overall_healthy=all(component.healthy for component in components),

@@ -16,7 +16,7 @@ from pydantic_ai import Tool, DeferredToolRequests, DeferredToolResults
 from pydantic_ai.usage import RunUsage, UsageLimits
 from deadend_agent.agents.factory import AgentRunner, AgentOutput
 from deadend_agent.config.settings import ModelSpec
-from deadend_agent.tools import pw_send_payload
+from deadend_agent.tools import browser_run_steps, pw_send_payload
 from deadend_prompts import render_agent_instructions, render_tool_description
 
 class RequesterOutput(AgentOutput):
@@ -57,7 +57,7 @@ class RequesterAgent(AgentRunner):
     ):
         tools_metadata = {
             "pw_send_payload": render_tool_description("send_payload"),
-            # "webapp_code_rag": render_tool_description("webapp_code_rag")
+            "browser_run_steps": render_tool_description("browser_run_steps"),
         }
 
         path_creds = Path.home() / ".cache" / "deadend" / "memory" / "reusable_credentials.json"
@@ -88,6 +88,7 @@ class RequesterAgent(AgentRunner):
             output_type=[RequesterOutput, DeferredToolRequests],
             tools=[
                 Tool(pw_send_payload, requires_approval=requires_approval),
+                Tool(browser_run_steps, requires_approval=requires_approval),
             ]
         )
 

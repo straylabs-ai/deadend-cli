@@ -28,6 +28,8 @@ class AuthFlow(str, Enum):
     FORM = "form"
     JSON = "json"
     OAUTH = "oauth"
+    AUTHORIZATION_CODE = "authorization_code"
+    CALLBACK = "callback"
 
 class AuthType(str, Enum):
     """
@@ -39,24 +41,36 @@ class AuthType(str, Enum):
     API_KEY = "api_key"
     OAUTH2 = "oauth2"
 
-class AuthContext(BaseModel):
-    auth_session_id: UUID
+class AuthCredentials(BaseModel):
     auth_url: str | None
     target_origin: str | None
     auth_flow: AuthFlow | None
     auth_type: AuthType | None
     credential_ref: CredentialsRefs | None
 
-class AuthHandler:
+class AuthContext(BaseModel):
+    profile: str
+    # Name of the profile
+    cookies: dict[Any, Any]
+    # Session cookies
+    headers: dict[Any, Any]
+    # Session Headers
+    browser_storage: dict[Any, Any]
+    # contains localStorage, sessionStorage
+    metadata: dict[Any, Any]
+    # contains the remaining information, update time, auth type, auth flow...
+
+class AuthContextHandler:
     browser: Any 
     # Browser used
-    auth_contexts: dict[UUID, AuthContext]
+    auth_contexts: dict[str, AuthContext]
     # defines the context authentication, can be multiple accounts
     auth_path: Path
     # Path where auth will be saved / loaded 
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, target: str, agent_id: UUID) -> None:
+        self.target = target
+        self.agent_id = agent_id
 
     def list_authenticated(self) -> None:
         """
@@ -64,16 +78,19 @@ class AuthHandler:
         """
         pass
 
-    def load_auth_session(self) -> None:
+    def load_context(self) -> None:
         """
-        
+        Loads a new profile name 
         """
         pass
 
     def save_auth_session(self) -> None:
         pass
 
-    def authenticate(self, auth_context: AuthContext) -> None:
-        if not auth_context.auth_session_id in self.auth_contexts.keys():
-            # which means the auth_session_id is already in the auth_con
-            pass
+    def update_auth_session(self) -> None:
+        pass
+
+    def get_context
+
+    def authenticate(self, credential_ref: CredentialsRefs) -> None:
+        pass

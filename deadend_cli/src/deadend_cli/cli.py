@@ -12,7 +12,6 @@ import os
 import logging
 import docker
 import typer
-
 from rich.console import Console
 from deadend_agent import config_setup
 from .cli_logging import setup_logging
@@ -25,9 +24,7 @@ if not os.path.exists("/var/run/docker.sock"):
     if os.path.exists(docker_socket):
         os.environ["DOCKER_HOST"] = f"unix://{docker_socket}"
 
-
 console = Console()
-
 app = typer.Typer(help="Deadend CLI - Python maintenance and evaluation commands.")
 
 
@@ -41,7 +38,6 @@ def version():
         console.print(
             "[bold red]Deadend CLI[/bold red] - [yellow]Version not available[/yellow]"
         )
-
 
 @app.command()
 def eval_agent(
