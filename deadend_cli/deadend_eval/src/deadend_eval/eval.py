@@ -89,8 +89,6 @@ async def eval_deadend_agent(
         hard_prompt: bool,
         # choosing between hard and soft prompt
         with_code_indexing: bool,
-        # With code indexing enabled, code RAG specific to the application
-        with_knowledge_base: bool,
     ):
     """Evaluate an AI agent's performance on a security challenge.
     
@@ -108,7 +106,6 @@ async def eval_deadend_agent(
         human_intervention: Whether to pause for human input during evaluation
         with_context_engine: Whether to use advanced context engineering
         with_code_indexing: Whether to perform code indexing of the target
-        with_knowledge_base: Whether to use knowledge base RAG capabilities
         output_report: Path where evaluation results should be saved
         
     Returns:

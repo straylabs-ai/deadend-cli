@@ -6,7 +6,7 @@
 
 This module provides a collection of tools that AI agents can use for
 security research, including shell execution, HTTP requests, code analysis,
-and knowledge base queries for comprehensive security assessments.
+and browser automation for comprehensive security assessments.
 """
 
 from .shell import sandboxed_shell_tool

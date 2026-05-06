@@ -23,7 +23,7 @@ def config_setup() -> Config:
     """Setup config"""
     config = Config()
     config.configure()
-    # Populates the providers from the config.toml
+    # Populates the providers from the config.json
     config.populate_providers()
     return config
 

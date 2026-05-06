@@ -60,7 +60,6 @@ class WorkflowStopResult(BaseModel):
 
 class DeadEndAgent:
     """Main orchestrator for the DeadEnd security research framework."""
-
     agent_id: UUID
     session_id: UUID
     embedding_session_id: UUID

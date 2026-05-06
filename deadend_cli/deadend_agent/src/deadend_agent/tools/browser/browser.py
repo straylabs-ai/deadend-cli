@@ -15,6 +15,7 @@ from pydoll.browser.options import ChromiumOptions
 from pydoll.browser.tab import Tab
 from pydoll.constants import Key
 from pydoll.elements.web_element import WebElement
+from pydoll.protocol.network.types import Cookie
 
 
 def _timeout_seconds(timeout_ms: float | None, *, default_ms: float = 30_000, cap_s: int = 600) -> int:
@@ -333,7 +334,7 @@ class BrowserSession:
         tab = await self._active_tab(page)
         return await tab.page_source
 
-    async def get_cookies(self, *, page: Tab | None = None) -> list[dict[str, Any]]:
+    async def get_cookies(self, *, page: Tab | None = None) -> list[Cookie]:
         """Return all cookies visible to the active tab as plain dicts.
 
         Pydoll returns ``list[Cookie]`` where ``Cookie`` is a TypedDict.
@@ -366,38 +367,46 @@ class BrowserSession:
         tab = await self._active_tab(page)
         await tab.delete_all_cookies()
 
+    def _unwrap_evaluate(self, response: Any) -> Any:
+        """Extract the JS value from a Pydoll ``EvaluateResponse``."""
+        exc = response.get("result", {}).get("exceptionDetails")
+        if exc:
+            raise RuntimeError(exc.get("text", str(exc)))
+        return response.get("result", {}).get("result", {}).get("value")
+
     async def get_local_storage(self, *, page: Tab | None = None) -> dict[str, str]:
         """Fetch ``localStorage`` for the current origin as a flat dict."""
         tab = await self._active_tab(page)
-        return await tab.execute_script("""
-            () => {
-                const out = {};
-                for (let i = 0; i < localStorage.length; i++) {
-                    const k = localStorage.key(i);
-                    out[k] = localStorage.getItem(k);
-                }
-                return out;
+        response = await tab.execute_script("""
+            const out = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                out[k] = localStorage.getItem(k);
             }
+            return out;
         """)
+        value = self._unwrap_evaluate(response)
+        return value if isinstance(value, dict) else {}
 
     async def get_session_storage(self, *, page: Tab | None = None) -> dict[str, str]:
         """Fetch ``sessionStorage`` for the current origin as a flat dict."""
         tab = await self._active_tab(page)
-        return await tab.execute_script("""
-            () => {
-                const out = {};
-                for (let i = 0; i < sessionStorage.length; i++) {
-                    const k = sessionStorage.key(i);
-                    out[k] = sessionStorage.getItem(k);
-                }
-                return out;
+        response = await tab.execute_script("""
+            const out = {};
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const k = sessionStorage.key(i);
+                out[k] = sessionStorage.getItem(k);
             }
+            return out;
         """)
+        value = self._unwrap_evaluate(response)
+        return value if isinstance(value, dict) else {}
 
     async def execute_script(self, script: str, *, page: Tab | None = None) -> Any:
-        """Execute arbitrary JavaScript on the active tab and return the result."""
+        """Execute arbitrary JavaScript on the active tab and return the deserialized result."""
         tab = await self._active_tab(page)
-        return await tab.execute_script(script)
+        response = await tab.execute_script(script)
+        return self._unwrap_evaluate(response)
 
     async def screenshot(
         self,

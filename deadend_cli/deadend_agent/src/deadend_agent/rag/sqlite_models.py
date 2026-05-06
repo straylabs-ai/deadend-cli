@@ -4,9 +4,9 @@
 
 """SQLite-compatible database models for the RAG system.
 
-These models store code chunks and knowledge base entries with embeddings
-serialized as raw bytes (numpy float32 arrays via .tobytes()). Each .db
-file represents a single (agent, target) session — no session_id column.
+These models store code chunks with embeddings serialized as raw bytes
+(numpy float32 arrays via .tobytes()). Each .db file represents a single
+(agent, target) session — no session_id column.
 """
 
 import uuid
@@ -36,23 +36,6 @@ class CodeChunkSqlite(Base):
 
     def __repr__(self):
         return f"<CodeChunkSqlite(id={self.id}, file_path='{self.file_path}')>"
-
-
-class KnowledgeBaseSqlite(Base):
-    """Knowledge base chunk with embedding stored as a BLOB."""
-
-    __tablename__ = "knowledge_base"
-
-    id = Column(String(36), primary_key=True, default=_new_uuid)
-    file_path = Column(String(500), nullable=False)
-    content_metadata = Column(Text, nullable=False)
-    content = Column(Text, nullable=False)
-    embedding = Column(LargeBinary, nullable=False)
-    created_at = Column(DateTime, default=datetime.now)
-    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
-
-    def __repr__(self):
-        return f"<KnowledgeBaseSqlite(id={self.id}, file_path='{self.file_path}')>"
 
 
 # ---------------------------------------------------------------------------

@@ -21,16 +21,16 @@ from deadend_agent.logging import logger
 
 # Load cached CLI configuration first (if present), then environment variables.
 # The file is stored at ~/.cache/deadend/config.json
-_CACHE_TOML_PATH = Path.home() / ".cache" / "deadend" / "config.json"
+_CACHE_CONFIG_PATH = Path.home() / ".cache" / "deadend" / "config.json"
 _CACHE_CONFIG: dict[str, str] = {}
 _CONFIG_SETTINGS: dict[str, Any] = {}
 
 def load_config_json() -> dict[str, Any]:
     """Loads the JSON config"""
-    if not _CACHE_TOML_PATH.exists():
+    if not _CACHE_CONFIG_PATH.exists():
         return {}
     try:
-        with open(_CACHE_TOML_PATH, "r", encoding="utf-8") as f:
+        with open(_CACHE_CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         logger.info("Could not open or parse config file as JSON: %s", exc)
@@ -41,7 +41,7 @@ _CONFIG_SETTINGS = load_config_json()
 logger.info("Logging is : %s", _CACHE_CONFIG)
 
 def _cfg(key: str, default: str | None = None) -> str | None:
-    """Return config value preferring cache TOML, then environment, else default."""
+    """Return config value preferring cache JSON, then environment, else default."""
     if key in _CACHE_CONFIG and _CACHE_CONFIG[key] != "":
         return _CACHE_CONFIG[key]
     return os.getenv(key, default)
@@ -177,9 +177,9 @@ class Config:
     - OpenRouter: Uses OPEN_ROUTER_API_KEY and OPEN_ROUTER_MODEL (supports multiple providers)
     - Local/Self-hosted: Uses LOCAL_API_KEY, LOCAL_MODEL, and LOCAL_BASE_URL
     
-    Configuration is loaded from ~/.cache/deadend/config.toml (preferred) or environment variables.
-    The config file is JSON-formatted, despite the historical .toml extension, and is created/updated
-    via the CLI's interactive LLM provider selector in the chat interface.
+    Configuration is loaded from ~/.cache/deadend/config.json (preferred) or environment variables.
+    The config file is created/updated via the CLI's interactive LLM provider selector in
+    the chat interface.
     
     litellm automatically handles provider-specific API formats, so you just need to provide
     the API key and model name. For OpenRouter, use the format "provider/model-name" (e.g., 
@@ -290,9 +290,9 @@ class Config:
         if provider_spec:
             providers_section[key] = provider_spec.model_dump()
             config_file["provider"] = providers_section
-            
+
             try:
-                with open(str(_CACHE_TOML_PATH), "w", encoding="utf-8") as f:
+                with open(str(_CACHE_CONFIG_PATH), "w", encoding="utf-8") as f:
                     json.dump(config_file, f, indent=2)
             except OSError:
                 logger.info("Config file update failed.")
@@ -330,7 +330,7 @@ class Config:
         config_file["provider"] = providers_section
 
         try:
-            with open(str(_CACHE_TOML_PATH), "w", encoding="utf-8") as f:
+            with open(str(_CACHE_CONFIG_PATH), "w", encoding="utf-8") as f:
                 json.dump(config_file, f, indent=2)
         except OSError:
             logger.info("Config file update failed.")
@@ -356,8 +356,8 @@ class Config:
         new_id = uuid.uuid4()
         config_file["local_agent_id"] = str(new_id)
         try:
-            _CACHE_TOML_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with open(str(_CACHE_TOML_PATH), "w", encoding="utf-8") as f:
+            _CACHE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(str(_CACHE_CONFIG_PATH), "w", encoding="utf-8") as f:
                 json.dump(config_file, f, indent=2)
         except OSError:
             logger.info("Could not persist local_agent_id to config file.")

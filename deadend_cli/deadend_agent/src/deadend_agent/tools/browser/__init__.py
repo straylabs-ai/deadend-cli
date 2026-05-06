@@ -19,7 +19,6 @@ from deadend_agent.tools.browser.browser import (
     InteractionStep,
     PressStep,
     SelectStep,
-    run_browser_steps,
 )
 from deadend_agent.tools.browser.run_browser_steps_tool import (
     BrowserCheckStep,

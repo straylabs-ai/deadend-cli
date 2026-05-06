@@ -7,7 +7,6 @@
 Manages the directory layout::
 
     {storage_root}/
-    ├── knowledge_base.db              # global, shared across all agents
     └── {agent_id}/
         └── {deterministic_session_id}/
             ├── {target_slug}.db       # code chunks + vectors
@@ -21,7 +20,6 @@ eliminating the need for a shared PostgreSQL instance.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 from deadend_agent.logging import get_module_logger
@@ -39,14 +37,11 @@ class RagSessionManager:
     def __init__(
         self,
         storage_root: Path,
-        knowledge_base_path: Path | None = None,
         blob_backend: BlobBackend | None = None,
     ) -> None:
         self._root = storage_root
-        self._kb_path = knowledge_base_path or storage_root / "knowledge_base.db"
         self._blob = blob_backend
         self._open: dict[str, SqliteRagConnector] = {}
-        self._kb_connector: SqliteRagConnector | None = None
 
     def session_dir(
         self, agent_id: UUID | str, embedding_session_id: UUID | str
@@ -90,13 +85,6 @@ class RagSessionManager:
         logger.info("Opened RAG session db: %s", db_path)
         return connector
 
-    async def get_knowledge_base(self) -> SqliteRagConnector:
-        """Return (and cache) the global knowledge-base connector."""
-        if self._kb_connector is None:
-            self._kb_path.parent.mkdir(parents=True, exist_ok=True)
-            self._kb_connector = SqliteRagConnector(self._kb_path)
-            await self._kb_connector.initialize_database()
-        return self._kb_connector
 
     async def upload_session(
         self,
@@ -118,6 +106,3 @@ class RagSessionManager:
         for connector in self._open.values():
             await connector.close()
         self._open.clear()
-        if self._kb_connector:
-            await self._kb_connector.close()
-            self._kb_connector = None
