@@ -30,8 +30,8 @@ class TemplateAgentRenderer:
 
     def get_instructions(self, **kwargs):
         template_name = f"{self.agent_name}.instructions.jinja2"
-        instructions, _, _ = self.env.loader.get_source(self.env, template=template_name)
-        # instructions_template = self.env.get_template(f"{self.agent_name}.instructions.jinja2")
+        if self.env.loader:
+            instructions, _, _ = self.env.loader.get_source(self.env, template=template_name)
 
         _metadata, instructions = _parse_template_metadata(instructions)
         instructions_template = self.env.from_string(instructions)

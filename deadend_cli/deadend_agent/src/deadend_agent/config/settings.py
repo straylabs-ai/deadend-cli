@@ -18,19 +18,17 @@ from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings
 from deadend_agent.logging import logger
+from deadend_agent.constants import ROOT_DEADEND_PATH, CACHE_DEADEND_PATH, MODEL_CONFIG_PATH, DEADEND_AGENTS_PATH
 
-# Load cached CLI configuration first (if present), then environment variables.
-# The file is stored at ~/.cache/deadend/config.json
-_CACHE_CONFIG_PATH = Path.home() / ".cache" / "deadend" / "config.json"
 _CACHE_CONFIG: dict[str, str] = {}
 _CONFIG_SETTINGS: dict[str, Any] = {}
 
 def load_config_json() -> dict[str, Any]:
     """Loads the JSON config"""
-    if not _CACHE_CONFIG_PATH.exists():
+    if not MODEL_CONFIG_PATH.exists():
         return {}
     try:
-        with open(_CACHE_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(MODEL_CONFIG_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as exc:
         logger.info("Could not open or parse config file as JSON: %s", exc)
@@ -203,13 +201,11 @@ class Config:
 
     # List providers
     providers: ProvidersList = ProvidersList()
-    # Storage
-    agents_storage_root: str = _cfg("AGENTS_STORAGE_ROOT", str(Path.home() / ".cache" / "deadend" / "agents")) or str(Path.home() / ".cache" / "deadend" / "agents")
+    # agents folder
+    agents_storage_root: str | None = _cfg("DEADEND_AGENTS_PATH", str(DEADEND_AGENTS_PATH))
     # Tools
     zap_api_key: str | None = _cfg("ZAP_PROXY_API_KEY")
 
-    # # Application settings
-    # app_env: str = _cfg("APP_ENV", "development") or "development"
     log_level: str = _cfg("LOG_LEVEL", "INFO") or "INFO"
 
     @classmethod
@@ -292,7 +288,7 @@ class Config:
             config_file["provider"] = providers_section
 
             try:
-                with open(str(_CACHE_CONFIG_PATH), "w", encoding="utf-8") as f:
+                with open(str(MODEL_CONFIG_PATH), "w", encoding="utf-8") as f:
                     json.dump(config_file, f, indent=2)
             except OSError:
                 logger.info("Config file update failed.")
@@ -330,7 +326,7 @@ class Config:
         config_file["provider"] = providers_section
 
         try:
-            with open(str(_CACHE_CONFIG_PATH), "w", encoding="utf-8") as f:
+            with open(str(MODEL_CONFIG_PATH), "w", encoding="utf-8") as f:
                 json.dump(config_file, f, indent=2)
         except OSError:
             logger.info("Config file update failed.")
@@ -356,8 +352,8 @@ class Config:
         new_id = uuid.uuid4()
         config_file["local_agent_id"] = str(new_id)
         try:
-            _CACHE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-            with open(str(_CACHE_CONFIG_PATH), "w", encoding="utf-8") as f:
+            MODEL_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(str(MODEL_CONFIG_PATH), "w", encoding="utf-8") as f:
                 json.dump(config_file, f, indent=2)
         except OSError:
             logger.info("Could not persist local_agent_id to config file.")

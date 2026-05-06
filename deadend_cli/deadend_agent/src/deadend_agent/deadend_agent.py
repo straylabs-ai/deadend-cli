@@ -1,4 +1,5 @@
 """Main DeadEnd agent orchestration module."""
+from deadend_agent.constants import DEADEND_AGENTS_PATH
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
@@ -244,7 +245,7 @@ class DeadEndAgent:
     def _prepare_memory_workspace(self) -> str:
         """Ensure the persistent memory workspace exists for this local agent."""
         memory_root = (
-            Path(self.agents_storage_root).expanduser().resolve()
+            DEADEND_AGENTS_PATH.expanduser().resolve()
             / str(self.local_agent_id)
             / str(self.embedding_session_id)
             / "memory"

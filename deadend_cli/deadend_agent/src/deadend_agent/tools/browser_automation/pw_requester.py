@@ -1,3 +1,4 @@
+from deadend_agent.constants import DEADEND_AGENTS_PATH
 import json
 import re
 import time
@@ -144,15 +145,14 @@ class PlaywrightRequester:
         Get the storage file path for a given session_id.
         
         Args:
-            session_id: Session identifier
+            session_id: Session identifier must be the agent_id
             
         Returns:
             str: Path to storage.json file
         """
-        path_storage = await Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_id
-        await path_storage.mkdir(parents=True, exist_ok=True)
-        storage_file = path_storage / "storage.json"
-        # print(f"the storage file is : {storage_file}")
+        path_storage = DEADEND_AGENTS_PATH / session_id / "auth_context"
+        path_storage.mkdir(parents=True, exist_ok=True)
+        storage_file = path_storage / "index.json"
         return str(storage_file)
 
     async def _get_persistent_page(self, domain: str | None = None):

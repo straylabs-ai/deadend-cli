@@ -10,6 +10,7 @@ tools and sub-agents can reuse the same browser session artefacts.
 """
 
 from __future__ import annotations
+from deadend_agent.constants import REUSABLE_CREDENTIALS_FILE, DEADEND_AGENTS_PATH
 
 import json
 import uuid
@@ -161,8 +162,7 @@ class AuthContext(BaseModel):
 class CredentialsStore:
     """Reads the user's credential wallet from disk.
 
-    The wallet lives at ``~/.cache/deadend/memory/reusable_credentials.json``
-    and is structured by **target**::
+    Structured by **target**::
 
         {
           "targets": {
@@ -178,7 +178,7 @@ class CredentialsStore:
         }
     """
 
-    _wallet_path: Path = Path.home() / ".cache" / "deadend" / "memory" / "reusable_credentials.json"
+    _wallet_path: Path = REUSABLE_CREDENTIALS_FILE
 
     @classmethod
     def _load_wallet(cls) -> dict[str, Any]:
@@ -261,8 +261,8 @@ class AuthContextHandler:
 
     Disk layout::
 
-        ~/.cache/deadend/memory/auth/
-        └── <agent_id>/
+        ~/.deadend/agents/
+        └── <agent_id>/auth_context/
             ├── default.json
             ├── admin.json
             └── index.json       # manifest of all saved profiles
@@ -272,12 +272,9 @@ class AuthContextHandler:
         self.target = target
         self.agent_id = agent_id
         self._auth_dir = (
-            Path.home()
-            / ".cache"
-            / "deadend"
-            / "memory"
-            / "auth"
+            DEADEND_AGENTS_PATH
             / str(agent_id)
+            / "auth_context"
         )
         self._auth_dir.mkdir(parents=True, exist_ok=True)
         self._index_path = self._auth_dir / "index.json"

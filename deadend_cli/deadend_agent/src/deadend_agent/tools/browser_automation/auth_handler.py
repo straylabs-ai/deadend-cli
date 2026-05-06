@@ -1,9 +1,8 @@
 
 from typing import Dict, Any
 import json
-from pathlib import Path
 from deadend_agent.logging import logger
-
+from deadend_agent.constants import REUSABLE_CREDENTIALS_FILE
 
 def load_reusable_credentials() -> Dict[str, Any]:
     """
@@ -13,9 +12,8 @@ def load_reusable_credentials() -> Dict[str, Any]:
         Dict[str, Any]: Dictionary containing credentials data
     """
     try:
-        credentials_path = Path.home() / ".cache" /\
-            "deadend" / "memory" / "reusable_credentials.json"
-        with open(credentials_path, 'r', encoding='utf-8') as f:
+
+        with open(REUSABLE_CREDENTIALS_FILE, 'r', encoding='utf-8') as f:
             creds = f.read()
             return json.loads(creds)
     except (FileNotFoundError, json.JSONDecodeError) as e:

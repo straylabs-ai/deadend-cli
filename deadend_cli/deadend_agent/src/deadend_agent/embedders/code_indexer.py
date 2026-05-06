@@ -8,6 +8,7 @@ This module provides functionality to index, chunk, and embed source code
 from web applications, enabling semantic search and analysis of codebases
 for security research and vulnerability identification.
 """
+from deadend_agent.constants import DEADEND_AGENTS_PATH
 
 import os
 import re
@@ -81,18 +82,16 @@ class SourceCodeIndexer:
     def _add_session_to_cache(self):
         """
         Create cache directory structure for the current session.
-        
-        Sets up the cache directory under ~/.cache/deadend/webpages/ and
         creates a session-specific subdirectory for storing downloaded resources.
         """
         home_dir = Path.home()
-        self.cache_path = home_dir.joinpath('.cache/deadend/webpages/')
+        self.cache_path = DEADEND_AGENTS_PATH 
         if not os.path.exists(self.cache_path):
             Path(self.cache_path).mkdir(parents=True, exist_ok=True)
-
-        self.source_code_path = self.cache_path.joinpath(str(self.session_id))
+        # TODO: we might lack the target here and agent id
+        self.source_code_path = self.cache_path / str(self.session_id) / "webpages" 
         Path(self.source_code_path).mkdir(parents=True, exist_ok=True)
-        self.manifest_path = self.source_code_path.joinpath(".manifest.json")
+        self.manifest_path = self.source_code_path / ".manifest.json"
 
     def _add_chunk_directory(self):
         """

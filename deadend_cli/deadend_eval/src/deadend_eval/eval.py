@@ -23,6 +23,7 @@ from deadend_agent import (
 )
 from deadend_agent.config.settings import Config, ModelSpec
 from deadend_agent.models.registry import EmbedderClient
+from deadend_agent.constants import CACHE_METRICS_PATH
 from deadend_agent.utils.network import deterministic_session_id
 from deadend_eval.metrics import (
     instrument_agent_runner,
@@ -30,6 +31,7 @@ from deadend_eval.metrics import (
     metrics_to_markdown,
     metrics_to_json
 )
+
 
 class Subtask(BaseModel):
     """Represents a single subtask in a guided evaluation workflow.
@@ -254,13 +256,11 @@ async def eval_deadend_agent(
     metrics_json = metrics_to_json(global_metrics, eval_metadata.model_dump())
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # Create .cache/deadend/eval_metrics directory if it doesn't exist
-    metrics_dir = Path.home() / ".cache" / "deadend" / "eval_metrics"
-    metrics_dir.mkdir(parents=True, exist_ok=True)
+    CACHE_METRICS_PATH.mkdir(parents=True, exist_ok=True)
 
     # Write both markdown and JSON files
-    metrics_md_path = metrics_dir / f"deadend_metrics_{timestamp}.md"
-    metrics_json_path = metrics_dir / f"deadend_metrics_{timestamp}.json"
+    metrics_md_path = CACHE_METRICS_PATH / f"deadend_metrics_{timestamp}.md"
+    metrics_json_path = CACHE_METRICS_PATH / f"deadend_metrics_{timestamp}.json"
 
     metrics_md_path.write_text(metrics_md, encoding="utf-8")
     metrics_json_path.write_text(metrics_json, encoding="utf-8")

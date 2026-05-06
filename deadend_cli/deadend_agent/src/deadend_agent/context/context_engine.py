@@ -8,6 +8,7 @@ This module provides context management functionality for security research
 workflows, including task tracking, workflow state management, and agent
 routing based on current context and progress.
 """
+from deadend_agent.constants import DEADEND_AGENTS_PATH
 import json
 import uuid
 import time
@@ -815,7 +816,7 @@ class ContextEngine:
     """
     workflow_context: str = ""
     # Defines the whole context from the start of the workflow
-    tasks: Dict[TaskPlanner, list]
+    tasks: Dict[TaskPlanner, Any]
     # Defines the new last tasks set
     next_agent: str
     # Name of the next agent
@@ -852,7 +853,7 @@ class ContextEngine:
         self.structured = StructuredContext()
 
         # Create context directory if it doesn't exist
-        context_dir = Path.home() / ".cache" / "deadend" / "sessions" / str(self.session_id)
+        context_dir = DEADEND_AGENTS_PATH / str(self.session_id)
         context_dir.mkdir(parents=True, exist_ok=True)
 
         # Set context file path
@@ -946,22 +947,24 @@ class ContextEngine:
                 if isinstance(children, dict) and children:
                     tasks_lines += f"   Subtasks ({len(children)}):\n"
                     for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
-                        child_desc = child_planner.task.strip()  # Full task, no truncation
-                        child_icon = status_icons.get(child_planner.status, '?')
-                        tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
+                        if isinstance(child_planner, TaskPlanner):
+                            child_desc = child_planner.task.strip()  # Full task, no truncation
+                            child_icon = status_icons.get(child_planner.status, '?')
+                            tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
                 elif isinstance(children, list) and children:
                     tasks_lines += f"   Subtasks ({len(children)}):\n"
                     for sub_idx, child_planner in enumerate(children, 1):
-                        child_desc = child_planner.task.strip()  # Full task, no truncation
-                        child_icon = status_icons.get(child_planner.status, '?')
-                        tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
+                        if isinstance(child_planner, TaskPlanner):
+                            child_desc = child_planner.task.strip()  # Full task, no truncation
+                            child_icon = status_icons.get(child_planner.status, '?')
+                            tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
             tasks_lines += "\n"
 
         tasks_context += tasks_lines
         return tasks_context
 
 
-    def set_tasks(self, tasks: List[Task]) -> None:
+    def set_tasks(self, tasks: List[TaskPlanner]) -> None:
         """Set the current tasks and update workflow context.
         
         Args:
@@ -974,7 +977,7 @@ class ContextEngine:
 [planner tasks]
 {str(tasks)}
 """
-        self.tasks = dict(enumerate(task for task in tasks))
+        self.tasks = {task: [] for task in tasks}
         self._append_to_context_file("[ai agent]", f"Planner agent new tasks:\n{str(tasks)}")
 
     def set_target(self, target: str) -> None:

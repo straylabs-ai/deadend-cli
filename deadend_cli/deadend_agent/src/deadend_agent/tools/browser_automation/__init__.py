@@ -1,10 +1,10 @@
 import json
 import hashlib
-from anyio import Path
 from pydantic_ai import RunContext
 from deadend_agent.utils.structures import RequesterDeps
 from deadend_agent.utils.functions import truncate_string
 from deadend_agent.logging import logger
+from deadend_agent.constants import CACHE_DEADEND_LOGS
 
 from .http_parser import is_valid_request_detailed, extract_host_port, autocorrect_http_request
 from .auth_handler import replace_credential_placeholders
@@ -12,7 +12,7 @@ from .pw_requester import PlaywrightRequester
 from .pw_session_manager import PlaywrightSessionManager
 from deadend_agent.tools.tool_wrappers import with_tool_events
 
-__all__ = ["is_valid_request_detailed"]
+__all__ = ["is_valid_request_detailed", "PlaywrightRequester"]
 
 
 @with_tool_events("pw_send_payload")
@@ -132,8 +132,8 @@ async def _save_responses_to_file(session_key: str, responses: list):
     """
     try:
         # Create the directory path
-        cache_dir = await Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_key
-        await cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_dir = CACHE_DEADEND_LOGS / session_key
+        cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Create the file path (convert to string for regular open())
         file_path_str = str(cache_dir / "requester.jsonl")

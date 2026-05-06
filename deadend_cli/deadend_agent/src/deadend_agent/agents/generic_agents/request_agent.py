@@ -8,6 +8,7 @@ This module implements an AI agent that performs comprehensive reconnaissance
 on web applications, including directory enumeration, technology detection,
 vulnerability scanning, and information gathering for security assessments.
 """
+from deadend_agent.constants import REUSABLE_CREDENTIALS_FILE
 from typing import Any
 from pathlib import Path
 import json
@@ -27,21 +28,6 @@ class RequesterOutput(AgentOutput):
     pass
 
 
-class DummyCreds(BaseModel):
-    """Dummy credentials model for testing and automation purposes.
-    
-    Stores test credentials used during web application reconnaissance to
-    interact with authentication systems without using real user accounts.
-    
-    Attributes:
-        dummy_email: Optional dummy email address for testing authentication.
-        dummy_username: Optional dummy username for testing authentication.
-        dummy_password: Optional dummy password for testing authentication.
-    """
-    dummy_email: str | None = None
-    dummy_username: str | None = None
-    dummy_password: str | None = None
-
 class RequesterAgent(AgentRunner):
     """
     The webapp recon agent is the agent in charge of doing the recon on the target. 
@@ -60,24 +46,10 @@ class RequesterAgent(AgentRunner):
             "browser_run_steps": render_tool_description("browser_run_steps"),
         }
 
-        path_creds = Path.home() / ".cache" / "deadend" / "memory" / "reusable_credentials.json"
-        with open(path_creds, 'r', encoding="utf-8") as creds_file:
-            all_creds = creds_file.read()
-            json_creds = json.loads(all_creds)
-            dummy_email = json_creds["accounts"][0]["dummy_email"]
-            dummy_password = json_creds["accounts"][0]["dummy_password"]
-            dummy_username = json_creds["accounts"][0]["dummy_username"]
-        dummycreds = DummyCreds(
-            dummy_email=dummy_email,
-            dummy_password=dummy_password,
-            dummy_username=dummy_username
-        )
-
         self.instructions = render_agent_instructions(
             agent_name="requester",
             tools=tools_metadata,
-            target=target_information,
-            creds = dummycreds
+            target=target_information
         )
 
         super().__init__(

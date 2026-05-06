@@ -10,14 +10,11 @@ for the security research framework to operate.
 """
 
 from pathlib import Path
-import hashlib
-import platform
-import subprocess
-import requests
 from deadend_agent.config.settings import Config
 from deadend_agent.models.registry import ModelRegistry
 from deadend_agent.sandbox.sandbox_manager import SandboxManager
 from deadend_agent.rag.session_manager import RagSessionManager
+from deadend_agent.constants import DEADEND_AGENTS_PATH
 
 def config_setup() -> Config:
     """Setup config"""
@@ -34,9 +31,9 @@ def init_rag_session_manager(
 
     Args:
         storage_root: Root directory for agent session databases.
-            Defaults to ``~/.cache/deadend/agents``.
+            Defaults to ``~/.deadend/agents``.
     """
-    root = Path(storage_root) if storage_root else Path.home() / ".cache" / "deadend" / "agents"
+    root = Path(storage_root) if storage_root else DEADEND_AGENTS_PATH
     root.mkdir(parents=True, exist_ok=True)
     return RagSessionManager(storage_root=root)
 
