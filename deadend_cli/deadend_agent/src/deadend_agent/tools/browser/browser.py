@@ -1,13 +1,14 @@
 from __future__ import annotations
 from pydoll.exceptions import ArgumentAlreadyExistsInOptions
-from playwright.async_api import expect
 
+import asyncio
+import base64
 import json
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, Sequence, Callable
+from pathlib import Path
 from types import TracebackType
 from typing import Any, Literal
-
 
 from pydoll.browser.chromium import Chrome
 from pydoll.browser.options import ChromiumOptions
@@ -124,12 +125,57 @@ async def _set_checked_with_script(
     await tab.execute_script(script)
 
 
+# ---------------------------------------------------------------------------
+# Internal step dataclasses (shared between BrowserSession and tooling)
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class FillStep:
+    selector: str
+    context_key: str
+
+
+@dataclass(frozen=True)
+class SelectStep:
+    selector: str
+    context_key: str
+    by: Literal["value", "label", "index"] = "value"
+
+
+@dataclass(frozen=True)
+class CheckStep:
+    selector: str
+    context_key: str
+
+
+@dataclass(frozen=True)
+class ClickStep:
+    selector: str
+
+
+@dataclass(frozen=True)
+class PressStep:
+    selector: str
+    key: str = "Enter"
+
+
+InteractionStep = FillStep | SelectStep | CheckStep | ClickStep | PressStep
+
+
 class BrowserSession:
-    """
-    BrowserSession object uses **Pydoll** (Chrome DevTools Protocol) to instanciate
-    a new tab to work on, with the right specs and methods to retrieve and use the 
-    right cookies, headers, storage... Basically giving a tab that could be used
-    for navigation steps.
+    """Generic browser automation engine backed by Pydoll (Chrome DevTools Protocol).
+
+    This is the single source of truth for all browser interaction in the agent.
+    It handles lifecycle (start/stop), navigation, DOM interaction, state
+    extraction (cookies, storage, page source, screenshots), and session
+    import/export so that authentication context can be persisted and resumed.
+
+    All methods operate on the *default tab* unless a ``page`` argument is
+    provided.  Callers outside this module never need to touch a Pydoll
+    ``Tab`` directly.
     """
 
     def __init__(
@@ -139,60 +185,52 @@ class BrowserSession:
         proxy_url: str | None = None,
         user_agent: str | None = None,
     ) -> None:
-
         self._browser: Chrome | None = None
-        # Browser
         self._tab: Tab | None = None
-        # tab
         self._default_tab: Tab | None = None
-        # default tab
         self._headless = headless
-        # whether to run in headless
         self._verify_ssl = verify_ssl
-        # whether to verify SSL
         self._proxy_url = proxy_url
-        # if we link to a proxy via burp, zap, other proxies...
         self._user_agent = user_agent or (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         )
-        # User-agent
-        self._chrome_options: ChromiumOptions | None = None
-        # Chrome options instanciated with the browser
         self._browser_contexts: list[str] = []
-        # Browser contexts created and available in the browser
 
-    def _build_chromium_options(self):
-        """
-        Instanciation chromium options correctly.
-        Adding all the arguments for stealth, proxy, headless and user-agent.
-        """
-        self._chrome_options = ChromiumOptions()
-        self._chrome_options.headless = self._headless
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def _build_chromium_options(self) -> ChromiumOptions:
+        """Build and return Chromium options with stealth, proxy and SSL flags."""
+        opts = ChromiumOptions()
+        opts.headless = self._headless
         try:
-            self._chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-            self._chrome_options.add_argument('--window-size=1920,1080')
-            self._chrome_options.add_argument('--disable-extensions')
-            self._chrome_options.add_argument('--disable-gpu')
-            self._chrome_options.add_argument('--disable-dev-shm-usage')
-            self._chrome_options.add_argument('--disable-sync')
-            self._chrome_options.add_argument('--disable-translate')
+            opts.add_argument("--disable-blink-features=AutomationControlled")
+            opts.add_argument("--window-size=1920,1080")
+            opts.add_argument("--disable-extensions")
+            opts.add_argument("--disable-gpu")
+            opts.add_argument("--disable-dev-shm-usage")
+            opts.add_argument("--disable-sync")
+            opts.add_argument("--disable-translate")
             if self._proxy_url:
-                self._chrome_options.add_argument(f"--proxy-server={self._proxy_url}")
+                opts.add_argument(f"--proxy-server={self._proxy_url}")
             if not self._verify_ssl:
-                self._chrome_options.add_argument("ignore-certification-errors")
+                opts.add_argument("ignore-certification-errors")
             if self._user_agent:
-                self._chrome_options.add_argument(f"--user-agent={self._user_agent}")
+                opts.add_argument(f"--user-agent={self._user_agent}")
             else:
-                self._chrome_options.add_argument(
-                    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+                opts.add_argument(
+                    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
                 )
         except ArgumentAlreadyExistsInOptions as e:
-            print(f"Argument already exists in chromium options : {e}")
+            print(f"Argument already exists in chromium options: {e}")
+        return opts
 
     @property
     def started(self) -> bool:
-        return self._chrome is not None and self._tab is not None
+        return self._browser is not None and self._tab is not None
 
     @property
     def browser(self) -> Chrome | None:
@@ -214,13 +252,12 @@ class BrowserSession:
 
         self._tab = await self._browser.start()
         self._browser_contexts.append(await self._browser.create_browser_context())
-
         self._default_tab = self._tab
 
     async def stop(self) -> None:
-        if self._chrome is not None:
-            await self._chrome.__aexit__(None, None, None)
-        self._chrome = None
+        if self._browser is not None:
+            await self._browser.__aexit__(None, None, None)
+        self._browser = None
         self._tab = None
         self._default_tab = None
 
@@ -237,29 +274,280 @@ class BrowserSession:
         await self.stop()
         return None
 
+    # ------------------------------------------------------------------
+    # Tab helpers
+    # ------------------------------------------------------------------
+
+    async def _active_tab(self, page: Tab | None = None) -> Tab:
+        if page is not None:
+            return page
+        if self._tab is not None:
+            return self._tab
+        raise RuntimeError("BrowserSession is not started; call start() or use async with.")
+
     async def new_tab(self) -> Tab:
         if not self._browser:
             raise RuntimeError("BrowserSession is not started; call start() or use async with.")
         return await self._browser.new_tab()
 
     async def default_page(self) -> Tab:
-        """Return the main tab (Pydoll ``Tab``). Named ``default_page`` for backward compatibility."""
+        """Return the main tab (Pydoll ``Tab``)."""
         if self._default_tab is None:
             raise RuntimeError("BrowserSession is not started; call start() or use async with.")
         return self._default_tab
+
+    # ------------------------------------------------------------------
+    # Navigation
+    # ------------------------------------------------------------------
 
     async def goto(
         self,
         url: str,
         *,
         page: Tab | None = None,
-        wait_until: Literal["commit", "domcontentloaded", "load", "networkidle"] = "load",
         timeout_ms: float | None = None,
     ) -> None:
-        del wait_until  # Pydoll waits for configured page load state; kept for API compatibility.
-        tab = page or await self.default_page()
+        """Navigate ``url`` on the active tab (or ``page``)."""
+        tab = await self._active_tab(page)
         timeout_s = _timeout_seconds(timeout_ms, default_ms=30_000)
         await tab.go_to(url, timeout=timeout_s)
+
+    async def refresh(self, *, page: Tab | None = None) -> None:
+        """Refresh the active tab."""
+        tab = await self._active_tab(page)
+        await tab.refresh()
+
+    # ------------------------------------------------------------------
+    # State extraction (generic primitives for tooling)
+    # ------------------------------------------------------------------
+
+    async def get_url(self, *, page: Tab | None = None) -> str:
+        tab = await self._active_tab(page)
+        return await tab.current_url
+
+    async def get_title(self, *, page: Tab | None = None) -> str:
+        tab = await self._active_tab(page)
+        return await tab.title
+
+    async def get_page_source(self, *, page: Tab | None = None) -> str:
+        tab = await self._active_tab(page)
+        return await tab.page_source
+
+    async def get_cookies(self, *, page: Tab | None = None) -> list[dict[str, Any]]:
+        """Return all cookies visible to the active tab as plain dicts.
+
+        Pydoll returns ``list[Cookie]`` where ``Cookie`` is a TypedDict.
+        We forward the dicts verbatim so no field (e.g. ``size``, ``session``,
+        ``sourcePort``) is lost.
+        """
+        tab = await self._active_tab(page)
+        return await tab.get_cookies()
+
+    async def set_cookies(
+        self,
+        cookies: Sequence[dict[str, Any]],
+        *,
+        page: Tab | None = None,
+    ) -> None:
+        """Install cookies into the browser context.
+
+        Each cookie dict should have keys matching Pydoll's ``CookieParam``.
+        Keys that are read-only in CDP (``size``, ``session``) are stripped
+        automatically because ``CookieParam`` does not accept them.
+        """
+        tab = await self._active_tab(page)
+        clean = []
+        for c in cookies:
+            param = {k: v for k, v in c.items() if k not in ("size", "session")}
+            clean.append(param)
+        await tab.set_cookies(clean)  # type: ignore[arg-type]
+
+    async def delete_all_cookies(self, *, page: Tab | None = None) -> None:
+        tab = await self._active_tab(page)
+        await tab.delete_all_cookies()
+
+    async def get_local_storage(self, *, page: Tab | None = None) -> dict[str, str]:
+        """Fetch ``localStorage`` for the current origin as a flat dict."""
+        tab = await self._active_tab(page)
+        return await tab.execute_script("""
+            () => {
+                const out = {};
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    out[k] = localStorage.getItem(k);
+                }
+                return out;
+            }
+        """)
+
+    async def get_session_storage(self, *, page: Tab | None = None) -> dict[str, str]:
+        """Fetch ``sessionStorage`` for the current origin as a flat dict."""
+        tab = await self._active_tab(page)
+        return await tab.execute_script("""
+            () => {
+                const out = {};
+                for (let i = 0; i < sessionStorage.length; i++) {
+                    const k = sessionStorage.key(i);
+                    out[k] = sessionStorage.getItem(k);
+                }
+                return out;
+            }
+        """)
+
+    async def execute_script(self, script: str, *, page: Tab | None = None) -> Any:
+        """Execute arbitrary JavaScript on the active tab and return the result."""
+        tab = await self._active_tab(page)
+        return await tab.execute_script(script)
+
+    async def screenshot(
+        self,
+        *,
+        path: str | Path | None = None,
+        as_base64: bool = False,
+        full_page: bool = False,
+        page: Tab | None = None,
+    ) -> str | None:
+        """Take a screenshot of the active tab.
+
+        Args:
+            path: File path to save the screenshot (extension sets format).
+            as_base64: Return a base64 string instead of saving.
+            full_page: Scroll to bottom and capture the entire page.
+            page: Optional tab override.
+
+        Returns:
+            Base64 string if ``as_base64=True``, otherwise ``None``.
+        """
+        tab = await self._active_tab(page)
+        return await tab.take_screenshot(
+            path=str(path) if path else None,
+            as_base64=as_base64,
+            beyond_viewport=full_page,
+        )
+
+    # ------------------------------------------------------------------
+    # Waiting
+    # ------------------------------------------------------------------
+
+    async def wait_for_selector(
+        self,
+        selector: str,
+        *,
+        visible: bool = False,
+        timeout_ms: float | None = None,
+        page: Tab | None = None,
+    ) -> WebElement:
+        """Wait up to ``timeout_ms`` for an element matching ``selector``.
+
+        Raises ``RuntimeError`` if the element is not found.
+        """
+        tab = await self._active_tab(page)
+        timeout_s = _timeout_seconds(timeout_ms, default_ms=15_000)
+        el = await tab.query(selector, timeout=timeout_s, find_all=False, raise_exc=True)
+        if el is None:
+            raise RuntimeError(f"Element not found for selector: {selector!r}")
+        if isinstance(el, list):
+            raise RuntimeError(f"Expected one element for selector: {selector!r}")
+        if visible:
+            await el.wait_until(is_visible=True, timeout=timeout_s)
+        return el
+
+    async def wait_for_url(
+        self,
+        predicate: str | Callable,
+        *,
+        timeout_ms: float | None = None,
+        page: Tab | None = None,
+    ) -> bool:
+        """Poll until the current URL matches ``predicate``.
+
+        ``predicate`` may be a substring to look for or a callable
+        ``(url: str) -> bool``.
+        """
+        tab = await self._active_tab(page)
+        timeout_s = _timeout_seconds(timeout_ms, default_ms=15_000)
+        if isinstance(predicate, str):
+            check = lambda u: predicate in u
+        else:
+            check = predicate  # type: ignore[assignment]
+
+        end = asyncio.get_event_loop().time() + timeout_s
+        while asyncio.get_event_loop().time() < end:
+            url = await tab.current_url
+            if check(url):
+                return True
+            await asyncio.sleep(0.5)
+        return False
+
+    # ------------------------------------------------------------------
+    # DOM interaction (instance methods, no leaking Tab handles)
+    # ------------------------------------------------------------------
+
+    async def click(
+        self,
+        selector: str,
+        *,
+        timeout_ms: float | None = None,
+        page: Tab | None = None,
+    ) -> None:
+        el = await self.wait_for_selector(selector, timeout_ms=timeout_ms, page=page)
+        await el.click()
+
+    async def fill(
+        self,
+        selector: str,
+        value: str,
+        *,
+        timeout_ms: float | None = None,
+        page: Tab | None = None,
+    ) -> None:
+        """Clear the element and type ``value`` into it."""
+        el = await self.wait_for_selector(selector, timeout_ms=timeout_ms, page=page)
+        await el.clear()
+        await el.insert_text(value)
+
+    async def select(
+        self,
+        selector: str,
+        value: Any,
+        *,
+        by: Literal["value", "label", "index"] = "value",
+        timeout_ms: float | None = None,
+        page: Tab | None = None,
+    ) -> None:
+        """Select an option on a ``<select>`` element via in-page script."""
+        tab = await self._active_tab(page)
+        await _select_with_script(tab, selector, value, by, timeout_ms=timeout_ms)
+
+    async def check(
+        self,
+        selector: str,
+        checked: bool = True,
+        *,
+        timeout_ms: float | None = None,
+        page: Tab | None = None,
+    ) -> None:
+        """Set ``checked`` on a checkbox / radio via in-page script."""
+        tab = await self._active_tab(page)
+        await _set_checked_with_script(tab, selector, checked, timeout_ms=timeout_ms)
+
+    async def press(
+        self,
+        selector: str,
+        key: str = "Enter",
+        *,
+        timeout_ms: float | None = None,
+        page: Tab | None = None,
+    ) -> None:
+        """Focus the element and send a keypress."""
+        el = await self.wait_for_selector(selector, timeout_ms=timeout_ms, page=page)
+        await el.focus()
+        tab = await self._active_tab(page)
+        await tab.keyboard.press(_resolve_keyboard_key(key))
+
+    # ------------------------------------------------------------------
+    # Context-driven steps (backward-compatible helpers)
+    # ------------------------------------------------------------------
 
     @staticmethod
     def _context_value(
@@ -274,27 +562,24 @@ class BrowserSession:
             raise KeyError(key)
         return context[key]
 
-    @staticmethod
     async def fill_from_context(
-        tab: Tab,
+        self,
         selector: str,
         context_key: str,
         context: Mapping[str, Any],
         *,
         optional: bool = False,
         timeout_ms: float | None = None,
+        page: Tab | None = None,
     ) -> None:
-        value = BrowserSession._context_value(context, context_key, optional=optional)
+        value = self._context_value(context, context_key, optional=optional)
         if value is None and optional:
             return
         text = "" if value is None else str(value)
-        el = await _query_one(tab, selector, timeout_ms=timeout_ms)
-        await el.clear()
-        await el.insert_text(text)
+        await self.fill(selector, value=text, timeout_ms=timeout_ms, page=page)
 
-    @staticmethod
     async def select_from_context(
-        tab: Tab,
+        self,
         selector: str,
         context_key: str,
         context: Mapping[str, Any],
@@ -302,183 +587,126 @@ class BrowserSession:
         by: Literal["value", "label", "index"] = "value",
         optional: bool = False,
         timeout_ms: float | None = None,
+        page: Tab | None = None,
     ) -> None:
-        value = BrowserSession._context_value(context, context_key, optional=optional)
+        value = self._context_value(context, context_key, optional=optional)
         if value is None and optional:
             return
-        await _select_with_script(tab, selector, value, by, timeout_ms=timeout_ms)
+        await self.select(selector, value, by=by, timeout_ms=timeout_ms, page=page)
 
-    @staticmethod
     async def check_from_context(
-        tab: Tab,
+        self,
         selector: str,
         context_key: str,
         context: Mapping[str, Any],
         *,
         optional: bool = False,
         timeout_ms: float | None = None,
+        page: Tab | None = None,
     ) -> None:
-        value = BrowserSession._context_value(context, context_key, optional=optional)
+        value = self._context_value(context, context_key, optional=optional)
         if value is None and optional:
             return
-        await _set_checked_with_script(tab, selector, bool(value), timeout_ms=timeout_ms)
+        await self.check(selector, checked=bool(value), timeout_ms=timeout_ms, page=page)
 
-    @staticmethod
-    async def click(
-        tab: Tab,
-        selector: str,
-        *,
-        timeout_ms: float | None = None,
-        **kwargs: Any,
-    ) -> None:
-        del kwargs
-        el = await _query_one(tab, selector, timeout_ms=timeout_ms)
-        await el.click()
-
-    @staticmethod
-    async def press(
-        tab: Tab,
-        selector: str,
-        key: str = "Enter",
-        *,
-        timeout_ms: float | None = None,
-        **kwargs: Any,
-    ) -> None:
-        del kwargs
-        el = await _query_one(tab, selector, timeout_ms=timeout_ms)
-        await el.focus()
-        await tab.keyboard.press(_resolve_keyboard_key(key))
-
-    @staticmethod
     async def run_steps(
-        tab: Tab,
+        self,
         steps: Sequence[InteractionStep],
         context: Mapping[str, Any],
         *,
         optional_keys: bool = False,
         timeout_ms: float | None = None,
+        page: Tab | None = None,
     ) -> None:
+        """Execute a batch of interaction steps on the default tab."""
         for step in steps:
             if isinstance(step, FillStep):
-                await BrowserSession.fill_from_context(
-                    tab,
+                await self.fill_from_context(
                     step.selector,
                     step.context_key,
                     context,
                     optional=optional_keys,
                     timeout_ms=timeout_ms,
+                    page=page,
                 )
             elif isinstance(step, SelectStep):
-                await BrowserSession.select_from_context(
-                    tab,
+                await self.select_from_context(
                     step.selector,
                     step.context_key,
                     context,
                     by=step.by,
                     optional=optional_keys,
                     timeout_ms=timeout_ms,
+                    page=page,
                 )
             elif isinstance(step, CheckStep):
-                await BrowserSession.check_from_context(
-                    tab,
+                await self.check_from_context(
                     step.selector,
                     step.context_key,
                     context,
                     optional=optional_keys,
                     timeout_ms=timeout_ms,
+                    page=page,
                 )
             elif isinstance(step, ClickStep):
-                await BrowserSession.click(tab, step.selector, timeout_ms=timeout_ms)
+                await self.click(step.selector, timeout_ms=timeout_ms, page=page)
             elif isinstance(step, PressStep):
-                await BrowserSession.press(tab, step.selector, step.key, timeout_ms=timeout_ms)
+                await self.press(step.selector, step.key, timeout_ms=timeout_ms, page=page)
             else:
                 raise TypeError(f"Unsupported step type: {type(step)!r}")
 
+    # ------------------------------------------------------------------
+    # Session import / export (for auth persistence across tools)
+    # ------------------------------------------------------------------
 
-async def run_browser_steps(
-    *,
-    page_url: str,
-    context: Mapping[str, Any],
-    steps: Sequence[BrowserStep | dict[str, Any]],
-    headless: bool = True,
-    verify_ssl: bool = True,
-    proxy_url: str | None = None,
-    optional_missing_context_keys: bool = False,
-    navigation_timeout_ms: float | None = 30_000,
-    action_timeout_ms: float | None = 15_000,
-) -> dict[str, Any]:
-    """Run a full headless browser interaction from arguments the model can supply as JSON.
+    async def export_state(self, *, page: Tab | None = None) -> dict[str, Any]:
+        """Capture the current browser state as a JSON-serializable dict.
 
-    **What the model passes (conceptually the tool arguments):**
+        Returns keys: ``cookies``, ``localStorage``, ``sessionStorage``,
+        ``url``, ``title``.
+        """
+        return {
+            "cookies": await self.get_cookies(page=page),
+            "localStorage": await self.get_local_storage(page=page),
+            "sessionStorage": await self.get_session_storage(page=page),
+            "url": await self.get_url(page=page),
+            "title": await self.get_title(page=page),
+        }
 
-    - ``page_url`` (str): Full URL, including scheme (e.g. ``https://host/login``). This page is
-      loaded once before any step; redirects are followed by the browser.
-    - ``context`` (object): Flat string-keyed map. Only ``fill``, ``select``, and ``check`` steps
-      read from it via each step's ``key`` field (e.g. ``key`` ``"password"`` → ``context["password"]``).
-      Values should be strings, booleans, or numbers; they are coerced as needed. The model does
-      not pass a Pydoll ``Tab`` handle.
-    - ``steps`` (array): Ordered list of step objects. Each object **must** include ``action``.
-      Allowed shapes are exactly those documented on ``BrowserFillStep``, ``BrowserSelectStep``,
-      ``BrowserCheckStep``, ``BrowserClickStep``, and ``BrowserPressStep``. Extra properties are
-      forbidden on each step object.
+    async def import_state(
+        self,
+        state: Mapping[str, Any],
+        *,
+        page: Tab | None = None,
+        skip_navigation: bool = True,
+    ) -> None:
+        """Restore a previously exported browser state.
 
-    **How it works (runtime order):**
+        Args:
+            state: Dict produced by :meth:`export_state`.
+            skip_navigation: If ``False``, also navigate to ``state["url"]``
+                before restoring storage.
+            page: Optional tab override.
+        """
+        if not skip_navigation and state.get("url"):
+            await self.goto(state["url"], page=page)
 
-    1. Start Chromium via **Pydoll** (CDP) and a fresh profile (optional ``proxy_url``; if
-       ``verify_ssl`` is false, certificate errors are ignored using Chrome flags).
-    2. Open ``page_url`` on the initial tab with ``navigation_timeout_ms`` (converted to seconds
-       for ``tab.go_to``).
-    3. Execute ``steps`` **in order** on that tab. Each step uses ``action_timeout_ms`` when
-       resolving selectors. Any uncaught error stops the run and is recorded in the return value.
-    4. Stop the browser and close the CDP session.
+        if state.get("cookies"):
+            await self.set_cookies(state["cookies"], page=page)  # type: ignore[arg-type]
 
-    **Flags:** ``optional_missing_context_keys`` — if true, a step whose ``key`` is missing from
-    ``context`` is skipped for fill/select/check; if false, that situation raises and is reported
-    as an error string.
+        if state.get("localStorage") or state.get("sessionStorage"):
+            tab = await self._active_tab(page)
+            ls = state.get("localStorage", {})
+            ss = state.get("sessionStorage", {})
+            script = f"""
+            (() => {{
+                const ls = {json.dumps(ls)};
+                const ss = {json.dumps(ss)};
+                Object.entries(ls).forEach(([k, v]) => localStorage.setItem(k, v));
+                Object.entries(ss).forEach(([k, v]) => sessionStorage.setItem(k, v));
+            }})()
+            """
+            await tab.execute_script(script)
 
-    **Engine parameters (usually set by code, not spelled out by the model):** ``headless`` runs
-    Chromium without a visible window. ``verify_ssl`` / ``proxy_url`` tune TLS and proxy similarly
-    to other browser tooling in this project. ``navigation_timeout_ms`` caps the initial navigation;
-    ``action_timeout_ms`` caps each selector wait inside a step.
 
-    **Return value (always a dict, suitable to echo back to the model):**
 
-    - ``success`` (bool): True only if navigation and every step completed without exception.
-    - ``error`` (str | None): Human-readable error message on failure; ``None`` on success.
-    - ``final_url`` (str | None): Document URL after the last step (may differ from ``page_url``).
-    - ``page_title`` (str | None): Document title after the last step.
-    - ``steps_run`` (int): Count of validated steps (length of ``steps``), even if a step failed
-      partway through (then ``success`` is false and ``error`` is set).
-
-    The model never passes a Pydoll ``Tab``; only JSON-serializable fields above.
-    """
-    parsed = parse_browser_steps(steps)
-    internal = [browser_step_to_interaction(s) for s in parsed]
-    out: dict[str, Any] = {
-        "success": False,
-        "error": None,
-        "final_url": None,
-        "page_title": None,
-        "steps_run": len(parsed),
-    }
-    try:
-        async with BrowserSession(
-            headless=headless,
-            verify_ssl=verify_ssl,
-            proxy_url=proxy_url,
-        ) as browser:
-            await browser.goto(page_url, timeout_ms=navigation_timeout_ms)
-            tab = await browser.default_page()
-            await BrowserSession.run_steps(
-                tab,
-                internal,
-                context,
-                optional_keys=optional_missing_context_keys,
-                timeout_ms=action_timeout_ms,
-            )
-            out["final_url"] = await tab.current_url
-            out["page_title"] = await tab.title
-            out["success"] = True
-    except Exception as e:
-        out["error"] = str(e)
-    return out

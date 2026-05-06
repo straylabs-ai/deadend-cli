@@ -2,12 +2,12 @@
 # Licensed under the GNU Affero General Public License v3
 # See LICENSE file for full license information.
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Annotated, Any, Literal, Union
 from pydantic_ai import RunContext
 from pydantic import BaseModel, Field, TypeAdapter
-from deadend_agent.tools.browser.browser import run_browser_steps
+from deadend_agent.tools.browser.browser import BrowserSession
 from deadend_agent.tools.tool_wrappers import with_tool_events
 from deadend_agent.utils.structures import RequesterDeps
 
@@ -166,38 +166,14 @@ def parse_browser_steps(steps: Sequence[BrowserStep | dict[str, Any]]) -> list[B
 
 # --- Internal execution (used by run_browser_steps) ---
 
-
-@dataclass(frozen=True)
-class FillStep:
-    selector: str
-    context_key: str
-
-
-@dataclass(frozen=True)
-class SelectStep:
-    selector: str
-    context_key: str
-    by: Literal["value", "label", "index"] = "value"
-
-
-@dataclass(frozen=True)
-class CheckStep:
-    selector: str
-    context_key: str
-
-
-@dataclass(frozen=True)
-class ClickStep:
-    selector: str
-
-
-@dataclass(frozen=True)
-class PressStep:
-    selector: str
-    key: str = "Enter"
-
-
-InteractionStep = FillStep | SelectStep | CheckStep | ClickStep | PressStep
+from deadend_agent.tools.browser.browser import (
+    FillStep,
+    SelectStep,
+    CheckStep,
+    ClickStep,
+    PressStep,
+    InteractionStep,
+)
 
 
 def browser_step_to_interaction(step: BrowserStep) -> InteractionStep:
@@ -212,6 +188,51 @@ def browser_step_to_interaction(step: BrowserStep) -> InteractionStep:
     if isinstance(step, BrowserPressStep):
         return PressStep(step.selector, step.key_name)
     raise TypeError(type(step))
+
+async def run_browser_steps(
+    *,
+    page_url: str,
+    context: Mapping[str, Any],
+    steps: Sequence[BrowserStep | dict[str, Any]],
+    headless: bool = True,
+    verify_ssl: bool = True,
+    proxy_url: str | None = None,
+    optional_missing_context_keys: bool = False,
+    navigation_timeout_ms: float | None = 30_000,
+    action_timeout_ms: float | None = 15_000,
+) -> dict[str, Any]:
+    """Run a full headless browser interaction from arguments the model can supply as JSON."""
+    from deadend_agent.tools.browser.browser import BrowserSession
+
+    parsed = parse_browser_steps(steps)
+    internal: list[InteractionStep] = [browser_step_to_interaction(s) for s in parsed]
+    out: dict[str, Any] = {
+        "success": False,
+        "error": None,
+        "final_url": None,
+        "page_title": None,
+        "steps_run": len(parsed),
+    }
+    try:
+        async with BrowserSession(
+            headless=headless,
+            verify_ssl=verify_ssl,
+            proxy_url=proxy_url,
+        ) as browser:
+            await browser.goto(page_url, timeout_ms=navigation_timeout_ms)
+            await browser.run_steps(
+                internal,
+                context,
+                optional_keys=optional_missing_context_keys,
+                timeout_ms=action_timeout_ms,
+            )
+            out["final_url"] = await browser.get_url()
+            out["page_title"] = await browser.get_title()
+            out["success"] = True
+    except Exception as e:
+        out["error"] = str(e)
+    return out
+
 
 @with_tool_events("browser_run_steps")
 async def browser_run_steps(
@@ -272,4 +293,21 @@ async def browser_run_steps(
     )
 
 
-__all__ = ["browser_run_steps"]
+__all__ = [
+    "BrowserFillStep",
+    "BrowserSelectStep",
+    "BrowserCheckStep",
+    "BrowserClickStep",
+    "BrowserPressStep",
+    "BrowserStep",
+    "parse_browser_steps",
+    "FillStep",
+    "SelectStep",
+    "CheckStep",
+    "ClickStep",
+    "PressStep",
+    "InteractionStep",
+    "browser_step_to_interaction",
+    "run_browser_steps",
+    "browser_run_steps",
+]

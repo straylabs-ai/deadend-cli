@@ -2,35 +2,39 @@
 # Licensed under the GNU Affero General Public License v3
 # See LICENSE file for full license information.
 
-"""Browser automation: LLM-facing tool plus Playwright helpers.
+"""Browser automation: LLM-facing tool plus Pydoll helpers.
 
 The **browser_run_steps** tool lives in ``run_browser_steps_tool.py``. It forwards to
-``run_browser_steps`` in ``browser.py`` with ``proxy_url`` from ``RequesterDeps`` and a fixed
-headless browser. See the docstrings on ``browser_run_steps`` and ``run_browser_steps`` for the
-exact JSON the model must pass and the dict returned to the model.
+``run_browser_steps`` which orchestrates a :class:`BrowserSession`.
+
+:class:`BrowserSession` (in ``browser.py``) is the generic engine: lifecycle,
+navigation, DOM interaction, state extraction, and session import/export.
 """
 
 from deadend_agent.tools.browser.browser import (
-    BrowserCheckStep,
-    BrowserClickStep,
-    BrowserFillStep,
-    BrowserPressStep,
-    BrowserSelectStep,
-    BrowserStep,
-    BrowserTool,
+    BrowserSession,
     CheckStep,
     ClickStep,
     FillStep,
     InteractionStep,
     PressStep,
     SelectStep,
-    parse_browser_steps,
     run_browser_steps,
 )
-from deadend_agent.tools.browser.run_browser_steps_tool import browser_run_steps
+from deadend_agent.tools.browser.run_browser_steps_tool import (
+    BrowserCheckStep,
+    BrowserClickStep,
+    BrowserFillStep,
+    BrowserPressStep,
+    BrowserSelectStep,
+    BrowserStep,
+    browser_run_steps,
+    parse_browser_steps,
+    browser_step_to_interaction,
+)
 
 __all__ = [
-    "BrowserTool",
+    "BrowserSession",
     "BrowserStep",
     "BrowserFillStep",
     "BrowserSelectStep",
@@ -46,4 +50,5 @@ __all__ = [
     "InteractionStep",
     "PressStep",
     "SelectStep",
+    "browser_step_to_interaction",
 ]
