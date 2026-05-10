@@ -1,10 +1,13 @@
+from deadend_agent.constants import DEADEND_AGENTS_PATH
 import json
 import re
+import time
+from email.utils import parsedate_to_datetime
 from typing import AsyncGenerator, Dict, Union, Any, List
 from urllib.parse import urlparse, parse_qs
 from anyio import Path
-from playwright.async_api import APIRequestContext, async_playwright
-from playwright._impl._api_structures import OriginState
+from playwright.async_api import APIRequestContext, Browser, BrowserContext, async_playwright, Playwright, Page
+from playwright._impl._api_structures import OriginState, SetCookieParam
 from .http_parser import analyze_http_request_text
 from deadend_agent.logging import logger
 
@@ -43,7 +46,8 @@ class PlaywrightRequester:
         self,
         verify_ssl: bool = True,
         proxy_url: str | None = None,
-        session_id: str | None = None
+        session_id: str | None = None,
+        agent_id: str | None = None,
     ):
         """
         Initialize the PlaywrightRequester.
@@ -54,14 +58,15 @@ class PlaywrightRequester:
         """
         self.verify_ssl = verify_ssl
         self.proxy_url = proxy_url
-        self.playwright = None
-        self.browser = None
-        self.context = None
+        self.playwright: Playwright | None = None
+        self.browser: Browser | None = None
+        self.context: BrowserContext | None = None
         self.request_context: APIRequestContext | None = None
         self._initialized = False
+        self.agent_id = agent_id
         self.session_id = session_id
         # Fix: Add persistent page for localStorage operations
-        self._persistent_page = None
+        self._persistent_page: Page | None = None
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -80,24 +85,24 @@ class PlaywrightRequester:
         self.playwright = await async_playwright().start()
 
         # Configure browser launch options
-        browser_options = {
+        browser_options: dict[str, Any] = {
             'headless': True,
-                'args': [
-                    '--disable-web-security', # Disable web security for cross-origin access
-                    '--disable-features=VizDisplayCompositor',  # Disable some security features
-                    '--allow-running-insecure-content', # Allow insecure content
-                    '--disable-blink-features=AutomationControlled',  # Hide automation
-                    '--no-sandbox',
-                    '--disable-dev-shm-usage', 
-                ]
+            'args': [
+                '--disable-web-security', # Disable web security for cross-origin access
+                '--disable-features=VizDisplayCompositor',  # Disable some security features
+                '--allow-running-insecure-content', # Allow insecure content
+                '--disable-blink-features=AutomationControlled',  # Hide automation
+                '--no-sandbox',
+                '--disable-dev-shm-usage', 
+            ]
         }
-        self.browser = await self.playwright.chromium.launch(**browser_options)
         
+        self.browser = await self.playwright.chromium.launch(**browser_options)
         # Load existing storage state (including cookies) if session_id is provided
         storage_path = None
         if self.session_id:
             try:
-                storage_path = await self._get_storage_path(self.session_id)
+                storage_path = await self._get_storage_path(self.agent_id, self.session_id)
                 # Check if storage file exists to load cookies
                 storage_file = Path(storage_path)
                 if not await storage_file.exists():
@@ -107,7 +112,7 @@ class PlaywrightRequester:
                 storage_path = None
 
         # Configure browser context options
-        context_options = {
+        context_options:dict[str, Any] = {
             'ignore_https_errors': not self.verify_ssl,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         }
@@ -137,20 +142,19 @@ class PlaywrightRequester:
             except Exception as e:
                 logger.warning("Could not verify loaded cookies: %s", e)
 
-    async def _get_storage_path(self, session_id: str) -> str:
+    async def _get_storage_path(self, agent_id, session_id: str) -> str:
         """
         Get the storage file path for a given session_id.
         
         Args:
-            session_id: Session identifier
+            session_id: Session identifier must be the agent_id
             
         Returns:
             str: Path to storage.json file
         """
-        path_storage = await Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_id
-        await path_storage.mkdir(parents=True, exist_ok=True)
-        storage_file = path_storage / "storage.json"
-        # print(f"the storage file is : {storage_file}")
+        path_storage = DEADEND_AGENTS_PATH / agent_id / session_id / "auth_context"
+        path_storage.mkdir(parents=True, exist_ok=True)
+        storage_file = path_storage / "index.json"
         return str(storage_file)
 
     async def _get_persistent_page(self, domain: str | None = None):
@@ -159,7 +163,7 @@ class PlaywrightRequester:
         
         Fix: Use a persistent page instead of creating new pages for each operation.
         """
-        if not self._persistent_page:
+        if not self._persistent_page and self.context:
             self._persistent_page = await self.context.new_page()
 
         if domain:
@@ -168,10 +172,12 @@ class PlaywrightRequester:
                 domain = f"http://{domain}"
 
             # Navigate to domain if not already there
-            current_url = self._persistent_page.url
+            if self._persistent_page:
+                current_url = self._persistent_page.url
             if not current_url.startswith(domain):
                 try:
-                    await self._persistent_page.goto(domain)
+                    if self._persistent_page:
+                        await self._persistent_page.goto(domain)
                 except Exception as e:
                     logger.warning("Could not navigate to %s: %s", domain, e)
                     return None
@@ -228,9 +234,13 @@ class PlaywrightRequester:
             await self.playwright.stop()
         self._initialized = False
 
-    async def send_raw_data(self, host: str, port: int, target_host: str,
-                          request_data: str, is_tls: bool = False,
-                          via_proxy: bool = False) -> AsyncGenerator[Union[str, bytes], None]:
+    async def send_raw_data(
+        self,
+        host: str,
+        port: int,
+        request_data: str,
+        is_tls: bool = False,
+    ) -> AsyncGenerator[Union[str, bytes], None]:
         """
         Send raw HTTP request data to a target host.
         
@@ -239,12 +249,10 @@ class PlaywrightRequester:
         and session management.
         
         Args:
-            host (str): Host to connect to (proxy host if via_proxy=True)
+            host (str): Target host
             port (int): Port to connect to
-            target_host (str): Target host for the actual request
             request_data (str): Raw HTTP request string
             is_tls (bool): Whether to use TLS encryption
-            via_proxy (bool): Whether to route through a proxy
             
         Returns:
             Union[str, bytes]: Raw HTTP response or error message
@@ -283,11 +291,7 @@ class PlaywrightRequester:
 
 
         protocol = "https" if is_tls else "http"
-        # TODO: still not tested
-        if via_proxy:
-            target_url = f"{protocol}://{target_host}{parsed_request['path']}"
-        else:
-            target_url = f"{protocol}://{host}:{port}{parsed_request['path']}"
+        target_url = f"{protocol}://{host}:{port}{parsed_request['path']}"
         # get local storage headers to see if there is any needed headers to be added
         # to the request
         if self.session_id:
@@ -323,7 +327,8 @@ class PlaywrightRequester:
         # Verify cookies are available from context (for debugging)
         if self.session_id:
             try:
-                context_cookies = await self.context.cookies()
+                if self.context:
+                    context_cookies = await self.context.cookies()
                 if context_cookies:
                     # Filter cookies for the current domain
                     parsed_url = urlparse(target_url)
@@ -392,9 +397,9 @@ class PlaywrightRequester:
             if not is_redirect:
                 await self._detect_and_store_tokens(response_body=response_body_text, url=target_url)
             # Save storage state (cookies + localStorage) after request to persist session cookies
-            if self.session_id:
+            if self.session_id and self.agent_id:
                 try:
-                    await self._save_storage_state(session_id=self.session_id)
+                    await self._save_storage_state(agent_id=self.agent_id, session_id=self.session_id)
                 except Exception as e:
                     logger.warning("Could not save storage state for session %s: %s", self.session_id, e)
 
@@ -557,7 +562,7 @@ class PlaywrightRequester:
         # which automatically includes cookies from the browser context.
         # Cookies are loaded from storage on initialization via storage_state option.
         
-        request_options = {
+        request_options: dict[str, Any] = {
             'headers': headers,
             'max_redirects': max_redirects if follow_redirects else 0,
             'timeout': 120_000,  # ms; allow slow redirect chains
@@ -587,19 +592,7 @@ class PlaywrightRequester:
             except Exception as e:
                 logger.error("HTTP %s request failed for %s: %s", method_upper, url, e)
                 raise
-        else:
-            # Fallback for non-APIRequestContext
-            method_upper = method.upper()
-            try:
-                return await self.request_context.fetch(
-                    url_or_request=url,
-                    method=method_upper,
-                    **request_options
-                )
-            except Exception as e:
-                logger.error("HTTP %s request failed for %s: %s", method_upper, url, e)
-                raise
-
+    
     async def _format_response(self, response: Any) -> str:
         """
         Format Playwright response into HTTP response string.
@@ -790,9 +783,9 @@ class PlaywrightRequester:
         await self.context.add_cookies(cookie_list)
         
         # Save storage state after setting cookies to persist them
-        if self.session_id:
+        if self.session_id and self.agent_id:
             try:
-                await self._save_storage_state(session_id=self.session_id)
+                await self._save_storage_state(agent_id=self.agent_id, session_id=self.session_id)
             except Exception as e:
                 logger.warning("Could not save cookies to storage: %s", e)
 
@@ -850,12 +843,12 @@ class PlaywrightRequester:
                             if cookie_name.strip() in cookie_names_before:
                                 continue
 
-                            # Extract cookie attributes
-                            cookie_attrs = {
+                            # Extract cookie attributes (Playwright SetCookieParam)
+                            cookie_params: SetCookieParam = {
                                 'name': cookie_name.strip(),
                                 'value': cookie_value.strip(),
                                 'domain': domain,
-                                'path': '/'
+                                'path': '/',
                             }
 
                             # Parse additional attributes
@@ -865,32 +858,44 @@ class PlaywrightRequester:
                                     attr_name, attr_value = part.split('=', 1)
                                     attr_name = attr_name.lower()
                                     if attr_name == 'domain':
-                                        cookie_attrs['domain'] = attr_value.strip()
+                                        cookie_params['domain'] = attr_value.strip()
                                     elif attr_name == 'path':
-                                        cookie_attrs['path'] = attr_value.strip()
+                                        cookie_params['path'] = attr_value.strip()
                                     elif attr_name == 'expires':
-                                        cookie_attrs['expires'] = attr_value.strip()
+                                        try:
+                                            dt = parsedate_to_datetime(attr_value.strip())
+                                            if dt is not None:
+                                                cookie_params['expires'] = dt.timestamp()
+                                        except (TypeError, ValueError):
+                                            pass
                                     elif attr_name == 'max-age':
                                         try:
-                                            cookie_attrs['maxAge'] = int(attr_value.strip())
+                                            cookie_params['expires'] = time.time() + int(
+                                                attr_value.strip()
+                                            )
                                         except ValueError:
                                             pass
+                                    elif attr_name == 'samesite':
+                                        ssv = attr_value.strip().lower()
+                                        if ssv == 'lax':
+                                            cookie_params['sameSite'] = 'Lax'
+                                        elif ssv == 'strict':
+                                            cookie_params['sameSite'] = 'Strict'
+                                        elif ssv == 'none':
+                                            cookie_params['sameSite'] = 'None'
                                 else:
                                     # Boolean attributes
                                     part_lower = part.lower()
                                     if part_lower == 'httponly':
-                                        cookie_attrs['httpOnly'] = True
+                                        cookie_params['httpOnly'] = True
                                     elif part_lower == 'secure':
-                                        cookie_attrs['secure'] = True
-                                    elif part_lower in ('samesite', 'samesite=lax', 'samesite=strict', 'samesite=none'):
-                                        if '=' in part_lower:
-                                            cookie_attrs['sameSite'] = part_lower.split('=')[1].capitalize()
-                                        else:
-                                            cookie_attrs['sameSite'] = 'Lax'
+                                        cookie_params['secure'] = True
+                                    elif part_lower == 'samesite':
+                                        cookie_params['sameSite'] = 'Lax'
                             
                             # Add cookie to context
                             try:
-                                await self.context.add_cookies([cookie_attrs])
+                                await self.context.add_cookies([cookie_params])
                                 cookies_extracted += 1
                             except Exception as e:
                                 logger.warning("Could not add cookie %s: %s", cookie_name, e)
@@ -921,7 +926,7 @@ class PlaywrightRequester:
             import traceback
             traceback.print_exc()
 
-    async def _save_storage_state(self, session_id: str):
+    async def _save_storage_state(self, agent_id: str, session_id: str):
         """
         Save the current storage state (cookies + localStorage) to disk.
         
@@ -932,7 +937,7 @@ class PlaywrightRequester:
             return
 
         try:
-            storage_path = await self._get_storage_path(session_id)
+            storage_path = await self._get_storage_path(agent_id, session_id)
             # Save storage state including cookies to file
             # When path is provided, storage_state() saves to that path
             await self.context.storage_state(path=storage_path)

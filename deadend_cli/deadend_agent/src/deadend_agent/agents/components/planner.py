@@ -241,7 +241,6 @@ Do NOT use fields like `title`, `description`, `confidence`, `prerequisites`, or
 
         # Populating updated task nodes
         updated_tasks = []
-        # print(result.output)
 
         # Handle ExploitOutput (which extends both PlannerOutput and ExploitInfo)
         if isinstance(result.output, ExploitOutput):

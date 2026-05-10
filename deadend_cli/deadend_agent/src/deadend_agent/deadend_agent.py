@@ -1,4 +1,5 @@
 """Main DeadEnd agent orchestration module."""
+from deadend_agent.constants import DEADEND_AGENTS_PATH
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Generator
 from uuid import UUID
@@ -60,7 +61,6 @@ class WorkflowStopResult(BaseModel):
 
 class DeadEndAgent:
     """Main orchestrator for the DeadEnd security research framework."""
-
     agent_id: UUID
     session_id: UUID
     embedding_session_id: UUID
@@ -99,12 +99,14 @@ class DeadEndAgent:
         workspace_root: str | None = None,
         agents_storage_root: str | None = None,
         local_agent_id: UUID | None = None,
+        proxy_url: str | None = None,
     ):
         self.session_id = session_id
         self.embedding_session_id = embedding_session_id or session_id
         self.max_depth = max_depth
         self.model = model
         self.available_agents = available_agents
+        self.proxy_url = proxy_url
 
         # Load validation config from YAML (falls back to defaults).
         self.validation_config = load_validation_config(validation_config_path)
@@ -122,10 +124,11 @@ class DeadEndAgent:
             validation_format=self.validation_config.validation_format,
         )
 
-        self.context = ContextEngine(model=self.model, session_id=session_id)
         self.workspace_root: str | None = None
         self.local_agent_id = local_agent_id or Config.get_local_agent_id()
         self.agent_id = self.local_agent_id
+        self.context = ContextEngine(model=self.model, session_id=self.embedding_session_id, agent_id=self.agent_id)
+
         self.agents_storage_root = agents_storage_root or Config.agents_storage_root
         self.memory_workspace_root = self._prepare_memory_workspace()
         self.memory_context = ""
@@ -243,7 +246,7 @@ class DeadEndAgent:
     def _prepare_memory_workspace(self) -> str:
         """Ensure the persistent memory workspace exists for this local agent."""
         memory_root = (
-            Path(self.agents_storage_root).expanduser().resolve()
+            DEADEND_AGENTS_PATH.expanduser().resolve()
             / str(self.local_agent_id)
             / str(self.embedding_session_id)
             / "memory"
@@ -308,7 +311,8 @@ class DeadEndAgent:
         self.context.set_target(target)
         self.code_indexer = SourceCodeIndexer(
             target=self.target,
-            session_id=self.embedding_session_id
+            session_id=self.embedding_session_id,
+            agent_id=self.agent_id
         )
 
 
@@ -393,7 +397,9 @@ class DeadEndAgent:
             embedder_client=embedder_client,
             rag=rag_connector,
             target=target_host,
+            agent_id=self.agent_id,
             session_id=self.session_id,
+            proxy_url=self.proxy_url,
             embedding_session_id=self.embedding_session_id,
             memory_workspace_root=self.memory_workspace_root,
             memory_context=self.memory_context,

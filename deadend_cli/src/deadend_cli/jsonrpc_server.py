@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from pydantic import TypeAdapter
 import typer
 import uuid
-from deadend_agent import DeadEndAgent, Sandbox, config_setup, set_event_hooks
+from deadend_agent import DeadEndAgent, Sandbox, set_event_hooks
 from deadend_agent.agents.factory import FallbackAgentResult
 from deadend_agent.utils.network import deterministic_session_id
 from deadend_agent.tools.tool_wrappers import (
@@ -22,6 +22,7 @@ from deadend_agent.tools.tool_wrappers import (
     disable_approval_mode,
     is_approval_mode_enabled
 )
+from deadend_agent.constants import REUSABLE_CREDENTIALS_FILE, ROOT_DEADEND_PATH, DEADEND_VALIDATION_CONFIG_PATH
 from deadend_cli.cli_logging import logger
 from deadend_cli.component_manager import ComponentManager
 from deadend_cli.jsonrpc.rpc_server import RPCServer
@@ -280,18 +281,23 @@ def main(
         debug=debug,
         log_file=log_file
     )
-    # reusable creds 
-    # copy reusable creds to cache
+
+
+    # copy default reusable creds to root path
     try:
-        source_creds = files("deadend_cli").joinpath("data", "memory", "reusable_credentials.json")
+        source_creds = (
+            files("deadend_cli")
+            .joinpath("data")
+            .joinpath("reusable_credentials.json"))
+    
         path_creds = Path(str(source_creds))
 
     except (ImportError, FileNotFoundError):
         print("not found.")
-        path_creds = Path(__file__) / "data" / "memory" / "reusable_credentials.json"
-    cache_dir = Path.home() / ".cache" / "deadend" / "memory"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    destination_file = cache_dir / "reusable_credentials.json"
+        path_creds = REUSABLE_CREDENTIALS_FILE
+
+    ROOT_DEADEND_PATH.mkdir(parents=True, exist_ok=True)
+    destination_file = REUSABLE_CREDENTIALS_FILE
     if path_creds.exists():
         shutil.copy2(path_creds, destination_file)
     # setting up tracing
@@ -502,7 +508,7 @@ def main(
         _request_id: Any,
         _params: Dict[str, Any],
         event_bus: EventBus
-    ) -> Dict[str, Any]:
+    ):
         async for event in event_bus.subscribe():
             yield event.model_dump()
 
@@ -760,10 +766,8 @@ def main(
         """
         import yaml as _yaml
         from deadend_agent.agents.components.validation_strategies import (
-            DEFAULT_CONFIG_PATH,
             PRESETS,
-            ValidationConfig,
-            StrategyConfig,
+            ValidationConfig
         )
 
         preset = params.get("preset")
@@ -805,8 +809,8 @@ def main(
         except Exception as exc:
             return {"status": "failed", "reason": str(exc)}
 
-        DEFAULT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        DEFAULT_CONFIG_PATH.write_text(
+        DEADEND_VALIDATION_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        DEADEND_VALIDATION_CONFIG_PATH.write_text(
             _yaml.dump(parsed.model_dump(exclude_none=True), default_flow_style=False),
             encoding="utf-8",
         )
@@ -841,6 +845,7 @@ def main(
         provider = params.get("provider")
         model_name = params.get("model_name")
         workspace_root = params.get("workspace_root")
+        proxy_url = params.get("proxy_url")
 
         # Get the model spec (will use current provider/model if not specified)
         logger.info("model and provider %s %s", provider, model_name)
@@ -889,6 +894,7 @@ def main(
             workspace_root=workspace_root,
             agents_storage_root=component_manager.config.agents_storage_root,
             local_agent_id=component_manager.config.get_local_agent_id(),
+            proxy_url=proxy_url,
         )
         async def approval_callback() -> str:
             return "yes"

@@ -231,11 +231,11 @@ Start interactive security testing session
 
 ## Model Settings and Configuration
 
-The configuration file containing model specifications and API keys is located at `~/.cache/deadend/config.json`. This file handles both text generation models (for agent reasoning) and text embedding models (for RAG/vector search).
+The configuration file containing model specifications and API keys is located at `~/.deadend/config.json`. This file handles both text generation models (for agent reasoning) and text embedding models (for RAG/vector search).
 
 ### Configuration File Location
 
-- **Path**: `~/.cache/deadend/config.json`
+- **Path**: `~/.deadend/config.json`
 - **Format**: JSON
 - **Initial Setup**: The presetup wizard will guide you through initial configuration on first run
 
@@ -298,8 +298,8 @@ Here's an example `config.json` with both a text generation model and an embeddi
 ### Adding Models
 
 1. **Via Presetup Wizard** (Recommended): Run `deadend` without configuration to launch the interactive setup
-2. **Manual Configuration**: Edit `~/.cache/deadend/config.json` directly using the schema above
-3. **Environment Variables**: API keys can be set via environment variables, but storing them in `config.json` is recommended for convenience
+2. **Manual Configuration**: Edit `~/.deadend/config.json` directly using the schema above
+3. **Environment Variables**: API keys can be set via environment variables, but storing them in `~/.deadend/config.json` is recommended for convenience
 
 ### Supported Providers
 
@@ -335,7 +335,7 @@ Deadend CLI supports all providers compatible with LiteLLM. For a complete list 
 
 ### CLI Interface Settings (`settings.json`)
 
-The CLI interface uses a separate `settings.json` file located at `~/.cache/deadend/settings.json` to store default preferences and UI settings. This file contains:
+The CLI interface uses a separate `settings.json` file located at `~/.deadend/settings.json` to store default preferences and UI settings. This file contains:
 
 - **Default model selection**: Which provider and model to use by default
 - **Execution mode**: Default execution mode (yolo or supervisor)
@@ -362,7 +362,7 @@ The CLI interface uses a separate `settings.json` file located at `~/.cache/dead
 
 #### Settings File Location
 
-- **Path**: `~/.cache/deadend/settings.json`
+- **Path**: `~/.deadend/settings.json`
 - **Format**: JSON
 - **Auto-created**: Created automatically when you configure models via the presetup wizard
 - **Separate from config.json**: This file stores CLI preferences, while `config.json` stores model API keys and specifications

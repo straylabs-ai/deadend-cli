@@ -35,13 +35,6 @@ def sandboxed_shell_tool(
     if ctx.deps.shell_runner.sandbox.status == SandboxStatus.RUNNING:
         result = ctx.deps.shell_runner.run_command(command, timeout_seconds)
 
-        # logger.debug(
-        #     "Command execution completed in %.2fs",
-        #     result.get('execution_time', 0)
-        # )
-        # if result.get('timed_out', False):
-        #     logger.warning("Command timed out after %d seconds", timeout_seconds)
-        # return ctx.deps.shell_runner.get_cmd_log()
         return result
     else:
         logger.warning("Sandbox is not running")

@@ -1,0 +1,38 @@
+Headless Chrome UI automation (Pydoll / CDP). Use for HTML forms and pages where raw HTTP is not enough.
+
+## WHEN TO USE
+
+- Login or forms that need the real DOM, JavaScript, or CSRF tokens embedded in the page
+- Multi-step UI (fill → click next → fill) in one tool call
+- When you already know **accurate CSS selectors** from HTML you have seen
+
+## WHEN NOT TO USE
+
+- Simple API-style requests → prefer ``pw_send_payload``
+- You do not have real selectors from a response → discover HTML first, then call this
+
+## INPUT CONTRACT
+
+1. **page_url** — full URL to open first.
+2. **context** — flat JSON object: every value you need to type or branch on (strings, bools, numbers). Keys are referenced by steps.
+3. **steps** — ordered JSON array. Each item has **action** (discriminator):
+
+| action | Required fields | Meaning |
+|--------|-----------------|--------|
+| fill | selector, key | Type ``str(context[key])`` into the field |
+| select | selector, key | Choose ``<select>`` option; optional ``select_by``: value (default), label, index |
+| check | selector, key | Checkbox from truthy/falsey ``context[key]`` |
+| click | selector | Click element (submit, link, …) |
+| press | selector | Optional ``key_name`` (default ``Enter``) after focus |
+
+Selectors must come from actual page markup (id, name, data-*, stable classes)—never guess paths.
+
+## OUTPUT
+
+Returns JSON: ``success``, ``error`` (if any), ``final_url``, ``page_title``, ``steps_run``.
+
+## RULES
+
+- Keep steps minimal; one failed selector stops the run
+- Prefer ``click`` on an explicit submit button over ``press`` when possible
+- Respect scope and authorization the same as HTTP testing

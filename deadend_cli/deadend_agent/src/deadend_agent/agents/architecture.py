@@ -1,9 +1,7 @@
 from __future__ import annotations
-
+from deadend_agent.agents.exploit_web_agent import ExploitInfo
 from typing import Any, Literal, AsyncGenerator
-
 from pydantic_ai.usage import RunUsage, UsageLimits
-
 from deadend_agent.agents.components.executor import (
     AgentExecutor,
     LogEvent,
@@ -257,7 +255,7 @@ class ADaPTAgent:
                     yield emit(
                         f"[VALIDATION] Root goal achieved (confidence={event.confidence_score:.2f})"
                     )
-                    yield event
+                    yield event.model_dump()
                     yield {"exit_loop": True}
                     return
 
@@ -396,7 +394,10 @@ class ADaPTAgent:
                 )
                 formatted_website_info = _format_dict_for_context(website_info.model_dump())
                 self.context.add_tool_response("website_info", formatted_website_info)
-                if exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities:
+                
+                if isinstance(exploit_info, ExploitInfo) and (
+                    exploit_info.reasoning or exploit_info.highly_possible_vulnerabilities
+                ):
                     formatted_exploit_info = _format_dict_for_context(exploit_info.model_dump())
                     self.context.add_tool_response("exploit_info", formatted_exploit_info)
 
@@ -502,7 +503,7 @@ class ADaPTAgent:
             usage=RunUsage(),
             usage_limits=UsageLimits(request_limit=None),
         )
-
+        root.children = subtasks
         # Store website info as discovered facts.
         website_dict = website_info.model_dump()
         if website_dict.get("information_gathering"):

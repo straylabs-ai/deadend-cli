@@ -8,6 +8,7 @@ This module provides context management functionality for security research
 workflows, including task tracking, workflow state management, and agent
 routing based on current context and progress.
 """
+from deadend_agent.constants import DEADEND_AGENTS_PATH
 import json
 import uuid
 import time
@@ -815,7 +816,7 @@ class ContextEngine:
     """
     workflow_context: str = ""
     # Defines the whole context from the start of the workflow
-    tasks: Dict[TaskPlanner, list]
+    tasks: Dict[TaskPlanner, Any]
     # Defines the new last tasks set
     next_agent: str
     # Name of the next agent
@@ -829,7 +830,12 @@ class ContextEngine:
     # Path to the text context file
     model: ModelSpec
     # Adding AI model for summarization if input tokens too long
-    def __init__(self, model: ModelSpec, session_id: uuid.UUID | None = None) -> None:
+    def __init__(
+        self,
+        model: ModelSpec,
+        session_id: uuid.UUID | None = None,
+        agent_id: uuid.UUID | None = None,
+    ) -> None:
         """Initialize the ContextEngine with empty state.
 
         Args:
@@ -839,6 +845,7 @@ class ContextEngine:
         initializes the next_agent to an empty string, and creates the context file path.
         """
         self.session_id = session_id
+        self.agent_id = agent_id
         self.root_goal = ""
         self.tasks = {}
         self.next_agent = ""
@@ -852,7 +859,7 @@ class ContextEngine:
         self.structured = StructuredContext()
 
         # Create context directory if it doesn't exist
-        context_dir = Path.home() / ".cache" / "deadend" / "sessions" / str(self.session_id)
+        context_dir = DEADEND_AGENTS_PATH / str(self.agent_id) / str(self.session_id) / "run_context"
         context_dir.mkdir(parents=True, exist_ok=True)
 
         # Set context file path
@@ -924,9 +931,7 @@ class ContextEngine:
 
         for idx, (task_planner, children) in enumerate(self.tasks.items(), 1):
             task_desc = task_planner.task.strip()  # Full task, no truncation
-
-            # Status indicator for quick scanning
-            status_icon = {
+            status_icons = {
                 'pending': '○',
                 'in_progress': '◐',
                 'completed': '✓',
@@ -936,7 +941,9 @@ class ContextEngine:
                 'failed-validation': '✗',
                 'aborted:max_depth': '⊘',
                 'failed:max_attempts': '⊘',
-            }.get(task_planner.status, '?')
+            }
+            # Status indicator for quick scanning
+            status_icon = status_icons.get(task_planner.status, '?')
 
             tasks_lines += f"{idx}. {status_icon} {task_desc}\n"
             tasks_lines += f"   Status: {task_planner.status} | Confidence: {task_planner.confidence_score:.2f}\n"
@@ -946,38 +953,24 @@ class ContextEngine:
                 if isinstance(children, dict) and children:
                     tasks_lines += f"   Subtasks ({len(children)}):\n"
                     for sub_idx, (child_planner, _) in enumerate(children.items(), 1):
-                        child_desc = child_planner.task.strip()  # Full task, no truncation
-                        child_icon = {
-                            'pending': '○',
-                            'in_progress': '◐',
-                            'completed': '✓',
-                            'success': '✓',
-                            'validated': '✓',
-                            'failed': '✗',
-                            'failed-validation': '✗',
-                        }.get(child_planner.status, '?')
-                        tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
+                        if isinstance(child_planner, TaskPlanner):
+                            child_desc = child_planner.task.strip()  # Full task, no truncation
+                            child_icon = status_icons.get(child_planner.status, '?')
+                            tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
                 elif isinstance(children, list) and children:
                     tasks_lines += f"   Subtasks ({len(children)}):\n"
                     for sub_idx, child_planner in enumerate(children, 1):
-                        child_desc = child_planner.task.strip()  # Full task, no truncation
-                        child_icon = {
-                            'pending': '○',
-                            'in_progress': '◐',
-                            'completed': '✓',
-                            'success': '✓',
-                            'validated': '✓',
-                            'failed': '✗',
-                            'failed-validation': '✗',
-                        }.get(child_planner.status, '?')
-                        tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
+                        if isinstance(child_planner, TaskPlanner):
+                            child_desc = child_planner.task.strip()  # Full task, no truncation
+                            child_icon = status_icons.get(child_planner.status, '?')
+                            tasks_lines += f"      {sub_idx}. {child_icon} {child_desc} [{child_planner.status}]\n"
             tasks_lines += "\n"
 
         tasks_context += tasks_lines
         return tasks_context
 
 
-    def set_tasks(self, tasks: List[Task]) -> None:
+    def set_tasks(self, tasks: List[TaskPlanner]) -> None:
         """Set the current tasks and update workflow context.
         
         Args:
@@ -990,7 +983,7 @@ class ContextEngine:
 [planner tasks]
 {str(tasks)}
 """
-        self.tasks = dict(enumerate(task for task in tasks))
+        self.tasks = {task: [] for task in tasks}
         self._append_to_context_file("[ai agent]", f"Planner agent new tasks:\n{str(tasks)}")
 
     def set_target(self, target: str) -> None:
@@ -1120,47 +1113,16 @@ class ContextEngine:
 
             reporter_agent = ReporterAgent(
                 model=self.model,
-                deps_type=None,
-                tools=[],
                 validation_format="New context with the relevant information",
                 validation_type="Summarize context",
             )
             # ReporterAgent.summarize_context will update workflow_context via
             # ContextEngine.set_new_workflow, so no direct assignment is needed.
-            result = await reporter_agent.summarize_context(self)
-            self.workflow_context = result.output
+            if self.session_id:
+                result = await reporter_agent.summarize_context(context_engine=self, session_id=str(self.session_id))
+            self.workflow_context = result
         return token_count
 
-#     def add_next_agent(self, router_output: "RouterOutput") -> None:
-#         """Add router output information and set the next agent.
-        
-#         Args:
-#             router_output (RouterOutput): The output from the router agent
-#                                          containing the next agent name and
-#                                          routing information.
-        
-#         Updates the next_agent attribute and adds the router output
-#         to the workflow context. Also saves to text file.
-#         """
-#         self.next_agent = router_output.next_agent_name
-#         self.workflow_context  += f"""\n
-# [router agent]
-# {str(router_output)}
-# """
-#         self._append_to_context_file("[ai agent]", f"Router agent: {str(router_output)}")
-#     def add_not_found_agent(self, agent_name: str) -> None:
-#         """Add information about a not found agent to the workflow context.
-        
-#         Args:
-#             agent_name (str): The name of the agent that was not found.
-        
-#         Adds a message to the workflow context indicating that the
-#         specified agent was not found. Also saves to text file.
-#         """
-#         self.workflow_context += f"""
-# [agent not found {agent_name}]\n
-# """
-#         self._append_to_context_file("[ai agent]", f"Not found agent name: {agent_name}")
     def add_agent_response(
         self,
         response: str,

@@ -1,18 +1,18 @@
 import json
-from anyio import Path
+import hashlib
 from pydantic_ai import RunContext
 from deadend_agent.utils.structures import RequesterDeps
 from deadend_agent.utils.functions import truncate_string
 from deadend_agent.logging import logger
+from deadend_agent.constants import CACHE_DEADEND_LOGS
 
 from .http_parser import is_valid_request_detailed, extract_host_port, autocorrect_http_request
 from .auth_handler import replace_credential_placeholders
 from .pw_requester import PlaywrightRequester
 from .pw_session_manager import PlaywrightSessionManager
-# from deadend_agent.context import MemoryHandler
 from deadend_agent.tools.tool_wrappers import with_tool_events
 
-__all__ = ["is_valid_request_detailed"]
+__all__ = ["is_valid_request_detailed", "PlaywrightRequester"]
 
 
 @with_tool_events("pw_send_payload")
@@ -20,7 +20,6 @@ async def pw_send_payload(
     ctx: RunContext[RequesterDeps],
     target_host: str,
     raw_request: str,
-    proxy: bool = False,
     verify_ssl: bool = False,
 ):
     """
@@ -39,7 +38,6 @@ async def pw_send_payload(
     Args:
         target_host (str): Target host in format "host:port" or URL
         raw_request (str): Raw HTTP request string
-        proxy (bool): Whether to route through localhost:8080 proxy
         verify_ssl (bool): Whether to verify SSL certificates
 
     Returns:
@@ -69,12 +67,18 @@ async def pw_send_payload(
     # So that the LLM will never see the true credentials
     raw_request_anon = replace_credential_placeholders(raw_request)
     is_tls = port == 443 or effective_target.startswith('https://')
-    session_key = f"{host}_{port}"
-    proxy_url = "http://localhost:8080" if proxy else None
+    proxy_url = ctx.deps.proxy_url
+    # session_key = _build_session_key(
+    #     host=host,
+    #     port=port,
+    #     proxy_url=proxy_url,
+    #     verify_ssl=verify_ssl,
+    # )
 
     # pw_requester session
     pw_session = await PlaywrightSessionManager.get_session(
-        session_key=session_key,
+        session_key=str(ctx.deps.session_id),
+        agent_id=str(ctx.deps.agent_id),
         verify_ssl=verify_ssl,
         proxy_url=proxy_url
     )
@@ -83,15 +87,16 @@ async def pw_send_payload(
         async for response in pw_session.send_raw_data(
             host=host,
             port=port,
-            target_host=effective_target,
             request_data=raw_request_anon,
             is_tls=is_tls,
-            via_proxy=proxy
         ):
             responses.append(response)
 
         # Save responses to requester.jsonl file
-        await _save_responses_to_file(session_key, responses)
+        await _save_responses_to_file(
+            agent_id=str(ctx.deps.agent_id), 
+            session_key=str(ctx.deps.session_id), 
+            responses=responses)
 
         # Convert bytes responses to strings before truncation
         string_responses = []
@@ -121,7 +126,7 @@ async def cleanup_playwright_sessions():
     """
     await PlaywrightSessionManager.cleanup_all_sessions()
 
-async def _save_responses_to_file(session_key: str, responses: list):
+async def _save_responses_to_file(agent_id: str, session_key: str, responses: list):
     """
     Save responses to requester.jsonl file in the session directory.
     
@@ -131,8 +136,8 @@ async def _save_responses_to_file(session_key: str, responses: list):
     """
     try:
         # Create the directory path
-        cache_dir = await Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_key
-        await cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_dir = CACHE_DEADEND_LOGS / agent_id / session_key
+        cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Create the file path (convert to string for regular open())
         file_path_str = str(cache_dir / "requester.jsonl")
@@ -161,15 +166,30 @@ async def _save_responses_to_file(session_key: str, responses: list):
         logger.warning("Could not save responses to file: %s", e)
 
 
-async def cleanup_playwright_session_for_target(target_host: str, proxy: bool = False, verify_ssl: bool = False):
+async def cleanup_playwright_session_for_target(
+    target_host: str,
+    proxy_url: str | None = None,
+    verify_ssl: bool = False,
+):
     """
     Clean up a specific Playwright session for a target.
     
     Args:
         target_host (str): Target host to clean up session for
-        proxy (bool): Whether proxy was used
+        proxy_url (str | None): Proxy URL used for the session
         verify_ssl (bool): Whether SSL verification was used
     """
     host, port = extract_host_port(target_host)
-    session_key = f"{host}_{port}"
+    session_key = _build_session_key(
+        host=host,
+        port=port,
+        proxy_url=proxy_url,
+        verify_ssl=verify_ssl,
+    )
     await PlaywrightSessionManager.cleanup_session(session_key)
+
+
+def _build_session_key(host: str, port: int, proxy_url: str | None, verify_ssl: bool) -> str:
+    proxy_digest = hashlib.sha256((proxy_url or "").encode("utf-8")).hexdigest()[:12]
+    tls_mode = "verify" if verify_ssl else "insecure"
+    return f"{host}_{port}_{tls_mode}_{proxy_digest}"

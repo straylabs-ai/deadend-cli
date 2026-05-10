@@ -14,7 +14,6 @@ import os
 import shutil
 from importlib.resources import files
 from pathlib import Path
-
 from dotenv import load_dotenv
 
 from .jsonrpc.event_bus import EventBus, event_bus
@@ -32,6 +31,7 @@ from .jsonrpc.rpc_models import (
     RPCErrorCode,
 )
 from .cli_logging import logger, setup_logging, get_module_logger
+from deadend_agent.constants import REUSABLE_CREDENTIALS_FILE, ROOT_DEADEND_PATH
 
 
 def get_rpc_server():
@@ -63,11 +63,8 @@ __all__ = [
 
 
 def _load_env_files() -> None:
-    """Load .env from cwd and optionally ~/.config/deadend/.env (later overrides)."""
+    """Load .env from cwd."""
     load_dotenv()  # cwd .env
-    global_env = Path.home() / ".config" / "deadend" / ".env"
-    if global_env.exists():
-        load_dotenv(dotenv_path=global_env)
 
 def _phoenix_otel_enabled() -> bool:
     """True if Phoenix OTLP should be used (from .env / env vars)."""
@@ -86,18 +83,18 @@ def main():
         source_creds = (
             files("deadend_cli")
             .joinpath("data")
-            .joinpath("memory")
             .joinpath("reusable_credentials.json")
         )
         path_creds = Path(str(source_creds))
     except (ImportError, FileNotFoundError):
         print("not found.")
-        path_creds = Path(__file__) / "data" / "memory" / "reusable_credentials.json"
-    cache_dir = Path.home() / ".cache" / "deadend" / "memory"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    destination_file = cache_dir / "reusable_credentials.json"
+        path_creds = REUSABLE_CREDENTIALS_FILE
+    
+    # creating the root path if it does not exist
+    ROOT_DEADEND_PATH.mkdir(parents=True, exist_ok=True)
+
     if path_creds.exists():
-        shutil.copy2(path_creds, destination_file)
+        shutil.copy2(path_creds, REUSABLE_CREDENTIALS_FILE)
 
     if _phoenix_otel_enabled():
         # Register Phoenix OTLP before importing the agent so the global tracer provider
@@ -105,7 +102,7 @@ def main():
         os.environ["DEADEND_OTEL_USE_GLOBAL"] = "1"
         from phoenix.otel import register
 
-        endpoint = (os.getenv("PHOENIX_COLLECTOR_ENDPOINT") or "https://crunch.straylabs.ai/").strip().rstrip("/")
+        endpoint = (os.getenv("PHOENIX_COLLECTOR_ENDPOINT") or "").strip().rstrip("/")
         if not endpoint.endswith("/v1/traces"):
             endpoint = f"{endpoint}/v1/traces"
         project_name = os.getenv("PHOENIX_PROJECT_NAME", "deadend")

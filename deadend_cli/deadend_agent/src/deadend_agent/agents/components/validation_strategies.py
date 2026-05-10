@@ -30,14 +30,8 @@ from pydantic import BaseModel, Field
 
 from deadend_agent.config.settings import ModelSpec
 from deadend_agent.logging import logger
+from deadend_agent.constants import DEADEND_VALIDATION_CONFIG_PATH
 from deadend_prompts import render_agent_instructions
-
-
-# ---------------------------------------------------------------------------
-# Default config path
-# ---------------------------------------------------------------------------
-
-DEFAULT_CONFIG_PATH = Path.home() / ".cache" / "deadend" / "validation.yaml"
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +118,7 @@ def load_validation_config(
 ) -> ValidationConfig:
     """Load a ``ValidationConfig`` from a YAML file.
 
-    If *path* is ``None``, falls back to ``DEFAULT_CONFIG_PATH``.
+    If *path* is ``None``, falls back to ``DEADEND_VALIDATION_CONFIG_PATH``.
     If the file does not exist, returns the default config (flag + judge).
 
     Args:
@@ -133,7 +127,7 @@ def load_validation_config(
     Returns:
         A parsed and validated ``ValidationConfig``.
     """
-    config_path = Path(path) if path else DEFAULT_CONFIG_PATH
+    config_path = Path(path) if path else DEADEND_VALIDATION_CONFIG_PATH
 
     if not config_path.exists():
         logger.debug(
@@ -263,7 +257,7 @@ class JudgeAgentStrategy:
             "judge",
             tools={},
             validation_type=validation_type or "flag",
-            validation_format=validation_format or "FLAG{{}}",
+            validation_format=validation_format,
         )
 
         self._output_model = _JudgeOutput

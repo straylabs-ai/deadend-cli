@@ -26,7 +26,6 @@ from deadend_agent.logging import get_module_logger
 from .sqlite_models import (
     Base,
     CodeChunkSqlite,
-    KnowledgeBaseSqlite,
     deserialize_embedding,
     serialize_embedding,
 )
@@ -172,69 +171,6 @@ class SqliteRagConnector:
         results: list[tuple] = []
         for idx in top_k_idx:
             chunk = all_chunks[valid_indices[idx]]
-            score = float(similarities[idx])
-            results.append((chunk, score))
-        return results
-
-    # ------------------------------------------------------------------
-    # Knowledge Base
-    # ------------------------------------------------------------------
-
-    async def batch_insert_kb_chunks(
-        self, knowledge_chunks_data: List[Dict[str, Any]]
-    ) -> List[KnowledgeBaseSqlite]:
-        async with self.get_session() as session:
-            chunks: list[KnowledgeBaseSqlite] = []
-            for data in knowledge_chunks_data:
-                cleaned = dict(data)
-                if "embedding" in cleaned and isinstance(cleaned["embedding"], list):
-                    cleaned["embedding"] = serialize_embedding(cleaned["embedding"])
-                chunk = KnowledgeBaseSqlite(**cleaned)
-                chunks.append(chunk)
-            session.add_all(chunks)
-            await session.commit()
-            for chunk in chunks:
-                await session.refresh(chunk)
-            return chunks
-
-    async def similarity_search_knowledge_base(
-        self,
-        query_embedding: List[float],
-        limit: int = 10,
-        similarity_threshold: Optional[float] = None,
-    ) -> List[tuple]:
-        """Cosine-similarity search over knowledge base chunks."""
-        async with self.get_session() as session:
-            result = await session.execute(select(KnowledgeBaseSqlite))
-            all_chunks: list[KnowledgeBaseSqlite] = list(result.scalars().all())
-
-        if not all_chunks:
-            return []
-
-        query_vec = np.array(query_embedding, dtype=np.float32)
-        embeddings = np.array(
-            [np.frombuffer(c.embedding, dtype=np.float32) for c in all_chunks],
-            dtype=np.float32,
-        )
-
-        norms = np.linalg.norm(embeddings, axis=1)
-        query_norm = np.linalg.norm(query_vec)
-        safe_denom = norms * query_norm
-        safe_denom[safe_denom == 0] = 1e-10
-        similarities = embeddings @ query_vec / safe_denom
-
-        if similarity_threshold is not None:
-            keep = similarities >= similarity_threshold
-            indices = np.where(keep)[0]
-            similarities = similarities[keep]
-        else:
-            indices = np.arange(len(all_chunks))
-
-        top_k_idx = np.argsort(-similarities)[:limit]
-
-        results: list[tuple] = []
-        for idx in top_k_idx:
-            chunk = all_chunks[indices[idx]]
             score = float(similarities[idx])
             results.append((chunk, score))
         return results

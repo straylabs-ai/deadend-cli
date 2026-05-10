@@ -4,15 +4,19 @@
 
 """CLI initialization module.
 
-This module provides functionality to initialize the CLI configuration
-by prompting for environment variables and saving them to a cache TOML file.
+Performs the prerequisites that must be in place before the agent can run:
+- ensure Docker is reachable
+- pull the sandboxed Kali image used by the sandbox manager
+
+Provider configuration (API keys, models, etc.) is *not* handled here. That
+state lives in ``~/.deadend/config.json`` and is written by the
+interactive provider selector exposed in the chat UI / RPC layer (see
+``Config.add_provider`` / ``Config.update_provider``).
 """
 
-import os
-from pathlib import Path
 import sys
+
 import docker
-import toml
 import typer
 from docker.errors import DockerException
 from rich.console import Console
@@ -67,13 +71,11 @@ def pull_sandboxed_kali_image(client: docker.DockerClient) -> bool:
         return False
 
 
-def init_cli_config():
-    """Initialize CLI config by prompting for env vars and saving to cache TOML.
+def init_cli_config() -> None:
+    """Run the one-time CLI prerequisites (Docker availability + image pull).
 
-    Writes to ~/.cache/deadend/config.toml
-
-    Returns:
-        Path: The path to the created configuration file
+    Provider/API-key configuration is handled separately through the chat UI
+    and persisted to ``~/.deadend/config.json``.
     """
     # Create a single Docker client instance for all operations
     try:
@@ -100,99 +102,8 @@ def init_cli_config():
         )
         console.print("Some features may not work properly. You can try again later.")
 
-    cache_dir = Path.home() / ".cache" / "deadend"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    config_file = cache_dir / "config.toml"
-
-    # Check if config file already exists and is populated
-    if config_file.exists():
-        try:
-            with config_file.open("r") as f:
-                existing_config = toml.load(f)
-
-            # Check if config has essential keys and values
-            essential_keys = [
-                "OPENAI_API_KEY", 
-                "ANTHROPIC_API_KEY", 
-                "GEMINI_API_KEY",
-                "OPEN_ROUTER_API_KEY",
-                # "LOCAL_API_KEY"
-            ]
-            has_essential_config = any(
-                existing_config.get(key, "").strip() for key in essential_keys
-            )
-
-            if has_essential_config:
-                console.print(
-                    "[green]Configuration file already exists and is populated.[/green]"
-                )
-                console.print(f"Config file: {config_file}")
-                console.print(
-                    "If you need to update the configuration, delete the file and run init again."
-                )
-                return config_file
-            else:
-                console.print(
-                    "[yellow]Configuration file exists but appears to be empty or incomplete.[/yellow]"
-                )
-                console.print("Proceeding with configuration setup...")
-        except (toml.TomlDecodeError, OSError) as e:
-            console.print(
-                f"[yellow]Warning: Could not read existing config file: {e}[/yellow]"
-            )
-            console.print("Proceeding with configuration setup...")
-
-    # Read current environment as defaults
-    defaults = {
-        "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
-        "OPENAI_MODEL": os.getenv("OPENAI_MODEL", "gpt-4o-mini-2024-07-18"),
-        "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY", ""),
-        "ANTHROPIC_MODEL": os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022"),
-        "GEMINI_API_KEY": os.getenv("GEMINI_API_KEY", ""),
-        "GEMINI_MODEL": os.getenv("GEMINI_MODEL", "gemini-2.5-pro"),
-        "OPEN_ROUTER_API_KEY": os.getenv("OPEN_ROUTER_API_KEY", ""),
-        "OPEN_ROUTER_MODEL": os.getenv("OPEN_ROUTER_MODEL", "anthropic/claude-4.5-opus"),
-        "LOCAL_API_KEY": os.getenv("LOCAL_API_KEY", ""),
-        "LOCAL_MODEL": os.getenv("LOCAL_MODEL", "Kimi-K2-Thinking"),
-        "LOCAL_BASE_URL": os.getenv("LOCAL_BASE_URL", ""),
-        "EMBEDDING_MODEL": os.getenv("EMBEDDING_MODEL", ""),
-        "DB_URL": os.getenv("DB_URL", ""),
-        "ZAP_PROXY_API_KEY": os.getenv("ZAP_PROXY_API_KEY", ""),
-        "APP_ENV": os.getenv("APP_ENV", "development"),
-        "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
-    }
-
-    console.print("Configure LLM provider API keys and models (press Enter to keep defaults or skip).")
-    console.print("[yellow]Note: You need at least one LLM provider configured to use the CLI.[/yellow]")
-    values = {}
-    prompts = [
-        ("OPENAI_API_KEY", True, "OpenAI API key (e.g., sk-...)"),
-        ("OPENAI_MODEL", False, "OpenAI model name (e.g., gpt-4o, gpt-4o-mini)"),
-        ("ANTHROPIC_API_KEY", True, "Anthropic API key (e.g., sk-ant-...)"),
-        ("ANTHROPIC_MODEL", False, "Anthropic model name (e.g., claude-3-5-sonnet-20241022)"),
-        ("GEMINI_API_KEY", True, "Google Gemini API key"),
-        ("GEMINI_MODEL", False, "Gemini model name (e.g., gemini-2.5-pro)"),
-        ("OPEN_ROUTER_API_KEY", True, "OpenRouter API key (optional, for accessing multiple providers)"),
-        ("OPEN_ROUTER_MODEL", False, "OpenRouter model (e.g., anthropic/claude-4.5-opus)"),
-        ("LOCAL_API_KEY", True, "Local/self-hosted model API key (optional)"),
-        ("LOCAL_MODEL", False, "Local model name (e.g., Kimi-K2-Thinking)"),
-        ("LOCAL_BASE_URL", False, "Local model base URL (e.g., http://localhost:8000/v1)"),
-        ("EMBEDDING_MODEL", False, "Embedding model (optional, for RAG features)"),
-        ("DB_URL", False, "Legacy PostgreSQL URL (optional; RAG uses SQLite per session)"),
-        ("ZAP_PROXY_API_KEY", True, "ZAP Proxy API key (optional, for security testing)"),
-        ("APP_ENV", False, "Application environment"),
-        ("LOG_LEVEL", False, "Log level (INFO, DEBUG, etc.)"),
-    ]
-
-    for key, hide, description in prompts:
-        values[key] = typer.prompt(
-            f"{key} ({description})",
-            default=defaults.get(key, ""),
-            hide_input=hide,
-        )
-
-    with config_file.open("w") as f:
-        toml.dump(values, f)
-
-    console.print(f"Saved configuration to {config_file}")
-    return config_file
+    console.print(
+        "\n[green]Initialization complete.[/green] "
+        "Configure LLM providers from the chat UI; "
+        "they will be saved to ~/.deadend/config.json."
+    )

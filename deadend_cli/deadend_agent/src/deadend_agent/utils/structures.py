@@ -135,7 +135,7 @@ class RequesterDeps:
     
     Attributes:
         embedder_client: Embedder Client handler
-        rag: SqliteRagConnector for knowledge base operations
+        rag: SqliteRagConnector for per-target code-chunk RAG operations
         target: Target web application URL or identifier
         shell_runner: ShellRunner for executing reconnaissance commands
         session_id: Unique session identifier for tracking operations
@@ -143,7 +143,9 @@ class RequesterDeps:
     embedder_client: EmbedderClient
     rag: SqliteRagConnector
     target: str
+    agent_id: uuid.UUID | None 
     session_id: uuid.UUID
+    proxy_url: str | None = None
     embedding_session_id: uuid.UUID | None = None
     memory_workspace_root: str | None = None
     memory_context: str = ""
@@ -159,7 +161,7 @@ class WebappreconDeps:
     
     Attributes:
         embedder_client: Embedder Client handler
-        rag: SqliteRagConnector for knowledge base operations
+        rag: SqliteRagConnector for per-target code-chunk RAG operations
         target: Target web application URL or identifier
         shell_runner: ShellRunner for executing reconnaissance commands
         session_id: Unique session identifier for tracking operations
@@ -191,7 +193,7 @@ class RagDeps:
     
     Attributes:
         embedder_client: Embedder Client handler
-        rag: SqliteRagConnector for knowledge base operations
+        rag: SqliteRagConnector for per-target code-chunk RAG operations
         target: Target identifier for RAG operations
         session_id: Unique session identifier for tracking operations
     """
@@ -251,7 +253,7 @@ class TargetDeps:
         path_crawl_data: Crawled path data from the target
         authentication_data: Authentication information for the target
         embedder_client: Embedder Client handler
-        rag: SqliteRagConnector for knowledge base operations
+        rag: SqliteRagConnector for per-target code-chunk RAG operations
     """
     target: str
     openapi_spec: Dict

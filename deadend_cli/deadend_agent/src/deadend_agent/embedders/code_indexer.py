@@ -8,6 +8,7 @@ This module provides functionality to index, chunk, and embed source code
 from web applications, enabling semantic search and analysis of codebases
 for security research and vulnerability identification.
 """
+from deadend_agent.constants import DEADEND_AGENTS_PATH
 
 import os
 import re
@@ -37,7 +38,12 @@ class SourceCodeIndexer:
     added to the tree sitter are : 
     - HTML and Javascript 
     """
-    def __init__(self, target: str, session_id: uuid.UUID | None = None) -> None:
+    def __init__(
+        self,
+        target: str,
+        session_id: uuid.UUID | None = None,
+        agent_id: uuid.UUID | None = None
+    ) -> None:
         """
         Initializes the SourceCodeIndexer object.
         
@@ -50,6 +56,7 @@ class SourceCodeIndexer:
         initializes the WebpageCrawler instance for crawling the target website.
         """
         self.target = target
+        self.agent_id = agent_id
         self.session_id = session_id if session_id else uuid4()
         self._add_session_to_cache()
         self._add_chunk_directory()
@@ -81,18 +88,15 @@ class SourceCodeIndexer:
     def _add_session_to_cache(self):
         """
         Create cache directory structure for the current session.
-        
-        Sets up the cache directory under ~/.cache/deadend/webpages/ and
         creates a session-specific subdirectory for storing downloaded resources.
         """
-        home_dir = Path.home()
-        self.cache_path = home_dir.joinpath('.cache/deadend/webpages/')
+        self.cache_path = DEADEND_AGENTS_PATH 
         if not os.path.exists(self.cache_path):
             Path(self.cache_path).mkdir(parents=True, exist_ok=True)
 
-        self.source_code_path = self.cache_path.joinpath(str(self.session_id))
+        self.source_code_path = self.cache_path /str(self.agent_id) / str(self.session_id) / "webpages" 
         Path(self.source_code_path).mkdir(parents=True, exist_ok=True)
-        self.manifest_path = self.source_code_path.joinpath(".manifest.json")
+        self.manifest_path = self.source_code_path / ".manifest.json"
 
     def _add_chunk_directory(self):
         """

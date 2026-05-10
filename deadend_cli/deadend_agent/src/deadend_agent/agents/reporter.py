@@ -100,10 +100,6 @@ class ReporterAgent(AgentRunner):
             deferred_tool_results=deferred_tool_results,
         )
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     async def summarize_and_write(
         self,
         root_goal: str,
@@ -155,7 +151,6 @@ class ReporterAgent(AgentRunner):
             "write_workspace_file tool.\n\n"
             f"## Workflow Context\n{current_context}"
         )
-
         deps = ReporterDeps(session_id=session_id)
         result = await self.run(
             prompt=prompt,

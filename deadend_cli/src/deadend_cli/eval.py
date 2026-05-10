@@ -85,7 +85,7 @@ async def eval_interface(
 
     Note:
         The function automatically:
-        - Enables code indexing and knowledge base features
+        - Enables code indexing of the target source
         - Configures context engine for enhanced agent capabilities
         - Disables human intervention for automated evaluation
         - Outputs evaluation reports to the current directory
@@ -139,7 +139,6 @@ async def eval_interface(
             sandbox=sandbox,
             eval_metadata=eval_metadata,
             with_code_indexing=True,
-            with_knowledge_base=True,
             hard_prompt=False
         )
     finally:

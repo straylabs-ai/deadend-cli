@@ -8,6 +8,7 @@ export interface CliArgs {
   codebase?: string;
   target?: string;
   prompt?: string;
+  proxy?: string;
 }
 
 const DEFAULT_MODE: AppMode = "supervisor";
@@ -55,6 +56,10 @@ export function parseArgs(argv: string[]): CliArgs {
         args.prompt = readValue(argv, index, token);
         index += 1;
         break;
+      case "--proxy":
+        args.proxy = readValue(argv, index, token);
+        index += 1;
+        break;
       default:
         throw new Error(`Unknown argument: ${token}`);
     }
@@ -80,6 +85,7 @@ export function formatHelp(): string {
     "  -c, --codebase <dir>  Attach codebase metadata to the session header",
     "  -t, --target <value>  Display the active target in the header",
     "  -p, --prompt <value>  Seed the session with an initial prompt",
+    "      --proxy <url>     Route Playwright send_payload traffic through an HTTP proxy",
   ].join("\n");
 }
 

@@ -161,7 +161,7 @@ class ModelRegistry:
     def _initialize_models(self, config: Config):
         """Initialize model specifications and embedding client.
         
-        Uses the TOML-backed `ProvidersList` populated via `Config.populate_providers()`
+        Uses the JSON-backed `ProvidersList` populated via `Config.populate_providers()`
         as the single source of truth. Each entry is either a `ModelSpec` (LLM)
         or an `EmbeddingSpec` (embeddings)
         
@@ -193,7 +193,7 @@ class ModelRegistry:
                         self._models[spec.provider] = []
                     self._models[spec.provider].append(spec)
 
-        # If no providers were found in TOML, registry will simply report no models.
+        # If no providers were found in config.json, registry will simply report no models.
 
     def _resolve_embedding_credentials(
         self,
@@ -367,6 +367,7 @@ class ModelRegistry:
         selected_provider: str,
         selected_model: str,
         new_provider: str,
+        base_url: str,
         new_model: str,
         api_key: str | None
     ):
@@ -394,6 +395,7 @@ class ModelRegistry:
             provider=new_provider,
             model_name=new_model,
             api_key=api_key,
+            base_url=base_url,
             type_model=None,
             vec_dim=None
         )

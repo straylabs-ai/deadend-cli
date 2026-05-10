@@ -11,10 +11,11 @@ Tracks and persists metrics for each agent session:
 - Error counts by type
 - Session duration
 
-Metrics are saved to ~/.cache/deadend/sessions/{session_id}/metrics.json
+Metrics are saved to ~/.cache/deadend/agents/{session_id}/metrics/metrics.json
 """
 
 from __future__ import annotations
+from deadend_agent.constants import CACHE_DEADEND_PATH, CACHE_METRICS_PATH
 
 import json
 import time
@@ -96,13 +97,14 @@ class SessionMetrics(BaseModel):
     def save(self):
         """Persist metrics to disk.
 
-        Saves to: ~/.cache/deadend/sessions/{session_id}/metrics.json
+        Saves to: ~/.cache/deadend/agents/{session_id}/metrics/metrics.json
         Updates duration before saving.
         """
         self.update_duration()
 
         # Create session directory
-        cache_dir = Path.home() / ".cache" / "deadend" / "sessions" / self.session_id
+        # TODO: verify this path too
+        cache_dir = CACHE_METRICS_PATH / self.session_id
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Write metrics to JSON file
@@ -123,7 +125,7 @@ class SessionMetrics(BaseModel):
         Raises:
             FileNotFoundError: If metrics file doesn't exist
         """
-        cache_dir = Path.home() / ".cache" / "deadend" / "sessions" / session_id
+        cache_dir = CACHE_METRICS_PATH / session_id
         metrics_path = cache_dir / "metrics.json"
 
         if not metrics_path.exists():

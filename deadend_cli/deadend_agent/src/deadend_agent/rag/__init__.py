@@ -5,7 +5,7 @@
 """Retrieval-augmented generation (RAG) system for security research.
 
 This module provides RAG functionality for storing, indexing, and retrieving
-security research data, including code chunks, knowledge base entries,
-and embeddings for AI agent assistance and semantic search.
+per-target source-code chunks and their embeddings for AI agent assistance
+and semantic search.
 """
 

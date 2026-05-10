@@ -101,26 +101,3 @@ class CodeBaseChunkPatch(BaseModel):
 
 class CodeBaseChunkDelete(BaseModel):
     id: uuid.UUID
-
-
-class KnowledgeBase(BaseModel):
-    """
-    Knowledge Base chunks schema
-    """
-    file_path: str
-    content: str
-    embedding: list[float]
-    created_at: datetime
-    updated_at: datetime
-
-class KnowledgeBasePatch(BaseModel):
-    """
-    Knowledge Base chunks schema
-    """
-    file_path: str | None
-    content: str | None
-    embedding: list[float] | None
-    updated_at: datetime
-
-class KnowledgeBaseDelete(BaseModel):
-    id: uuid.UUID

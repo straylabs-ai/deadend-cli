@@ -5,7 +5,7 @@
 """Embedding and indexing system for security research data.
 
 This module provides embedding and indexing functionality for processing
-source code, knowledge base documents, and other security research data
-for semantic search and AI agent assistance.
+source code from crawled web targets for semantic search and AI agent
+assistance.
 """
 

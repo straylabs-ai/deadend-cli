@@ -3,12 +3,26 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 let appDirPromise: Promise<string> | null = null;
+let cacheDirPromise: Promise<string> | null = null;
 
 export function getDefaultAppDirPath(): string {
   if (process.env.DEADEND_HOME) {
     return process.env.DEADEND_HOME;
   }
 
+  if (process.env.XDG_CONFIG_HOME) {
+    return join(process.env.XDG_CONFIG_HOME, "deadend");
+  }
+
+  const homeDir = process.env.HOME ?? process.env.USERPROFILE;
+  if (homeDir) {
+    return join(homeDir, ".deadend");
+  }
+
+  return join(tmpdir(), "deadend");
+}
+
+export function getDefaultCacheDirPath(): string {
   if (process.env.XDG_CACHE_HOME) {
     return join(process.env.XDG_CACHE_HOME, "deadend");
   }
@@ -18,7 +32,7 @@ export function getDefaultAppDirPath(): string {
     return join(homeDir, ".cache", "deadend");
   }
 
-  return join(tmpdir(), "deadend");
+  return join(tmpdir(), "deadend-cache");
 }
 
 export async function getAppDirPath(): Promise<string> {
@@ -26,8 +40,13 @@ export async function getAppDirPath(): Promise<string> {
   return appDirPromise;
 }
 
+export async function getCacheDirPath(): Promise<string> {
+  cacheDirPromise ??= resolveWritableCacheDir();
+  return cacheDirPromise;
+}
+
 export async function getLogsDirPath(): Promise<string> {
-  const logsDirPath = join(await getAppDirPath(), "logs");
+  const logsDirPath = join(await getCacheDirPath(), "logs");
   await mkdir(logsDirPath, { recursive: true });
   return logsDirPath;
 }
@@ -35,7 +54,7 @@ export async function getLogsDirPath(): Promise<string> {
 async function resolveWritableAppDir(): Promise<string> {
   const candidates = uniquePaths([
     process.env.DEADEND_HOME,
-    process.env.XDG_CACHE_HOME ? join(process.env.XDG_CACHE_HOME, "deadend") : undefined,
+    process.env.XDG_CONFIG_HOME ? join(process.env.XDG_CONFIG_HOME, "deadend") : undefined,
     getDefaultAppDirPath(),
     join(tmpdir(), "deadend"),
   ]);
@@ -48,6 +67,24 @@ async function resolveWritableAppDir(): Promise<string> {
 
   throw new Error(
     `Unable to find a writable deadend state directory. Tried: ${candidates.join(", ")}`,
+  );
+}
+
+async function resolveWritableCacheDir(): Promise<string> {
+  const candidates = uniquePaths([
+    process.env.XDG_CACHE_HOME ? join(process.env.XDG_CACHE_HOME, "deadend") : undefined,
+    getDefaultCacheDirPath(),
+    join(tmpdir(), "deadend-cache"),
+  ]);
+
+  for (const candidate of candidates) {
+    if (await isWritableDirectory(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(
+    `Unable to find a writable deadend cache directory. Tried: ${candidates.join(", ")}`,
   );
 }
 

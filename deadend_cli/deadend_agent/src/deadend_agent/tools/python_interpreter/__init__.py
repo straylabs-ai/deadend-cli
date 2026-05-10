@@ -8,6 +8,7 @@ This module provides functionality to execute Python code safely within
 sandboxed environments, enabling AI agents to run Python scripts and
 code snippets for security research and analysis tasks.
 """
+from deadend_agent.constants import CACHE_DEADEND_LOGS, DEADEND_AGENTS_PATH
 import json
 from pathlib import Path
 from typing import Any
@@ -37,14 +38,13 @@ async def read_auth_storage(ctx: str) -> str:
         # Return empty object instead of raising - let agent proceed without auth
         return '{"note": "No session_id provided, no auth storage available"}'
 
+    # TODO: verifying the context here if it takes the right one. we are going to
+    # change it soon anyway
     storage_file = (
-        Path.home()
-        / ".cache"
-        / "deadend"
-        / "memory"
-        / "sessions"
+        DEADEND_AGENTS_PATH
         / ctx
-        / "storage.json"
+        / "auth_context"
+        / "index.json"
     )
     logger.debug("storage file in read_auth_storage %s", storage_file)
 
@@ -84,7 +84,7 @@ async def run_python_file(
     """Write Python code to a file and execute it in the sandbox.
 
     This function combines writing Python code to a cache directory and executing
-    it in a sandboxed environment. The file is written to ~/.cache/deadend/python/<filename>
+    it in a sandboxed environment. The file is written to ./<filename> in the current working directory
     and then executed in an isolated WebAssembly-based Python interpreter.
 
     Args:
@@ -103,9 +103,11 @@ async def run_python_file(
                           as the file is created by this function).
     """
     # Write Python code to cache directory
-    cache_dir = Path.home() / ".cache" / "deadend" / "python"
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    file_path = cache_dir / filename
+    # TODO: needs to be reviewed and changed here, we might want to save it more 
+    # in the same place as the agents root or make it more easier 
+    python_output_dir = Path.cwd() / "python_scripts"
+    python_output_dir.mkdir(parents=True, exist_ok=True)
+    file_path = python_output_dir / filename
     file_path.write_text(code, encoding="utf-8")
     print(code)
 
@@ -118,7 +120,7 @@ async def run_python_file(
 
     # Initializing the PythonInterpreter
     # Convert cache_dir Path to string for the directory parameter
-    interpreter = PythonInterpreter(session_id=session_id, directory=str(cache_dir))
+    interpreter = PythonInterpreter(session_id=session_id, directory=str(python_output_dir))
     await interpreter.initialize()
 
     try:
@@ -163,7 +165,7 @@ async def _save_result_to_file(session_id: str, result: Any):
     """
     try:
         # Create the directory path
-        cache_dir = Path.home() / ".cache" / "deadend" / "memory" / "sessions" / session_id
+        cache_dir = CACHE_DEADEND_LOGS / session_id
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Create the file path

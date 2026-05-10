@@ -6,7 +6,7 @@
 
 This module provides configuration management functionality for loading,
 validating, and managing application settings, including environment
-variables, TOML files, and runtime configuration options.
+variables, JSON config files, and runtime configuration options.
 """
 
 from .settings import Config
