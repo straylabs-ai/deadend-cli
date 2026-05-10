@@ -262,7 +262,7 @@ class AuthContextHandler:
     Disk layout::
 
         ~/.deadend/agents/
-        └── <agent_id>/auth_context/
+        └── <agent_id>/<target_slug>/auth_context/
             ├── default.json
             ├── admin.json
             └── index.json       # manifest of all saved profiles

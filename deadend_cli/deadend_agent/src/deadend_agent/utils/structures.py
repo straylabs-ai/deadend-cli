@@ -143,6 +143,7 @@ class RequesterDeps:
     embedder_client: EmbedderClient
     rag: SqliteRagConnector
     target: str
+    agent_id: uuid.UUID | None 
     session_id: uuid.UUID
     proxy_url: str | None = None
     embedding_session_id: uuid.UUID | None = None

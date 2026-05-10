@@ -830,7 +830,12 @@ class ContextEngine:
     # Path to the text context file
     model: ModelSpec
     # Adding AI model for summarization if input tokens too long
-    def __init__(self, model: ModelSpec, session_id: uuid.UUID | None = None) -> None:
+    def __init__(
+        self,
+        model: ModelSpec,
+        session_id: uuid.UUID | None = None,
+        agent_id: uuid.UUID | None = None,
+    ) -> None:
         """Initialize the ContextEngine with empty state.
 
         Args:
@@ -840,6 +845,7 @@ class ContextEngine:
         initializes the next_agent to an empty string, and creates the context file path.
         """
         self.session_id = session_id
+        self.agent_id = agent_id
         self.root_goal = ""
         self.tasks = {}
         self.next_agent = ""
@@ -853,7 +859,7 @@ class ContextEngine:
         self.structured = StructuredContext()
 
         # Create context directory if it doesn't exist
-        context_dir = DEADEND_AGENTS_PATH / str(self.session_id)
+        context_dir = DEADEND_AGENTS_PATH / str(self.agent_id) / str(self.session_id) / "run_context"
         context_dir.mkdir(parents=True, exist_ok=True)
 
         # Set context file path

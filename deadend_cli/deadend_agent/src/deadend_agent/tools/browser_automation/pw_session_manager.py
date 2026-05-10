@@ -17,6 +17,7 @@ class PlaywrightSessionManager:
     @classmethod
     async def get_session(
         cls,
+        agent_id: str | None,
         session_key: str,
         verify_ssl: bool = True,
         proxy_url: str | None = None

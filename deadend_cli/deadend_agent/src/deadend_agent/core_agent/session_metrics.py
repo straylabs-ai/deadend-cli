@@ -11,7 +11,7 @@ Tracks and persists metrics for each agent session:
 - Error counts by type
 - Session duration
 
-Metrics are saved to ~/.cache/deadend/agents/{session_id}/metrics.json
+Metrics are saved to ~/.cache/deadend/agents/{session_id}/metrics/metrics.json
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ class SessionMetrics(BaseModel):
     def save(self):
         """Persist metrics to disk.
 
-        Saves to: ~/.cache/deadend/sessions/{session_id}/metrics.json
+        Saves to: ~/.cache/deadend/agents/{session_id}/metrics/metrics.json
         Updates duration before saving.
         """
         self.update_duration()

@@ -254,7 +254,7 @@ Perfect scores: GraphQL, SSRF, NoSQL injection, HTTP method tampering (100%)
 
 ## Configuration
 
-Configuration is managed via `~/.cache/deadend/config.toml`. Run `deadend-cli init` to set up your configuration interactively.
+Configuration is managed via `~/.deadend/config.json`. Run `deadend-cli init` to set up your Docker prerequisites, then configure providers from the chat UI.
 
 ---
 

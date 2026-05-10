@@ -124,10 +124,11 @@ class DeadEndAgent:
             validation_format=self.validation_config.validation_format,
         )
 
-        self.context = ContextEngine(model=self.model, session_id=session_id)
         self.workspace_root: str | None = None
         self.local_agent_id = local_agent_id or Config.get_local_agent_id()
         self.agent_id = self.local_agent_id
+        self.context = ContextEngine(model=self.model, session_id=self.embedding_session_id, agent_id=self.agent_id)
+
         self.agents_storage_root = agents_storage_root or Config.agents_storage_root
         self.memory_workspace_root = self._prepare_memory_workspace()
         self.memory_context = ""
@@ -310,7 +311,8 @@ class DeadEndAgent:
         self.context.set_target(target)
         self.code_indexer = SourceCodeIndexer(
             target=self.target,
-            session_id=self.embedding_session_id
+            session_id=self.embedding_session_id,
+            agent_id=self.agent_id
         )
 
 
@@ -395,6 +397,7 @@ class DeadEndAgent:
             embedder_client=embedder_client,
             rag=rag_connector,
             target=target_host,
+            agent_id=self.agent_id,
             session_id=self.session_id,
             proxy_url=self.proxy_url,
             embedding_session_id=self.embedding_session_id,

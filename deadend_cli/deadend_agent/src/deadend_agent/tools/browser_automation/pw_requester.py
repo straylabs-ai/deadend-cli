@@ -46,7 +46,8 @@ class PlaywrightRequester:
         self,
         verify_ssl: bool = True,
         proxy_url: str | None = None,
-        session_id: str | None = None
+        session_id: str | None = None,
+        agent_id: str | None = None,
     ):
         """
         Initialize the PlaywrightRequester.
@@ -62,6 +63,7 @@ class PlaywrightRequester:
         self.context: BrowserContext | None = None
         self.request_context: APIRequestContext | None = None
         self._initialized = False
+        self.agent_id = agent_id
         self.session_id = session_id
         # Fix: Add persistent page for localStorage operations
         self._persistent_page: Page | None = None
@@ -100,7 +102,7 @@ class PlaywrightRequester:
         storage_path = None
         if self.session_id:
             try:
-                storage_path = await self._get_storage_path(self.session_id)
+                storage_path = await self._get_storage_path(self.agent_id, self.session_id)
                 # Check if storage file exists to load cookies
                 storage_file = Path(storage_path)
                 if not await storage_file.exists():
@@ -140,7 +142,7 @@ class PlaywrightRequester:
             except Exception as e:
                 logger.warning("Could not verify loaded cookies: %s", e)
 
-    async def _get_storage_path(self, session_id: str) -> str:
+    async def _get_storage_path(self, agent_id, session_id: str) -> str:
         """
         Get the storage file path for a given session_id.
         
@@ -150,7 +152,7 @@ class PlaywrightRequester:
         Returns:
             str: Path to storage.json file
         """
-        path_storage = DEADEND_AGENTS_PATH / session_id / "auth_context"
+        path_storage = DEADEND_AGENTS_PATH / agent_id / session_id / "auth_context"
         path_storage.mkdir(parents=True, exist_ok=True)
         storage_file = path_storage / "index.json"
         return str(storage_file)
@@ -395,9 +397,9 @@ class PlaywrightRequester:
             if not is_redirect:
                 await self._detect_and_store_tokens(response_body=response_body_text, url=target_url)
             # Save storage state (cookies + localStorage) after request to persist session cookies
-            if self.session_id:
+            if self.session_id and self.agent_id:
                 try:
-                    await self._save_storage_state(session_id=self.session_id)
+                    await self._save_storage_state(agent_id=self.agent_id, session_id=self.session_id)
                 except Exception as e:
                     logger.warning("Could not save storage state for session %s: %s", self.session_id, e)
 
@@ -781,9 +783,9 @@ class PlaywrightRequester:
         await self.context.add_cookies(cookie_list)
         
         # Save storage state after setting cookies to persist them
-        if self.session_id:
+        if self.session_id and self.agent_id:
             try:
-                await self._save_storage_state(session_id=self.session_id)
+                await self._save_storage_state(agent_id=self.agent_id, session_id=self.session_id)
             except Exception as e:
                 logger.warning("Could not save cookies to storage: %s", e)
 
@@ -924,7 +926,7 @@ class PlaywrightRequester:
             import traceback
             traceback.print_exc()
 
-    async def _save_storage_state(self, session_id: str):
+    async def _save_storage_state(self, agent_id: str, session_id: str):
         """
         Save the current storage state (cookies + localStorage) to disk.
         
@@ -935,7 +937,7 @@ class PlaywrightRequester:
             return
 
         try:
-            storage_path = await self._get_storage_path(session_id)
+            storage_path = await self._get_storage_path(agent_id, session_id)
             # Save storage state including cookies to file
             # When path is provided, storage_state() saves to that path
             await self.context.storage_state(path=storage_path)

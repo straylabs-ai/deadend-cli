@@ -215,7 +215,7 @@ def setup_telemetry() -> trace.Tracer | NoOpTracer:
     Otherwise reads configuration from environment variables:
     - OTEL_CONSOLE_ENABLED: Enable console export (default: "true")
     - OTEL_EXPORTER_OTLP_ENDPOINT: OTLP endpoint (e.g., http://localhost:4317)
-    - OTEL_FILE_EXPORT_PATH: File export path (e.g., ~/.cache/deadend/traces/)
+    - OTEL_FILE_EXPORT_PATH: File export path (e.g., ~/.cache/deadend/agents/{agent_id}/traces/)
     - OTEL_SERVICE_NAME: Service name (default: "deadend-agent")
 
     Returns:

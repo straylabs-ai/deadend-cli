@@ -87,7 +87,7 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  --version VERSION     Version to install (default: latest)"
-            echo "  --install-dir DIR     Installation directory (default: ~/.cache/deadend/server)"
+            echo "  --install-dir DIR     Installation directory (default: ~/.cache/deadend/bin)"
             echo "  --repo REPO           GitHub repository (default: xoxruns/deadend-cli)"
             echo "  --clean               Remove existing install and CLI binary before installing (default)"
             echo "  --no-clean            Do not remove existing install; upgrade in place"
@@ -127,8 +127,8 @@ install() {
     echo -e "${YELLOW}Using temporary directory: ${TEMP_DIR}${NC}"
     
     # Optional: skip cleaning (default is to clean for a fresh install)
-    # We only remove INSTALL_DIR (~/.cache/deadend/server) and the CLI binary.
-    # config.json and settings.json live in ~/.cache/deadend/ and are preserved.
+    # We only remove INSTALL_DIR (~/.cache/deadend/bin) and the CLI binary.
+    # config.json and settings.json live in ~/.deadend/ and are preserved.
     if [ "$CLEAN_INSTALL" = true ]; then
         echo -e "${YELLOW}Cleaning existing install...${NC}"
         rm -rf "$INSTALL_DIR"
@@ -137,8 +137,8 @@ install() {
         if [ -d "$HOME/.cache" ]; then
             rm -rf "${HOME}/.cache/deadend-install" 2>/dev/null || true
         fi
-        # Preserve user config (do not remove ~/.cache/deadend/config.json or settings.json)
-        echo -e "${GREEN}Cleanup done (config.json and settings.json in ~/.cache/deadend/ were kept).${NC}"
+        # Preserve user config (do not remove ~/.deadend/config.json or settings.json)
+        echo -e "${GREEN}Cleanup done (config.json and settings.json in ~/.deadend/ were kept).${NC}"
     fi
     
     # Determine CLI package name

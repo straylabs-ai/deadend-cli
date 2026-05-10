@@ -68,16 +68,17 @@ async def pw_send_payload(
     raw_request_anon = replace_credential_placeholders(raw_request)
     is_tls = port == 443 or effective_target.startswith('https://')
     proxy_url = ctx.deps.proxy_url
-    session_key = _build_session_key(
-        host=host,
-        port=port,
-        proxy_url=proxy_url,
-        verify_ssl=verify_ssl,
-    )
+    # session_key = _build_session_key(
+    #     host=host,
+    #     port=port,
+    #     proxy_url=proxy_url,
+    #     verify_ssl=verify_ssl,
+    # )
 
     # pw_requester session
     pw_session = await PlaywrightSessionManager.get_session(
-        session_key=session_key,
+        session_key=str(ctx.deps.session_id),
+        agent_id=str(ctx.deps.agent_id),
         verify_ssl=verify_ssl,
         proxy_url=proxy_url
     )
@@ -92,7 +93,10 @@ async def pw_send_payload(
             responses.append(response)
 
         # Save responses to requester.jsonl file
-        await _save_responses_to_file(session_key, responses)
+        await _save_responses_to_file(
+            agent_id=str(ctx.deps.agent_id), 
+            session_key=str(ctx.deps.session_id), 
+            responses=responses)
 
         # Convert bytes responses to strings before truncation
         string_responses = []
@@ -122,7 +126,7 @@ async def cleanup_playwright_sessions():
     """
     await PlaywrightSessionManager.cleanup_all_sessions()
 
-async def _save_responses_to_file(session_key: str, responses: list):
+async def _save_responses_to_file(agent_id: str, session_key: str, responses: list):
     """
     Save responses to requester.jsonl file in the session directory.
     
@@ -132,7 +136,7 @@ async def _save_responses_to_file(session_key: str, responses: list):
     """
     try:
         # Create the directory path
-        cache_dir = CACHE_DEADEND_LOGS / session_key
+        cache_dir = CACHE_DEADEND_LOGS / agent_id / session_key
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Create the file path (convert to string for regular open())

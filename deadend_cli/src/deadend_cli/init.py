@@ -9,7 +9,7 @@ Performs the prerequisites that must be in place before the agent can run:
 - pull the sandboxed Kali image used by the sandbox manager
 
 Provider configuration (API keys, models, etc.) is *not* handled here. That
-state lives in ``~/.cache/deadend/config.json`` and is written by the
+state lives in ``~/.deadend/config.json`` and is written by the
 interactive provider selector exposed in the chat UI / RPC layer (see
 ``Config.add_provider`` / ``Config.update_provider``).
 """
@@ -75,7 +75,7 @@ def init_cli_config() -> None:
     """Run the one-time CLI prerequisites (Docker availability + image pull).
 
     Provider/API-key configuration is handled separately through the chat UI
-    and persisted to ``~/.cache/deadend/config.json``.
+    and persisted to ``~/.deadend/config.json``.
     """
     # Create a single Docker client instance for all operations
     try:
@@ -105,5 +105,5 @@ def init_cli_config() -> None:
     console.print(
         "\n[green]Initialization complete.[/green] "
         "Configure LLM providers from the chat UI; "
-        "they will be saved to ~/.cache/deadend/config.json."
+        "they will be saved to ~/.deadend/config.json."
     )

@@ -38,7 +38,12 @@ class SourceCodeIndexer:
     added to the tree sitter are : 
     - HTML and Javascript 
     """
-    def __init__(self, target: str, session_id: uuid.UUID | None = None) -> None:
+    def __init__(
+        self,
+        target: str,
+        session_id: uuid.UUID | None = None,
+        agent_id: uuid.UUID | None = None
+    ) -> None:
         """
         Initializes the SourceCodeIndexer object.
         
@@ -51,6 +56,7 @@ class SourceCodeIndexer:
         initializes the WebpageCrawler instance for crawling the target website.
         """
         self.target = target
+        self.agent_id = agent_id
         self.session_id = session_id if session_id else uuid4()
         self._add_session_to_cache()
         self._add_chunk_directory()
@@ -84,12 +90,11 @@ class SourceCodeIndexer:
         Create cache directory structure for the current session.
         creates a session-specific subdirectory for storing downloaded resources.
         """
-        home_dir = Path.home()
         self.cache_path = DEADEND_AGENTS_PATH 
         if not os.path.exists(self.cache_path):
             Path(self.cache_path).mkdir(parents=True, exist_ok=True)
-        # TODO: we might lack the target here and agent id
-        self.source_code_path = self.cache_path / str(self.session_id) / "webpages" 
+
+        self.source_code_path = self.cache_path /str(self.agent_id) / str(self.session_id) / "webpages" 
         Path(self.source_code_path).mkdir(parents=True, exist_ok=True)
         self.manifest_path = self.source_code_path / ".manifest.json"
 

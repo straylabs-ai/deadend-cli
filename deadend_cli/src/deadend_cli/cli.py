@@ -97,6 +97,6 @@ def eval_agent(
 def init():
     """Initialize CLI config by prompting for env vars and saving to cache JSON.
 
-    Writes to ~/.cache/deadend/config.json
+    Writes to ~/.deadend/config.json
     """
     init_cli_config()

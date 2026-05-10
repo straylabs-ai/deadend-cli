@@ -84,7 +84,7 @@ async def run_python_file(
     """Write Python code to a file and execute it in the sandbox.
 
     This function combines writing Python code to a cache directory and executing
-    it in a sandboxed environment. The file is written to ~/.cache/deadend/python/<filename>
+    it in a sandboxed environment. The file is written to ./<filename> in the current working directory
     and then executed in an isolated WebAssembly-based Python interpreter.
 
     Args:

@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import type { CliArgs } from "../cli/args.ts";
-import { getAppDirPath, getLogsDirPath } from "./app-paths.ts";
+import { getCacheDirPath, getLogsDirPath } from "./app-paths.ts";
 
 // Only forward env vars that the Python RPC server actually needs.
 // Avoids leaking unrelated secrets (SSH keys, CI tokens, etc.) to the child process.
@@ -59,8 +59,8 @@ export async function resolveRpcLaunchConfig(
   args: CliArgs,
 ): Promise<RpcLaunchConfig> {
   const logFile = await createLogFilePath();
-  const appDir = await getAppDirPath();
-  const uvCacheDir = join(appDir, "uv-cache");
+  const cacheDir = await getCacheDirPath();
+  const uvCacheDir = join(cacheDir, "uv-cache");
 
   if (args.dev || args.debug) {
     const pythonPackageDir = resolvePythonPackageDir();
@@ -88,7 +88,7 @@ export async function resolveRpcLaunchConfig(
 
   const rpcBinary =
     process.env.DEADEND_RPC_BINARY ??
-    join(await getAppDirPath(), "server", "deadend.sh");
+    join(await getCacheDirPath(), "bin", "deadend.sh");
 
   return {
     pythonCommand: rpcBinary,

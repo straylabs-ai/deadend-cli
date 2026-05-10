@@ -175,7 +175,7 @@ class Config:
     - OpenRouter: Uses OPEN_ROUTER_API_KEY and OPEN_ROUTER_MODEL (supports multiple providers)
     - Local/Self-hosted: Uses LOCAL_API_KEY, LOCAL_MODEL, and LOCAL_BASE_URL
     
-    Configuration is loaded from ~/.cache/deadend/config.json (preferred) or environment variables.
+    Configuration is loaded from ~/.deadend/config.json (preferred) or environment variables.
     The config file is created/updated via the CLI's interactive LLM provider selector in
     the chat interface.
     

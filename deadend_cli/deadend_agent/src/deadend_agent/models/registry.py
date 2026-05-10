@@ -367,6 +367,7 @@ class ModelRegistry:
         selected_provider: str,
         selected_model: str,
         new_provider: str,
+        base_url: str,
         new_model: str,
         api_key: str | None
     ):
@@ -394,6 +395,7 @@ class ModelRegistry:
             provider=new_provider,
             model_name=new_model,
             api_key=api_key,
+            base_url=base_url,
             type_model=None,
             vec_dim=None
         )
