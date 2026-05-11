@@ -10,6 +10,7 @@ from .generic_agents.python_interpreter_agent import PythonInterpreterAgent, Pyt
 from .generic_agents.request_agent import RequesterAgent, RequesterOutput
 from .generic_agents.webapp_analyzer_agent import WebAppAnalyzerAgent
 from .generic_agents.memory_agent import MemoryAgent
+from .generic_agents.authenticator_agent import AuthenticatorAgent, AuthenticatorOutput
 
 __all__ = [
     "AgentRunner", "AgentOutput",
@@ -21,4 +22,5 @@ __all__ = [
     "RequesterAgent", "RequesterOutput",
     "WebAppAnalyzerAgent",
     "MemoryAgent",
+    "AuthenticatorAgent", "AuthenticatorOutput",
 ]

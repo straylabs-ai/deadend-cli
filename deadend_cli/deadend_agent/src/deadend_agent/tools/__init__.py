@@ -16,7 +16,12 @@ from .browser_automation import (
     cleanup_playwright_sessions,
     cleanup_playwright_session_for_target
 )
-from .browser import browser_run_steps
+from .browser import (
+    authenticate,
+    browser_run_steps,
+    refresh_auth_context,
+    validate_auth_context,
+)
 
 from .python_interpreter import run_python_file, read_auth_storage
 from .webapp_code_rag import webapp_code_rag
@@ -61,6 +66,9 @@ __all__ = [
     "cleanup_playwright_sessions",
     "cleanup_playwright_session_for_target",
     "browser_run_steps",
+    "authenticate",
+    "validate_auth_context",
+    "refresh_auth_context",
     # web app analyzer
     "webapp_analyzer",
     # AVFS

@@ -883,7 +883,14 @@ def main(
                 "Front-end webapp analyzer. This agent is specialized in looking into the web application"
                 "to be able to extract information about the logic details of the application. "
                 "We can look for forms, API endpoints, website logic and forms"
-            )
+            ),
+            "authenticator": (
+                "Single-purpose agent that performs the target's real authentication workflow "
+                "(form login, SPA/JWT, same-tab OAuth, popup OAuth) through a real browser "
+                "and persists a reusable AuthContext profile. Other agents can then opt into "
+                "authenticated execution by passing auth_profile=\"<profile>\" to "
+                "browser_run_steps and pw_send_payload."
+            ),
         }
         deadend_agent = DeadEndAgent(
             session_id=runtime_session_id,

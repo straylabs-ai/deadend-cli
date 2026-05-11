@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 import docker
+import docker.errors
 from pydantic import BaseModel, Field
 from deadend_agent import (
     SqliteRagConnector,
@@ -147,7 +148,14 @@ async def eval_deadend_agent(
             "security tools such as ffuf, gobuster, sqlmap, or nmap. DO NOT have "
             "access to target source code."
         ),
-        'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.'
+        'router_agent': 'Router agent, expert that routes to the specific agent needed to achieve the next step of the plan.',
+        "authenticator": (
+                "Single-purpose agent that performs the target's real authentication workflow "
+                "(form login, SPA/JWT, same-tab OAuth, popup OAuth) through a real browser "
+                "and persists a reusable AuthContext profile. Other agents can then opt into "
+                "authenticated execution by passing auth_profile=\"<profile>\" to "
+                "browser_run_steps and pw_send_payload."
+            ),
     }
 
 

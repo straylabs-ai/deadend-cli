@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field, TypeAdapter
 from deadend_agent.tools.browser.browser import BrowserSession
 from deadend_agent.tools.tool_wrappers import with_tool_events
 from deadend_agent.utils.structures import RequesterDeps
+from deadend_agent.auth_resolver import AuthContextHandler, browser_state_from_auth_context
+from deadend_agent.tools.browser.validate_refresh import auto_validate_before_consume
 
 
 # --- LLM / tool-call surface: JSON-serializable steps (discriminated by `action`) ---
@@ -200,10 +202,10 @@ async def run_browser_steps(
     optional_missing_context_keys: bool = False,
     navigation_timeout_ms: float | None = 30_000,
     action_timeout_ms: float | None = 15_000,
+    auth_state: Mapping[str, Any] | None = None,
+    auth_profile: str | None = None,
 ) -> dict[str, Any]:
     """Run a full headless browser interaction from arguments the model can supply as JSON."""
-    from deadend_agent.tools.browser.browser import BrowserSession
-
     parsed = parse_browser_steps(steps)
     internal: list[InteractionStep] = [browser_step_to_interaction(s) for s in parsed]
     out: dict[str, Any] = {
@@ -212,6 +214,8 @@ async def run_browser_steps(
         "final_url": None,
         "page_title": None,
         "steps_run": len(parsed),
+        "authenticated": bool(auth_state),
+        "auth_profile": auth_profile,
     }
     try:
         async with BrowserSession(
@@ -220,6 +224,10 @@ async def run_browser_steps(
             proxy_url=proxy_url,
         ) as browser:
             await browser.goto(page_url, timeout_ms=navigation_timeout_ms)
+            if auth_state:
+                await browser.import_state(auth_state)
+                # Revisit after importing cookies/storage so the app boots with auth.
+                await browser.goto(page_url, timeout_ms=navigation_timeout_ms)
             await browser.run_steps(
                 internal,
                 context,
@@ -244,6 +252,10 @@ async def browser_run_steps(
     optional_missing_context_keys: bool = False,
     navigation_timeout_ms: float | None = 30_000,
     action_timeout_ms: float | None = 15_000,
+    auth_profile: str | None = None,
+    force_validate_auth: bool = False,
+    skip_auth_validation: bool = False,
+    auth_validation_ttl_s: float = 60.0,
 ) -> dict[str, Any]:
     """Open one URL in a headless Chrome session (Pydoll, CDP) and run a scripted list of UI actions.
 
@@ -280,6 +292,44 @@ async def browser_run_steps(
     guess paths. This tool does not substitute credential placeholders in HTTP bodies; values must
     appear in ``context`` and be wired via ``key`` on each step.
     """
+    auth_state: dict[str, Any] | None = None
+    if auth_profile:
+        if getattr(ctx.deps, "agent_id", None) is None:
+            return {"success": False, "error": "ctx.deps.agent_id is required for auth_profile", "authenticated": False, "auth_profile": auth_profile}
+        if getattr(ctx.deps, "session_id", None) is None:
+            return {"success": False, "error": "ctx.deps.session_id is required for auth_profile", "authenticated": False, "auth_profile": auth_profile}
+        # Phase 13: validate the saved AuthContext before consuming it.
+        validation_failure = await auto_validate_before_consume(
+            target=ctx.deps.target,
+            agent_id=ctx.deps.agent_id,
+            session_id=ctx.deps.session_id,
+            profile=auth_profile,
+            validation_ttl_s=auth_validation_ttl_s,
+            force_validate=force_validate_auth,
+            skip_validation=skip_auth_validation,
+            proxy_url=ctx.deps.proxy_url,
+            verify_ssl=verify_ssl,
+        )
+        if validation_failure is not None:
+            return {
+                "success": False,
+                "authenticated": False,
+                "auth_profile": auth_profile,
+                "expired": validation_failure.get("expired"),
+                "expired_reason": validation_failure.get("expired_reason"),
+                "validated": False,
+                "hint": "call refresh_auth_context (if a refresh_url exists) or re-run authenticate",
+                "error": (
+                    validation_failure.get("error")
+                    or f"Saved auth_profile {auth_profile!r} is no longer valid"
+                ),
+            }
+        handler = AuthContextHandler(ctx.deps.target, ctx.deps.agent_id, ctx.deps.session_id)
+        auth_context = handler.load_context(auth_profile)
+        if auth_context is None:
+            return {"success": False, "error": f"No auth context saved for profile {auth_profile!r}", "authenticated": False, "auth_profile": auth_profile}
+        auth_state = browser_state_from_auth_context(auth_context)
+
     return await run_browser_steps(
         page_url=page_url,
         steps=steps,
@@ -290,6 +340,8 @@ async def browser_run_steps(
         optional_missing_context_keys=optional_missing_context_keys,
         navigation_timeout_ms=navigation_timeout_ms,
         action_timeout_ms=action_timeout_ms,
+        auth_state=auth_state,
+        auth_profile=auth_profile,
     )
 
 

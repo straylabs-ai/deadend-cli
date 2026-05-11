@@ -11,7 +11,9 @@ from deadend_agent.agents import (
     PythonInterpreterAgent, AgentOutput,
     WebAppAnalyzerAgent,
     MemoryAgent,
+    AuthenticatorAgent,
 )
+from deadend_agent.auth_resolver import AuthContextHandler
 from deadend_agent.agents.components.planner import TaskNode
 from deadend_agent.agents.components.validation_strategies import ValidationGate, ValidationInput
 from deadend_agent.agents.reporter import ReporterAgent
@@ -104,6 +106,7 @@ class SupervisorDeps:
     message_history: list | None
     usage_limits: UsageLimits
     deferred_tool_results: DeferredToolResults | None
+    authenticator_agent: AuthenticatorAgent | None = None
     memory_context: str = ""
     auth_session_key: str = ""
     context: ContextEngine | None = None  # Context engine for storing agent outputs
@@ -382,7 +385,7 @@ class AgentExecutor:
             return LogEvent(message=message)
 
         try:
-            await self._refresh_memory_context_for_task(task_node.task)
+            # await self._refresh_memory_context_for_task(task_node.task)
             yield emit(f"Current task: {task_node.task}\n")
             # Instantiate all generic agents
             requester_agent = RequesterAgent(
@@ -390,6 +393,13 @@ class AgentExecutor:
                 deps_type=RequesterDeps,
                 target_information=self.context.target,
                 requires_approval=self.requires_approval
+            ) if self.requester_deps is not None else None
+
+            authenticator_agent = AuthenticatorAgent(
+                model=self.model,
+                deps_type=RequesterDeps,
+                target_information=self.context.target,
+                requires_approval=self.requires_approval,
             ) if self.requester_deps is not None else None
 
             shell_agent = ShellAgent(
@@ -437,6 +447,7 @@ class AgentExecutor:
                 message_history=message_history,
                 usage_limits=usage_limits,
                 deferred_tool_results=deferred_tool_results,
+                authenticator_agent=authenticator_agent,
                 memory_context=self.memory_context,
                 auth_session_key=self.auth_session_key,
                 context=self.context  # Pass context for storing agent outputs
@@ -521,7 +532,101 @@ class AgentExecutor:
                     append=True,
                 )
 
+            def _register_auth_facts_in_context(
+                task: str,
+                context: ContextEngine | None,
+                requester_deps: RequesterDeps | None,
+            ) -> None:
+                """After the AuthenticatorAgent runs, surface saved auth profiles as
+                structured ``authentication`` facts in the shared context so other
+                agents can reason about which ``auth_profile`` they may use.
+
+                Only secret-free metadata is registered (cookie *names*, storage
+                *key names*, header *names*, profile, target slug).
+                """
+                if context is None or requester_deps is None:
+                    return
+                target = getattr(requester_deps, "target", None)
+                agent_id = getattr(requester_deps, "agent_id", None)
+                session_id = getattr(requester_deps, "session_id", None)
+                if not target or agent_id is None or session_id is None:
+                    return
+                try:
+                    handler = AuthContextHandler(
+                        target=target,
+                        agent_id=agent_id,
+                        session_id=session_id,
+                    )
+                    summaries = handler.list_context_summaries()
+                except Exception:
+                    return
+                for profile, summary in summaries.items():
+                    if not summary.get("available"):
+                        continue
+                    target_slug = summary.get("target_slug", "")
+                    context.add_discovered_fact(
+                        source_task=task,
+                        category="authentication",
+                        key=f"auth:{target_slug}:{profile}",
+                        value="authenticated session available",
+                        confidence=1.0,
+                        actionable=True,
+                        details={
+                            "target": summary.get("target"),
+                            "target_slug": target_slug,
+                            "agent_id": summary.get("agent_id"),
+                            "session_id": summary.get("session_id"),
+                            "profile": profile,
+                            "auth_flow": summary.get("auth_flow"),
+                            "auth_type": summary.get("auth_type"),
+                            "final_url": summary.get("final_url"),
+                            "cookies_count": summary.get("cookies_count"),
+                            "cookie_names": summary.get("cookie_names"),
+                            "storage_keys": summary.get("storage_keys"),
+                            "headers_available": summary.get("headers_available"),
+                        },
+                    )
+
             # Create tool functions using RunContext for agent delegation
+            @supervisor.agent.tool
+            async def call_authenticator_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
+                """Call the authenticator agent to log in and persist a reusable auth context.
+
+                Use this BEFORE running authenticated tests. After it succeeds,
+                downstream agents can pass ``auth_profile="<profile>"`` to
+                ``browser_run_steps`` / ``pw_send_payload`` to reuse the session.
+                """
+                if ctx.deps.authenticator_agent is None or ctx.deps.requester_deps is None:
+                    return "Authenticator agent dependencies not configured."
+                memory_prefix = _memory_prompt_prefix(ctx.deps.memory_context)
+                result = await ctx.deps.authenticator_agent.run(
+                    f"{memory_prefix}{prompt}",
+                    deps=ctx.deps.requester_deps,
+                    message_history=ctx.deps.message_history,
+                    usage=ctx.usage,
+                    usage_limits=ctx.deps.usage_limits,
+                    deferred_tool_results=ctx.deps.deferred_tool_results,
+                )
+                if hasattr(result, "output") and isinstance(result.output, AgentOutput):
+                    _add_agent_output_to_context(
+                        task=task_node.task,
+                        context=ctx.deps.context,
+                        agent_name="authenticator",
+                        output=result.output,
+                    )
+                    _persist_agent_summary("authenticator", prompt, result.output)
+                    _register_auth_facts_in_context(
+                        task=task_node.task,
+                        context=ctx.deps.context,
+                        requester_deps=ctx.deps.requester_deps,
+                    )
+                    result_str = _format_tool_result_for_supervisor("authenticator", result.output)
+                else:
+                    result_output = result.output if hasattr(result, "output") else result
+                    result_str = _format_tool_result_for_supervisor("authenticator", result_output)
+                emit(f"[authenticator] prompt={prompt[:200]} | result={result_str[:300]}")
+                return result_str
+
             @supervisor.agent.tool
             async def call_requester_agent(ctx: RunContext[SupervisorDeps], prompt: str) -> str:
                 """Call the requester agent to perform HTTP request testing."""

@@ -53,7 +53,7 @@ class SourceCodeIndexer:
             If None, generates a new one.
         
         This constructor sets up the cache directory for storing crawled data and
-        initializes the WebpageCrawler instance for crawling the target website.
+        initializes the webresourceExtractor instance for crawling the target website.
         """
         self.target = target
         self.agent_id = agent_id
