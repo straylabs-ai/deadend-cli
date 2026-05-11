@@ -48,13 +48,20 @@ class PlaywrightRequester:
         proxy_url: str | None = None,
         session_id: str | None = None,
         agent_id: str | None = None,
+        auth_storage_state_path: str | None = None,
+        auth_profile: str | None = None,
     ):
         """
         Initialize the PlaywrightRequester.
-        
+
         Args:
             verify_ssl (bool): Whether to verify SSL certificates
             proxy_url (str, optional): Proxy URL for requests
+            auth_storage_state_path: Optional path to a Playwright-compatible
+                ``storage_state`` JSON to seed cookies / localStorage with
+                a previously authenticated session.
+            auth_profile: Optional auth profile label that produced
+                ``auth_storage_state_path`` (used for diagnostics/logging).
         """
         self.verify_ssl = verify_ssl
         self.proxy_url = proxy_url
@@ -65,6 +72,8 @@ class PlaywrightRequester:
         self._initialized = False
         self.agent_id = agent_id
         self.session_id = session_id
+        self.auth_storage_state_path = auth_storage_state_path
+        self.auth_profile = auth_profile
         # Fix: Add persistent page for localStorage operations
         self._persistent_page: Page | None = None
 
@@ -100,7 +109,20 @@ class PlaywrightRequester:
         self.browser = await self.playwright.chromium.launch(**browser_options)
         # Load existing storage state (including cookies) if session_id is provided
         storage_path = None
-        if self.session_id:
+        # Prefer explicit auth-profile storage state if provided.
+        if self.auth_storage_state_path:
+            try:
+                explicit = Path(self.auth_storage_state_path)
+                if await explicit.exists():
+                    storage_path = str(explicit)
+                else:
+                    logger.warning(
+                        "Auth storage state path does not exist, ignoring: %s",
+                        self.auth_storage_state_path,
+                    )
+            except Exception as e:
+                logger.warning("Could not prepare auth storage path: %s", e)
+        if storage_path is None and self.session_id:
             try:
                 storage_path = await self._get_storage_path(self.agent_id, self.session_id)
                 # Check if storage file exists to load cookies
@@ -143,18 +165,15 @@ class PlaywrightRequester:
                 logger.warning("Could not verify loaded cookies: %s", e)
 
     async def _get_storage_path(self, agent_id, session_id: str) -> str:
-        """
-        Get the storage file path for a given session_id.
-        
-        Args:
-            session_id: Session identifier must be the agent_id
-            
-        Returns:
-            str: Path to storage.json file
+        """Path to the rolling Playwright storage-state file for a session.
+
+        Note: this is **not** the DeadEnd auth manifest (``index.json``) nor a
+        named auth-profile snapshot (``<profile>.playwright.json``). It holds the
+        rolling cookies/localStorage Playwright auto-collects during a session.
         """
         path_storage = DEADEND_AGENTS_PATH / agent_id / session_id / "auth_context"
         path_storage.mkdir(parents=True, exist_ok=True)
-        storage_file = path_storage / "index.json"
+        storage_file = path_storage / "playwright_state.json"
         return str(storage_file)
 
     async def _get_persistent_page(self, domain: str | None = None):

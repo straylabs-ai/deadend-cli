@@ -18,61 +18,78 @@ from deadend_agent.logging import logger
 from deadend_agent.utils.functions import truncate_string
 from .python_interpreter import PythonInterpreter
 from deadend_agent.tools.tool_wrappers import with_tool_events
+from deadend_agent.auth_resolver import AuthContextHandler, safe_auth_summary
 
 
 
 @with_tool_events("read_auth_storage")
-async def read_auth_storage(ctx: str) -> str:
-    """Return the JSON contents of storage.json for the given session.
+async def read_auth_storage(
+    ctx: Any,
+    profile: str = "default",
+    include_secrets: bool = False,
+) -> str:
+    """Return JSON metadata about a saved authentication context.
 
-    If the storage file doesn't exist, returns an empty JSON object instead
-    of raising an error, allowing the agent to continue without auth context.
+    By default this returns a *safe* summary (cookie names, storage keys,
+    header names, final URL). Real cookie/token values are only returned when
+    ``include_secrets=True`` and should be reserved for sandboxed code paths
+    that strictly need the raw material.
 
-    Args:
-        ctx: Session key/identifier used to locate the storage file.
-
-    Returns:
-        str: JSON string containing stored auth data, or '{}' if no storage exists.
+    The function accepts either a ``RunContext`` (with ``deps.target``,
+    ``deps.agent_id``, ``deps.session_id``) or a plain string treated as
+    ``session_id`` for backward compatibility.
     """
-    if not ctx:
-        # Return empty object instead of raising - let agent proceed without auth
-        return '{"note": "No session_id provided, no auth storage available"}'
+    target: str | None = None
+    agent_id: Any = None
+    session_id: Any = None
 
-    # TODO: verifying the context here if it takes the right one. we are going to
-    # change it soon anyway
-    storage_file = (
-        DEADEND_AGENTS_PATH
-        / ctx
-        / "auth_context"
-        / "index.json"
-    )
-    logger.debug("storage file in read_auth_storage %s", storage_file)
+    deps = getattr(ctx, "deps", None) if ctx is not None else None
+    if deps is not None:
+        target = getattr(deps, "target", None)
+        agent_id = getattr(deps, "agent_id", None)
+        session_id = getattr(deps, "session_id", None)
+    elif isinstance(ctx, str):
+        session_id = ctx
+    elif ctx is None:
+        return json.dumps({"available": False, "note": "No context provided"})
 
-    if not storage_file.exists():
-        # Return informative empty response instead of raising error
-        logger.info("storage.json not found for session %s, proceeding without auth context", ctx)
+    if not target or agent_id is None or session_id is None:
+        # Backward-compatible fallback: walk the legacy session-only directory
+        # and report what we find without secrets.
+        if isinstance(ctx, str):
+            legacy_dir = DEADEND_AGENTS_PATH / ctx / "auth_context"
+            index_file = legacy_dir / "index.json"
+            if index_file.exists():
+                try:
+                    return json.dumps({
+                        "available": True,
+                        "legacy": True,
+                        "index": json.loads(index_file.read_text(encoding="utf-8")),
+                    })
+                except json.JSONDecodeError:
+                    pass
         return json.dumps({
-            "note": f"No auth storage found for session {ctx}",
-            "cookies": [],
-            "tokens": [],
-            "credentials": []
+            "available": False,
+            "note": "target, agent_id and session_id are required to resolve auth context",
         })
 
     try:
-        data = storage_file.read_text(encoding="utf-8")
-        logger.debug("data storage file: %s", data)
-        # Validate JSON before returning so callers always receive valid dumps
-        json.loads(data)
-        return data
-    except json.JSONDecodeError as exc:
-        # Return error info instead of raising - let agent handle it
-        logger.warning("storage.json for %s is not valid JSON: %s", ctx, exc)
-        return json.dumps({
-            "error": f"Invalid JSON in storage.json: {str(exc)}",
-            "cookies": [],
-            "tokens": [],
-            "credentials": []
-        })
+        handler = AuthContextHandler(target=target, agent_id=agent_id, session_id=session_id)
+        context = handler.load_context(profile)
+        if context is None:
+            return json.dumps({
+                "available": False,
+                "profile": profile,
+                "target": target,
+                "agent_id": str(agent_id),
+                "session_id": str(session_id),
+            })
+        if include_secrets:
+            return context.model_dump_json()
+        return json.dumps(safe_auth_summary(context))
+    except Exception as exc:
+        logger.warning("read_auth_storage failed: %s", exc)
+        return json.dumps({"available": False, "error": str(exc)})
 
 @with_tool_events("run_python_file")
 async def run_python_file(

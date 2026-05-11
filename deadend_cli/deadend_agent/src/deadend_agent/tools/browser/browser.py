@@ -2,7 +2,6 @@ from __future__ import annotations
 from pydoll.exceptions import ArgumentAlreadyExistsInOptions
 
 import asyncio
-import base64
 import json
 import math
 from collections.abc import Mapping, Sequence, Callable
@@ -210,6 +209,7 @@ class BrowserSession:
             opts.add_argument("--disable-blink-features=AutomationControlled")
             opts.add_argument("--window-size=1920,1080")
             opts.add_argument("--disable-extensions")
+            opts.add_argument("--disable-popup-blocking")
             opts.add_argument("--disable-gpu")
             opts.add_argument("--disable-dev-shm-usage")
             opts.add_argument("--disable-sync")
@@ -291,6 +291,57 @@ class BrowserSession:
             raise RuntimeError("BrowserSession is not started; call start() or use async with.")
         return await self._browser.new_tab()
 
+    async def list_tabs(self) -> list[Tab]:
+        """Return all currently opened page tabs known to Chrome."""
+        if not self._browser:
+            raise RuntimeError("BrowserSession is not started; call start() or use async with.")
+        return await self._browser.get_opened_tabs()
+
+    async def current_target_ids(self) -> set[str]:
+        """Return target IDs for all open page tabs."""
+        tabs = await self.list_tabs()
+        return {
+            target_id
+            for tab in tabs
+            if (target_id := getattr(tab, "_target_id", None))
+        }
+
+    async def wait_for_new_tab(
+        self,
+        known_target_ids: set[str],
+        *,
+        timeout_ms: float | None = 15_000,
+    ) -> Tab:
+        """Wait for a new page tab/popup target not present in ``known_target_ids``."""
+        timeout_s = _timeout_seconds(timeout_ms, default_ms=15_000)
+        end = asyncio.get_event_loop().time() + timeout_s
+        while asyncio.get_event_loop().time() < end:
+            for tab in await self.list_tabs():
+                target_id = getattr(tab, "_target_id", None)
+                if target_id and target_id not in known_target_ids:
+                    return tab
+            await asyncio.sleep(0.25)
+        raise RuntimeError("No new browser tab/popup opened before timeout")
+
+    async def wait_for_tab_closed(
+        self,
+        tab: Tab,
+        *,
+        timeout_ms: float | None = 30_000,
+    ) -> bool:
+        """Poll until ``tab`` disappears from Chrome's page targets."""
+        target_id = getattr(tab, "_target_id", None)
+        if not target_id:
+            return True
+        timeout_s = _timeout_seconds(timeout_ms, default_ms=30_000)
+        end = asyncio.get_event_loop().time() + timeout_s
+        while asyncio.get_event_loop().time() < end:
+            ids = await self.current_target_ids()
+            if target_id not in ids:
+                return True
+            await asyncio.sleep(0.25)
+        return False
+
     async def default_page(self) -> Tab:
         """Return the main tab (Pydoll ``Tab``)."""
         if self._default_tab is None:
@@ -358,10 +409,12 @@ class BrowserSession:
         """
         tab = await self._active_tab(page)
         clean = []
+        read_only = {"size", "session", "sameParty", "sourceScheme", "sourcePort"}
         for c in cookies:
-            param = {k: v for k, v in c.items() if k not in ("size", "session")}
+            param = {k: v for k, v in c.items() if k not in read_only and v is not None}
             clean.append(param)
-        await tab.set_cookies(clean)  # type: ignore[arg-type]
+        if clean:
+            await tab.set_cookies(clean)  # type: ignore[arg-type]
 
     async def delete_all_cookies(self, *, page: Tab | None = None) -> None:
         tab = await self._active_tab(page)
@@ -487,6 +540,122 @@ class BrowserSession:
                 return True
             await asyncio.sleep(0.5)
         return False
+
+    async def wait_for_cookie(
+        self,
+        cookie_names: Sequence[str],
+        *,
+        timeout_ms: float | None = None,
+        page: Tab | None = None,
+    ) -> bool:
+        """Poll until at least one named cookie is present."""
+        names = {n for n in cookie_names if n}
+        if not names:
+            return False
+        timeout_s = _timeout_seconds(timeout_ms, default_ms=15_000)
+        end = asyncio.get_event_loop().time() + timeout_s
+        while asyncio.get_event_loop().time() < end:
+            try:
+                cookies = await self.get_cookies(page=page)
+                if any(c.get("name") in names for c in cookies):
+                    return True
+            except Exception:
+                pass
+            await asyncio.sleep(0.5)
+        return False
+
+    async def wait_for_storage_key(
+        self,
+        keys: Sequence[str],
+        *,
+        storage: Literal["local", "session", "any"] = "any",
+        timeout_ms: float | None = None,
+        page: Tab | None = None,
+    ) -> bool:
+        """Poll until at least one storage key is present."""
+        wanted = {k for k in keys if k}
+        if not wanted:
+            return False
+        timeout_s = _timeout_seconds(timeout_ms, default_ms=15_000)
+        end = asyncio.get_event_loop().time() + timeout_s
+        while asyncio.get_event_loop().time() < end:
+            try:
+                if storage in ("local", "any"):
+                    local = await self.get_local_storage(page=page)
+                    if wanted.intersection(local.keys()):
+                        return True
+                if storage in ("session", "any"):
+                    session = await self.get_session_storage(page=page)
+                    if wanted.intersection(session.keys()):
+                        return True
+            except Exception:
+                pass
+            await asyncio.sleep(0.5)
+        return False
+
+    async def wait_for_auth_success(
+        self,
+        *,
+        success_url_contains: str | None = None,
+        success_selector: str | None = None,
+        success_cookie_names: Sequence[str] | None = None,
+        success_storage_keys: Sequence[str] | None = None,
+        timeout_ms: float | None = 30_000,
+        page: Tab | None = None,
+    ) -> dict[str, Any]:
+        """Wait until any configured authentication success signal is observed.
+
+        Returns a dict with ``success`` and ``matched``. If no success signals are
+        configured, returns success immediately so callers can still snapshot the
+        browser state after running steps.
+        """
+        checks_configured = any([
+            success_url_contains,
+            success_selector,
+            success_cookie_names,
+            success_storage_keys,
+        ])
+        if not checks_configured:
+            return {"success": True, "matched": ["no_explicit_success_condition"]}
+
+        timeout_s = _timeout_seconds(timeout_ms, default_ms=30_000)
+        end = asyncio.get_event_loop().time() + timeout_s
+        matched: list[str] = []
+        while asyncio.get_event_loop().time() < end:
+            matched.clear()
+            if success_url_contains:
+                try:
+                    if success_url_contains in await self.get_url(page=page):
+                        matched.append("url")
+                except Exception:
+                    pass
+            if success_selector:
+                try:
+                    await self.wait_for_selector(success_selector, timeout_ms=1_000, page=page)
+                    matched.append("selector")
+                except Exception:
+                    pass
+            if success_cookie_names:
+                try:
+                    cookies = await self.get_cookies(page=page)
+                    names = {c.get("name") for c in cookies}
+                    if names.intersection(set(success_cookie_names)):
+                        matched.append("cookie")
+                except Exception:
+                    pass
+            if success_storage_keys:
+                try:
+                    local = await self.get_local_storage(page=page)
+                    session = await self.get_session_storage(page=page)
+                    keys = set(local.keys()) | set(session.keys())
+                    if keys.intersection(set(success_storage_keys)):
+                        matched.append("storage")
+                except Exception:
+                    pass
+            if matched:
+                return {"success": True, "matched": list(matched)}
+            await asyncio.sleep(0.5)
+        return {"success": False, "matched": [], "error": "Timed out waiting for auth success"}
 
     # ------------------------------------------------------------------
     # DOM interaction (instance methods, no leaking Tab handles)

@@ -1,0 +1,94 @@
+{% raw %}
+Renew a saved ``AuthContext`` profile using a refresh endpoint, without re-running the browser flow. The existing context is updated **in place**: same profile, same disk path, same cookies (merged with any new ones from the response). Only the bearer header and selected metadata fields change.
+
+## WHEN TO USE
+
+- After ``validate_auth_context`` reports ``expired=true`` or after a downstream tool reports a structured "auth expired" error.
+- When the wallet (or saved metadata) declares a ``refresh_url`` for the profile and the token issuer supports refresh.
+
+## WHEN NOT TO USE
+
+- When no refresh endpoint exists \u2014 run ``authenticate`` again instead.
+- When the underlying credentials themselves have changed (e.g. password rotation) \u2014 run ``authenticate`` again.
+
+## INPUT CONTRACT
+
+| Argument | Type | Meaning |
+|---|---|---|
+| ``profile`` | string | Profile to refresh, default ``"default"``. |
+| ``refresh_url`` | string \| null | Explicit refresh endpoint. Falls back to ``metadata['refresh_url']`` then the wallet ``refresh_url``. |
+| ``refresh_method`` | string | HTTP method, default ``"POST"``. |
+| ``refresh_headers`` | object \| null | Extra headers to send with the refresh request. Supports ``{{...}}`` templates. |
+| ``refresh_body`` | any | JSON-serialisable body. Strings inside it support ``{{username}}`` / ``{{password}}`` / ``{{access_token}}`` / ``{{refresh_token}}`` placeholders. |
+| ``new_token_path`` | string | Dot-path into the response JSON to extract the new token. Default ``"access_token"``. |
+| ``new_token_header_name`` | string | Header name to rewrite. Default ``"Authorization"``. |
+| ``new_token_header_format`` | string | Format string with ``{token}``. Default ``"Bearer {token}"``. |
+| ``capture_cookies`` | bool | Merge ``Set-Cookie`` cookies from the response. Default ``true``. |
+| ``verify_ssl`` | bool | TLS verification. Default ``false``. |
+| ``timeout_ms`` | number \| null | Request timeout in ms. Default 15000. |
+
+## CREDENTIAL HANDLING
+
+Precedence for ``{{username}}`` / ``{{password}}`` placeholders inside
+``refresh_body`` / ``refresh_headers``:
+
+1. Explicit ``username`` / ``password`` tool arguments (use when the user
+   supplied them, or when discovered in context).
+2. Wallet credentials for the selected ``profile``.
+
+- The existing access token and refresh token (when present in storage / cookies) are auto-injected into the template context, so ``{{access_token}}`` / ``{{refresh_token}}`` work without any explicit override.
+- Never put real secrets directly inside ``refresh_body`` strings \u2014 use the placeholders.
+- Anything passed via the ``username`` / ``password`` tool args IS visible in the agent's context window. Wallet credentials are NOT. Prefer the wallet when a profile exists.
+
+## OUTPUT (SAFE METADATA ONLY)
+
+```json
+{
+  "success": true,
+  "refreshed": true,
+  "refresh_url": "http://target.local/api/auth/refresh",
+  "last_refreshed_at": "2026-05-10T...",
+  "last_refresh_status": 200,
+  "validated": true,
+  "new_token_obtained": true,
+  "new_cookies_obtained": false,
+  "profile": "default",
+  "headers_available": ["Authorization"],
+  "cookie_names": ["sessionid"],
+  "storage_keys": ["access_token"]
+}
+```
+
+Cookie values, token values and passwords are **never** returned.
+
+## EXAMPLES
+
+### Standard OAuth-style refresh
+
+```json
+{
+  "profile": "default",
+  "refresh_url": "http://target.local/api/auth/refresh",
+  "refresh_body": {"refresh_token": "{{refresh_token}}"},
+  "new_token_path": "access_token"
+}
+```
+
+### Refresh with a custom token header
+
+```json
+{
+  "profile": "default",
+  "refresh_body": {"token": "{{access_token}}"},
+  "new_token_path": "data.token",
+  "new_token_header_name": "X-Auth-Token",
+  "new_token_header_format": "{token}"
+}
+```
+
+## RULES
+
+- Only call this when ``validate_auth_context`` reported ``expired=true`` or when the wallet declared a ``refresh_url`` that you intend to exercise on a schedule.
+- If refresh fails (HTTP \u2265 400, no token, no cookies), fall back to a full ``authenticate`` call.
+- Never invent ``refresh_url`` values \u2014 they must come from context, wallet, or saved metadata.
+{% endraw %}

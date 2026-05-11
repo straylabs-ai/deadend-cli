@@ -120,11 +120,6 @@ async def eval_interface(
     except (RuntimeError, OSError) as exc:
         console_printer(f"[red]Sandbox manager could not be started: {exc}[/red]")
         raise SystemExit(1) from exc
-
-    # adding automatic build and ask prompt
-    sandbox_id = None
-    sandbox = None
-
     try:
         sandbox_id = sandbox_manager.create_sandbox(
             image="xoxruns/sandboxed_kali",

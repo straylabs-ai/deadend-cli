@@ -31,6 +31,13 @@ from deadend_agent.tools.browser.run_browser_steps_tool import (
     parse_browser_steps,
     browser_step_to_interaction,
 )
+from deadend_agent.tools.browser.authenticate import authenticate, authenticate_service
+from deadend_agent.tools.browser.validate_refresh import (
+    refresh_auth_context,
+    refresh_auth_context_service,
+    validate_auth_context,
+    validate_auth_context_service,
+)
 
 __all__ = [
     "BrowserSession",
@@ -43,6 +50,12 @@ __all__ = [
     "parse_browser_steps",
     "run_browser_steps",
     "browser_run_steps",
+    "authenticate",
+    "authenticate_service",
+    "validate_auth_context",
+    "validate_auth_context_service",
+    "refresh_auth_context",
+    "refresh_auth_context_service",
     "CheckStep",
     "ClickStep",
     "FillStep",

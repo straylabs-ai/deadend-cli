@@ -1,0 +1,253 @@
+{% raw %}
+Authenticate against the current target through a real browser (Pydoll / Chrome DevTools Protocol) and **persist** the resulting cookies, browser storage and derived headers as a reusable ``AuthContext`` profile. After this tool succeeds, other tools (``browser_run_steps``, ``pw_send_payload``) can reuse the saved auth by passing ``auth_profile=<profile>``.
+
+## WHEN TO USE
+
+- The target requires authentication and a login URL / form has been **discovered** in context.
+- An OAuth / OIDC flow needs a real browser (redirects, callbacks, JS hydration).
+- A popup / new-window OAuth flow (``window.open(...)``) is required.
+- You need a persistent authenticated context shared across subagents and tools.
+
+## WHEN NOT TO USE
+
+- The target has no login (read-only / public).
+- You only need a single raw HTTP request — use ``pw_send_payload``.
+- You haven't actually discovered a real login URL or selectors yet — discover first.
+
+## FLOW DISPATCH
+
+The tool picks an implementation based on ``auth_flow``:
+
+* ``form`` / ``oauth`` / ``authorization_code`` / ``callback`` / *unset* →
+  real browser flow (Pydoll). Use ``steps``, ``popup_steps``, ``success_*``
+  and ``callback_*`` arguments.
+* ``json`` → API login over HTTP (no browser). Use ``request_method``,
+  ``request_headers``, ``request_body`` (with ``{{username}}`` /
+  ``{{password}}`` placeholders), ``token_path``, ``token_header_name``,
+  ``token_header_format``, ``capture_cookies``.
+* ``http`` → HTTP Basic auth. Just provide ``profile`` and optionally an
+  ``auth_url`` to probe (e.g. ``/admin``).
+
+## INPUT CONTRACT (TOOL ARGUMENTS)
+
+### Common
+| Argument | Type | Meaning |
+|---|---|---|
+| ``auth_url`` | string \| null | Login URL. For ``form``/``oauth`` it's the page to open. For ``json`` it's the API endpoint. For ``http`` it's an optional probe URL. If omitted, the wallet ``login_url`` is used. |
+| ``profile`` | string | Credential profile to use (default ``"default"``). When the wallet has this profile, those creds are used; you can also invent a new profile name to save discovered/user-supplied credentials under. |
+| ``auth_flow`` | enum \| null | One of ``http``, ``form``, ``json``, ``oauth``, ``authorization_code``, ``callback``. |
+| ``auth_type`` | enum \| null | One of ``session_cookie``, ``bearer_token``, ``api_key``, ``oauth2``. |
+| ``username`` | string \| null | Explicit username override. Use ONLY for credentials discovered in context (e.g. default ``admin:admin``, leaked from source, README) or supplied directly by the user. Wins over the wallet for this call. |
+| ``password`` | string \| null | Explicit password override. Same rules as ``username``. |
+
+### Browser flow only
+| ``steps`` | array | ``BrowserStep`` list executed on the **main tab** (same shape as ``browser_run_steps``). |
+| ``context`` | object | Extra non-secret values the steps may reference by ``key``. ``username`` / ``password`` are injected automatically from the wallet — **never** put real credentials here. |
+| ``expects_popup`` | bool | ``true`` if clicking the auth button opens a popup / new window (e.g. Google/GitHub OAuth). |
+| ``popup_steps`` | array | ``BrowserStep`` list executed inside the popup tab once it appears. |
+| ``callback_url_contains`` | string \| null | Substring expected in the **main tab** URL after redirect-based auth (e.g. ``/oauth/callback``). |
+| ``popup_callback_url_contains`` | string \| null | Substring expected in the **popup** URL before it closes. |
+| ``wait_for_popup_close`` | bool | If ``true``, wait for the popup to close before snapshotting the main tab. |
+| ``success_url_contains`` | string \| null | Final URL substring that proves login worked (e.g. ``/dashboard``). |
+| ``success_selector`` | string \| null | CSS selector that should appear after login (e.g. ``a[href='/logout']``). |
+| ``success_cookie_names`` | array | Cookie names that should appear after login (e.g. ``["sessionid"]``). |
+| ``success_storage_keys`` | array | localStorage / sessionStorage keys that should appear (e.g. ``["access_token"]``). |
+| ``post_login_wait_ms`` | int | Extra wait after success conditions match, for SPA token hydration. Default 1500 ms. |
+| ``verify_ssl`` | bool | If ``false``, ignore TLS errors. |
+| ``headless`` | bool | Run browser headless (default ``true``). |
+
+Selectors must come from real HTML you have actually seen — never guess.
+
+### JSON flow only
+| Argument | Type | Meaning |
+|---|---|---|
+| ``request_method`` | string | HTTP method, default ``"POST"``. |
+| ``request_headers`` | object | Optional extra headers; ``Content-Type: application/json`` is added automatically when ``request_body`` is a JSON object. |
+| ``request_body`` | any | JSON-serialisable body. Strings inside it support ``{{username}}`` / ``{{password}}`` / ``{{login_url}}`` placeholders that the wallet fills in. |
+| ``token_path`` | string \| null | Dot-path into the response JSON to extract the token, e.g. ``access_token`` or ``data.tokens.0.value``. |
+| ``token_header_name`` | string | Header name for the saved token. Default ``"Authorization"``. |
+| ``token_header_format`` | string | Format string with ``{token}``. Default ``"Bearer {token}"``. |
+| ``capture_cookies`` | bool | Whether to also save ``Set-Cookie`` cookies. Default ``true``. |
+
+### Basic flow only
+No extra arguments. Wallet ``username`` + ``password`` build ``Authorization: Basic <b64>``. Provide ``auth_url`` if you want the tool to probe it before saving.
+
+## CREDENTIAL HANDLING
+
+Credentials may come from one of two sources, in this precedence order:
+
+1. **Explicit ``username`` / ``password`` tool arguments** — wins for this call. Use these when:
+   * The user typed credentials directly into the conversation.
+   * The agent discovered credentials in the target's context (e.g. default ``admin:admin`` in a comment, a leaked secret, source code, response body, README).
+2. **Wallet credentials** for the selected ``profile`` — used when the explicit args are not provided. Never visible to the model.
+
+Reference rules inside the tool body:
+
+- For browser steps, reference them by ``key``: ``{"action":"fill","selector":"input[name=user]","key":"username"}``. The merged username/password are pre-populated under those keys.
+- For JSON bodies, use ``{{username}}`` / ``{{password}}`` placeholders. They resolve to the explicit args if set, otherwise to the wallet value.
+- For HTTP Basic, no placeholders needed: the tool builds ``Authorization: Basic <b64>`` from the effective username/password.
+
+### Security note
+
+- Anything passed via ``username`` / ``password`` IS visible in the agent's working context window. Wallet credentials are NOT. **Prefer the wallet whenever a profile exists for the target.**
+- Never invent credentials. Only supply values that were actually discovered in context or explicitly given by the user.
+- The saved AuthContext on disk may contain the resulting tokens/cookies; that is intentional. Tool *return values* never include cookie/token/password values.
+
+## OUTPUT (SAFE METADATA ONLY)
+
+A successful run returns JSON like:
+
+```json
+{
+  "success": true,
+  "auth_context_saved": true,
+  "profile": "default",
+  "target": "http://localhost:8080",
+  "target_slug": "localhost_8080",
+  "auth_flow": "form",
+  "auth_type": "session_cookie",
+  "final_url": "http://localhost:8080/dashboard",
+  "page_title": "Dashboard",
+  "cookies_count": 3,
+  "cookie_names": ["sessionid"],
+  "storage_keys": ["access_token"],
+  "headers_available": ["Authorization"],
+  "success_matched": ["url", "selector"]
+}
+```
+
+Cookie values, tokens and passwords are **never** returned. Other agents should use ``auth_profile="<profile>"`` on ``browser_run_steps`` / ``pw_send_payload`` to consume the saved auth.
+
+## EXAMPLES
+
+### JSON / API login (returns JWT)
+
+```json
+{
+  "auth_url": "http://target.local/api/auth/login",
+  "profile": "default",
+  "auth_flow": "json",
+  "auth_type": "bearer_token",
+  "request_method": "POST",
+  "request_headers": {"X-App": "deadend"},
+  "request_body": {
+    "email": "{{username}}",
+    "password": "{{password}}"
+  },
+  "token_path": "access_token",
+  "token_header_name": "Authorization",
+  "token_header_format": "Bearer {token}",
+  "capture_cookies": true
+}
+```
+
+### HTTP Basic auth (no login form)
+
+```json
+{
+  "profile": "admin",
+  "auth_flow": "http",
+  "auth_type": "api_key",
+  "auth_url": "http://target.local/admin"
+}
+```
+
+### Form login with credentials supplied by the user
+
+```json
+{
+  "auth_url": "http://target.local/login",
+  "profile": "user_supplied",
+  "auth_flow": "form",
+  "auth_type": "session_cookie",
+  "username": "alice@example.com",
+  "password": "hunter2",
+  "steps": [
+    {"action": "fill", "selector": "input[name='email']", "key": "username"},
+    {"action": "fill", "selector": "input[name='password']", "key": "password"},
+    {"action": "click", "selector": "button[type='submit']"}
+  ],
+  "success_url_contains": "/dashboard"
+}
+```
+
+### Default-credential test from a discovered admin endpoint
+
+```json
+{
+  "profile": "discovered_admin",
+  "auth_flow": "http",
+  "auth_type": "api_key",
+  "auth_url": "http://target.local/admin",
+  "username": "admin",
+  "password": "admin"
+}
+```
+
+### Classic form login
+
+```json
+{
+  "auth_url": "http://target.local/login",
+  "profile": "default",
+  "auth_flow": "form",
+  "auth_type": "session_cookie",
+  "steps": [
+    {"action": "fill", "selector": "input[name='username']", "key": "username"},
+    {"action": "fill", "selector": "input[name='password']", "key": "password"},
+    {"action": "click", "selector": "button[type='submit']"}
+  ],
+  "success_url_contains": "/dashboard",
+  "success_selector": "a[href='/logout']"
+}
+```
+
+### SPA / JWT login
+
+```json
+{
+  "auth_url": "http://target.local/login",
+  "profile": "default",
+  "auth_flow": "form",
+  "auth_type": "bearer_token",
+  "steps": [
+    {"action": "fill", "selector": "#email", "key": "username"},
+    {"action": "fill", "selector": "#password", "key": "password"},
+    {"action": "click", "selector": "#sign-in"}
+  ],
+  "success_storage_keys": ["access_token"],
+  "post_login_wait_ms": 2000
+}
+```
+
+### Popup OAuth
+
+```json
+{
+  "auth_url": "http://target.local/login",
+  "profile": "default",
+  "auth_flow": "oauth",
+  "auth_type": "session_cookie",
+  "expects_popup": true,
+  "steps": [
+    {"action": "click", "selector": "button.login-with-oauth"}
+  ],
+  "popup_steps": [
+    {"action": "fill", "selector": "input[type='email']", "key": "username"},
+    {"action": "click", "selector": "#identifierNext"},
+    {"action": "fill", "selector": "input[type='password']", "key": "password"},
+    {"action": "click", "selector": "#passwordNext"}
+  ],
+  "popup_callback_url_contains": "/oauth/callback",
+  "wait_for_popup_close": true,
+  "success_selector": "a[href='/logout']"
+}
+```
+
+## RULES
+
+- Discover login URL and selectors **before** calling this tool. Do not invent endpoints.
+- Use ``profile`` to pick credentials. Never embed real secrets.
+- Configure at least one success signal (``success_url_contains``, ``success_selector``, ``success_cookie_names`` or ``success_storage_keys``); otherwise the tool only relies on “no exception raised”.
+- After a successful run, downstream tools should be invoked with ``auth_profile="<profile>"`` to test authenticated behaviour, and with ``auth_profile=null`` to compare against the unauthenticated baseline.
+{% endraw %}

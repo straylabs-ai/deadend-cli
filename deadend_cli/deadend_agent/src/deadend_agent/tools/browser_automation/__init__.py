@@ -11,6 +11,12 @@ from .auth_handler import replace_credential_placeholders
 from .pw_requester import PlaywrightRequester
 from .pw_session_manager import PlaywrightSessionManager
 from deadend_agent.tools.tool_wrappers import with_tool_events
+from deadend_agent.auth_resolver import (
+    AuthContextHandler,
+    inject_headers_into_raw_request,
+    write_playwright_storage_state,
+)
+from deadend_agent.tools.browser.validate_refresh import auto_validate_before_consume
 
 __all__ = ["is_valid_request_detailed", "PlaywrightRequester"]
 
@@ -21,6 +27,10 @@ async def pw_send_payload(
     target_host: str,
     raw_request: str,
     verify_ssl: bool = False,
+    auth_profile: str | None = None,
+    force_validate_auth: bool = False,
+    skip_auth_validation: bool = False,
+    auth_validation_ttl_s: float = 60.0,
 ):
     """
     Send HTTP payload using Playwright with enhanced capabilities and session persistence.
@@ -62,12 +72,66 @@ async def pw_send_payload(
     except ValueError as e:
         return f"Error: Cannot auto-correct request - {str(e)}"
 
-    # Anonymisation process
-    # the function detects the dummy credentials given and replaces them with the right one
-    # So that the LLM will never see the true credentials
-    raw_request_anon = replace_credential_placeholders(raw_request)
     is_tls = port == 443 or effective_target.startswith('https://')
     proxy_url = ctx.deps.proxy_url
+
+    # Resolve optional saved auth profile -> Playwright storage_state file.
+    auth_storage_state_path: str | None = None
+    if auth_profile:
+        if getattr(ctx.deps, "agent_id", None) is None or getattr(ctx.deps, "session_id", None) is None:
+            return "Error: agent_id and session_id are required to use auth_profile"
+        # Phase 13: validate the saved AuthContext before consuming it.
+        validation_failure = await auto_validate_before_consume(
+            target=effective_target,
+            agent_id=ctx.deps.agent_id,
+            session_id=ctx.deps.session_id,
+            profile=auth_profile,
+            validation_ttl_s=auth_validation_ttl_s,
+            force_validate=force_validate_auth,
+            skip_validation=skip_auth_validation,
+            proxy_url=proxy_url,
+            verify_ssl=verify_ssl,
+        )
+        if validation_failure is not None:
+            reason = validation_failure.get("expired_reason") or validation_failure.get("error") or "validation failed"
+            return (
+                f"Error: saved auth_profile {auth_profile!r} is no longer valid "
+                f"({reason}). Call refresh_auth_context (if a refresh_url exists) "
+                "or re-run authenticate before retrying."
+            )
+        try:
+            handler = AuthContextHandler(
+                target=effective_target,
+                agent_id=ctx.deps.agent_id,
+                session_id=ctx.deps.session_id,
+            )
+            auth_context = handler.load_context(auth_profile)
+            if auth_context is None:
+                return f"Error: no saved auth context for profile {auth_profile!r}"
+            playwright_path = handler.playwright_storage_path(auth_profile)
+            # Always (re)materialise so JSON/Basic auth contexts that don't have
+            # a saved Playwright snapshot still feed cookies into the session.
+            write_playwright_storage_state(
+                auth_context,
+                playwright_path,
+                target=effective_target,
+            )
+            auth_storage_state_path = str(playwright_path)
+            # Also inject saved AuthContext.headers (e.g. ``Authorization: Bearer ...``
+            # produced by JSON/API or Basic auth) into the raw request, unless
+            # the model already set them explicitly.
+            if auth_context.headers:
+                raw_request = inject_headers_into_raw_request(
+                    raw_request, dict(auth_context.headers)
+                )
+        except Exception as e:
+            return f"Error preparing auth profile {auth_profile!r}: {e}"
+
+    # Anonymisation process (run AFTER auth-header injection so saved headers
+    # are still subject to credential placeholder substitution).
+    # The function detects the dummy credentials given and replaces them with
+    # the real ones, so the LLM will never see the true credentials.
+    raw_request_anon = replace_credential_placeholders(raw_request)
     # session_key = _build_session_key(
     #     host=host,
     #     port=port,
@@ -80,7 +144,9 @@ async def pw_send_payload(
         session_key=str(ctx.deps.session_id),
         agent_id=str(ctx.deps.agent_id),
         verify_ssl=verify_ssl,
-        proxy_url=proxy_url
+        proxy_url=proxy_url,
+        auth_storage_state_path=auth_storage_state_path,
+        auth_profile=auth_profile,
     )
     responses = []
     try:

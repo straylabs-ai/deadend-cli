@@ -11,6 +11,7 @@ tools and sub-agents can reuse the same browser session artefacts.
 
 from __future__ import annotations
 from deadend_agent.constants import REUSABLE_CREDENTIALS_FILE, DEADEND_AGENTS_PATH
+from deadend_agent.utils.network import slugify_target
 
 import json
 import uuid
@@ -181,9 +182,13 @@ class CredentialsStore:
     _wallet_path: Path = REUSABLE_CREDENTIALS_FILE
 
     @classmethod
-    def _load_wallet(cls) -> dict[str, Any]:
+    def _load_wallet(cls, path_credentials: Path | None) -> dict[str, Any]:
+        if path_credentials is None:
+            user_credentials = cls._wallet_path
+        else:
+            user_credentials = path_credentials
         try:
-            with open(cls._wallet_path, "r", encoding="utf-8") as fh:
+            with open(user_credentials, "r", encoding="utf-8") as fh:
                 return json.load(fh)
         except (FileNotFoundError, json.JSONDecodeError):
             return {"targets": {}}
@@ -200,9 +205,9 @@ class CredentialsStore:
         return t
 
     @classmethod
-    def get_target_credentials(cls, target: str) -> TargetCredentials | None:
+    def get_target_credentials(cls, target: str, path_credentials: Path | None = None) -> TargetCredentials | None:
         """Return the ``TargetCredentials`` block for *target*, or ``None``."""
-        wallet = cls._load_wallet()
+        wallet = cls._load_wallet(path_credentials)
         targets: dict[str, Any] = wallet.get("targets", {})
         key = cls._normalise_target(target)
 
@@ -262,18 +267,22 @@ class AuthContextHandler:
     Disk layout::
 
         ~/.deadend/agents/
-        └── <agent_id>/<target_slug>/auth_context/
+        └── <agent_id>/<session_id>/auth_context/
             ├── default.json
+            ├── default.playwright.json
             ├── admin.json
             └── index.json       # manifest of all saved profiles
     """
 
-    def __init__(self, target: str, agent_id: uuid.UUID) -> None:
+    def __init__(self, target: str, agent_id: uuid.UUID | None, session_id: uuid.UUID | None) -> None:
         self.target = target
+        self.target_slug = slugify_target(target)
         self.agent_id = agent_id
+        self.session_id = session_id
         self._auth_dir = (
             DEADEND_AGENTS_PATH
             / str(agent_id)
+            / str(session_id)
             / "auth_context"
         )
         self._auth_dir.mkdir(parents=True, exist_ok=True)
@@ -338,15 +347,28 @@ class AuthContextHandler:
     def save_context(self, profile: str, context: AuthContext) -> None:
         """Persist *context* under *profile* and update the manifest."""
         path = self._profile_path(profile)
+        context.metadata.setdefault("target", self.target)
+        context.metadata.setdefault("target_slug", self.target_slug)
+        context.metadata.setdefault("agent_id", str(self.agent_id))
+        context.metadata.setdefault("session_id", str(self.session_id))
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(context.model_dump_json(indent=2))
 
         self._index[profile] = {
             "target": self.target,
+            "target_slug": self.target_slug,
+            "agent_id": str(self.agent_id),
+            "session_id": str(self.session_id),
             "profile": profile,
             "auth_flow": context.metadata.get("auth_flow"),
             "auth_type": context.metadata.get("auth_type"),
             "captured_at": context.metadata.get("captured_at"),
+            "cookies_count": len(context.cookies),
+            "storage_keys": sorted(
+                set(context.browser_storage.localStorage.keys())
+                | set(context.browser_storage.sessionStorage.keys())
+            ),
+            "headers_available": sorted(context.headers.keys()),
             "path": str(path),
         }
         self._save_index()
@@ -374,9 +396,39 @@ class AuthContextHandler:
         if path.exists():
             path.unlink()
             removed = True
+        playwright_path = self.playwright_storage_path(profile)
+        if playwright_path.exists():
+            playwright_path.unlink()
         self._index.pop(profile, None)
         self._save_index()
         return removed
+
+    def playwright_storage_path(self, profile: str) -> Path:
+        """Return the Playwright-compatible storage-state path for *profile*."""
+        safe = "".join(c for c in profile if c.isalnum() or c in "-_").lower()
+        if not safe:
+            safe = "default"
+        return self._auth_dir / f"{safe}.playwright.json"
+
+    def summarize_context(self, profile: str) -> dict[str, Any]:
+        """Return a secret-free summary for one saved auth profile."""
+        ctx = self.load_context(profile)
+        if ctx is None:
+            return {
+                "available": False,
+                "target": self.target,
+                "target_slug": self.target_slug,
+                "agent_id": str(self.agent_id),
+                "session_id": str(self.session_id),
+                "profile": profile,
+            }
+        from deadend_agent.auth_resolver.auth_context_utils import safe_auth_summary
+
+        return safe_auth_summary(ctx)
+
+    def list_context_summaries(self) -> dict[str, dict[str, Any]]:
+        """Return secret-free summaries for all saved auth profiles."""
+        return {profile: self.summarize_context(profile) for profile in self.list_profiles()}
 
     async def authenticate(self, credential_ref: CredentialsRefs) -> AuthContext:
         """Placeholder — will be implemented in Phase 2 (authenticate tool).

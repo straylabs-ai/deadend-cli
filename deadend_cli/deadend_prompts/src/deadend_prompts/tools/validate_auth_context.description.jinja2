@@ -1,0 +1,78 @@
+Probe a saved ``AuthContext`` (selected by ``profile``) to confirm it is still authenticated, and update the saved context's metadata with the verdict. Use this **before** asking other agents to consume an ``auth_profile`` after a meaningful gap, or whenever a downstream tool reports a structured "auth expired" error.
+
+JWT bearer tokens are short-circuited locally via the ``exp`` claim before any network call (zero cost). For opaque tokens / cookie-based sessions a single GET probe is sent.
+
+## WHEN TO USE
+
+- After ``authenticate`` succeeds, to record a ``validation_url`` and lock in a "validated=true" verdict so other agents can opt into the profile.
+- After a long idle (> a few minutes), before a fresh wave of authenticated requests.
+- When a downstream tool returns ``{"expired": true, "expired_reason": "..."}``.
+
+## WHEN NOT TO USE
+
+- Right after ``authenticate`` already returned success_matched evidence \u2014 the saved context is already validated.
+- For every single request: ``pw_send_payload`` and ``browser_run_steps`` already auto-validate on a short TTL cache.
+
+## INPUT CONTRACT
+
+| Argument | Type | Meaning |
+|---|---|---|
+| ``profile`` | string | Profile to validate, default ``"default"``. |
+| ``validation_url`` | string \| null | Authenticated endpoint to probe (e.g. ``/api/me``, ``/profile``). **Pass an explicit URL discovered from context.** Falls back to ``metadata['validation_url']`` then ``metadata['final_url']`` if omitted. |
+| ``expected_status`` | array \| null | HTTP statuses that count as authenticated (default ``[200..207]``). |
+| ``failure_status`` | array \| null | HTTP statuses that definitely mean expired (default ``[401, 403]``). |
+| ``success_substring`` | string \| null | Optional response-body marker that must be present (e.g. ``"logout"``, ``"profile"``). Useful when the app returns 200 + a login page on expiry. |
+| ``success_jsonpath`` | string \| null | Optional dot-path into a JSON response that must resolve (e.g. ``user.id``). |
+| ``skip_jwt_exp_shortcut`` | bool | Force the network probe even if the JWT looks expired locally. Default ``false``. |
+| ``jwt_exp_leeway_s`` | int | Seconds of clock-skew tolerance for the JWT exp check. Default ``0``. |
+| ``verify_ssl`` | bool | TLS verification. Default ``false``. |
+| ``timeout_ms`` | number \| null | Probe timeout in ms. Default 15000. |
+
+## OUTPUT (SAFE METADATA ONLY)
+
+```json
+{
+  "success": true,                    // == validated
+  "validated": true,
+  "expired": false,
+  "expired_reason": null,             // or "jwt_exp" | "http_401" | "missing_substring" | ...
+  "validation_url": "http://target.local/api/me",
+  "last_validation_status": 200,
+  "last_validated_at": "2026-05-10T...",
+  "profile": "default",
+  "headers_available": ["Authorization"],
+  "cookie_names": ["sessionid"],
+  "storage_keys": ["access_token"],
+  "jwt_exp": 1736000000               // only when we can read the JWT exp claim
+}
+```
+
+Cookie values, token values and passwords are **never** returned.
+
+## EXAMPLES
+
+### Validate a JWT-bearer session
+
+```json
+{
+  "profile": "default",
+  "validation_url": "http://target.local/api/me",
+  "success_jsonpath": "user.id"
+}
+```
+
+### Validate a cookie session against a page that returns the login form on expiry
+
+```json
+{
+  "profile": "default",
+  "validation_url": "http://target.local/dashboard",
+  "success_substring": "Sign out"
+}
+```
+
+## RULES
+
+- Always pass a real ``validation_url`` discovered in context. Do not guess endpoints.
+- Configure at least one strong signal: explicit status, ``success_substring`` or ``success_jsonpath``. The default 200-OK rule is fooled by apps that serve the login page with 200.
+- If this tool reports ``expired=true``: call ``refresh_auth_context`` next (if a ``refresh_url`` is known), otherwise re-run ``authenticate``.
