@@ -173,6 +173,9 @@ class Config:
     - Anthropic: Uses ANTHROPIC_API_KEY and ANTHROPIC_MODEL
     - Google Gemini: Uses GEMINI_API_KEY and GEMINI_MODEL
     - OpenRouter: Uses OPEN_ROUTER_API_KEY and OPEN_ROUTER_MODEL (supports multiple providers)
+    - Requesty: Uses REQUESTY_API_KEY, REQUESTY_MODEL, and REQUESTY_BASE_URL
+      (OpenAI-compatible gateway; defaults to https://router.requesty.ai/v1, supports
+      multiple providers via "provider/model" naming like OpenRouter)
     - Local/Self-hosted: Uses LOCAL_API_KEY, LOCAL_MODEL, and LOCAL_BASE_URL
     
     Configuration is loaded from ~/.deadend/config.json (preferred) or environment variables.
@@ -180,9 +183,10 @@ class Config:
     the chat interface.
     
     litellm automatically handles provider-specific API formats, so you just need to provide
-    the API key and model name. For OpenRouter, use the format "provider/model-name" (e.g., 
-    "anthropic/claude-4.5-opus"). For local models, provide the base URL of your OpenAI-compatible
-    API endpoint.
+    the API key and model name. For OpenRouter and Requesty, use the format "provider/model-name"
+    (e.g., "anthropic/claude-4.5-opus" or "openai/gpt-4o-mini"). For local models, provide the
+    base URL of your OpenAI-compatible API endpoint. Requesty is an OpenAI-compatible gateway, so
+    it is built on the same OpenAI-compatible path as local models, with a default base URL.
     """
     # Models
     openai_api_key: str | None = _cfg("OPENAI_API_KEY")
@@ -193,6 +197,9 @@ class Config:
     gemini_model_name : str | None = _cfg("GEMINI_MODEL", "gemini-2.5-pro")
     open_router_key: str | None = _cfg("OPEN_ROUTER_API_KEY")
     open_router_model: str | None = _cfg("OPEN_ROUTER_MODEL", "anthropic/claude-4.5-opus")
+    requesty_api_key: str | None = _cfg("REQUESTY_API_KEY")
+    requesty_model: str | None = _cfg("REQUESTY_MODEL", "openai/gpt-4o-mini")
+    requesty_base_url: str | None = _cfg("REQUESTY_BASE_URL", "https://router.requesty.ai/v1")
     local_model: str | None = _cfg("LOCAL_MODEL", "Kimi-K2-Thinking")
     local_api_key: str | None = _cfg("LOCAL_API_KEY")
     local_base_url: str | None = _cfg("LOCAL_BASE_URL")

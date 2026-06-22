@@ -324,6 +324,7 @@ Deadend CLI supports all providers compatible with LiteLLM. For a complete list 
 - **Anthropic**: `anthropic:claude-3-opus`, `anthropic:claude-sonnet-4-5`, `anthropic:claude-3-haiku`, etc.
 - **Ollama**: `ollama:llama3`, `ollama:mistral`, `ollama:codellama`, etc. (requires `base_url` in config)
 - **OpenRouter**: `openrouter:meta-llama/llama-3-70b-instruct`, `openrouter:google/gemini-pro`, etc.
+- **Requesty**: `requesty:openai/gpt-4o-mini`, `requesty:anthropic/claude-4.5-opus`, etc. (OpenAI-compatible gateway; defaults to `https://router.requesty.ai/v1`, set `REQUESTY_API_KEY`)
 - **HuggingFace**: `huggingface/meta-llama/Llama-2-7b-chat-hf` (requires `base_url`)
 
 **For embedding models**, use the same format and set `type_model: "embeddings"` in `config.json`:

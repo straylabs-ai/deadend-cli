@@ -132,7 +132,7 @@ class ModelRegistry:
     """Registry for managing model specifications from multiple providers.
     
     This class initializes and manages access to language model specifications
-    from various providers (OpenAI, Anthropic, Google/Gemini, OpenRouter, Local)
+    from various providers (OpenAI, Anthropic, Google/Gemini, OpenRouter, Requesty, Local)
     based on configuration settings. It also manages the embedding client for
     generating vector embeddings via HTTP.
     
