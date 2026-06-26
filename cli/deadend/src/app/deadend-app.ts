@@ -941,7 +941,7 @@ export class DeadendApp {
   private getSetupHint(): string {
     switch (this.setupStep) {
       case "provider":
-        return "Examples: openai, anthropic, gemini, openrouter, ollama.";
+        return "Examples: openai, anthropic, gemini, openrouter, requesty, ollama.";
       case "model":
         return "Examples: gpt-4o-mini, claude-3-7-sonnet, gemini-2.5-pro.";
       case "embedding_question":

@@ -608,7 +608,7 @@ class ComponentManager:
         """Get a model instance from the model registry.
 
         Args:
-            provider: The LLM provider to use (openai, anthropic, gemini, openrouter, local).
+            provider: The LLM provider to use (openai, anthropic, gemini, openrouter, requesty, local).
                      If None, uses the current_llm_provider.
             model_name: Optional model name override. If provided, creates a model
                        instance with this specific model name.
@@ -638,7 +638,7 @@ class ComponentManager:
         """Set the current LLM provider.
 
         Args:
-            provider: The provider name (openai, anthropic, gemini, openrouter, local)
+            provider: The provider name (openai, anthropic, gemini, openrouter, requesty, local)
 
         Raises:
             ValueError: If provider is not configured or not available
