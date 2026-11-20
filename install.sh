@@ -10,7 +10,7 @@ NC='\033[0m' # No Color
 # Default values
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.cache/deadend/server}"
 VERSION="${VERSION:-latest}"
-REPO="${REPO:-xoxruns/deadend-cli}"
+REPO="${REPO:-straylabs-ai/deadend-cli}"
 CLEAN_INSTALL=true
 
 # Detect OS and architecture
@@ -88,7 +88,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --version VERSION     Version to install (default: latest)"
             echo "  --install-dir DIR     Installation directory (default: ~/.cache/deadend/bin)"
-            echo "  --repo REPO           GitHub repository (default: xoxruns/deadend-cli)"
+            echo "  --repo REPO           GitHub repository (default: straylabs-ai/deadend-cli)"
             echo "  --clean               Remove existing install and CLI binary before installing (default)"
             echo "  --no-clean            Do not remove existing install; upgrade in place"
             echo "  -h, --help            Show this help message"
@@ -106,7 +106,7 @@ done
 # Get the latest release version
 get_latest_version() {
     if [ "$VERSION" == "latest" ]; then
-        VERSION=$(curl -s "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        VERSION=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [ -z "$VERSION" ]; then
             echo -e "${RED}Error: Could not determine latest version${NC}"
             exit 1
