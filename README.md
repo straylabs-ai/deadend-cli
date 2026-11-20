@@ -157,13 +157,13 @@ The following models have been tested with Deadend CLI. Compatibility and perfor
 
 ```bash
 # Install latest release
-curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/straylabs-ai/deadend-cli/main/install.sh | bash
 
 # Or install a specific version
-curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh | bash -s -- --version v1.0.0
+curl -fsSL https://raw.githubusercontent.com/straylabs-ai/deadend-cli/main/install.sh | bash -s -- --version v1.0.0
 
 # Custom installation directory (default: ~/.cache/deadend/server)
-curl -fsSL https://raw.githubusercontent.com/xoxruns/deadend-cli/main/install.sh | bash -s -- --install-dir /path/to/install
+curl -fsSL https://raw.githubusercontent.com/straylabs-ai/deadend-cli/main/install.sh | bash -s -- --install-dir /path/to/install
 ```
 
 The installer will:
